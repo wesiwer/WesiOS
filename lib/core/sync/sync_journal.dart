@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 
+import 'sync_account_scope.dart';
 import 'sync_clock.dart';
 
 /// Отметка о записи: когда её последний раз трогали и не удалена ли она.
@@ -32,24 +33,17 @@ class SyncStamp {
 
 /// Журнал изменений: что и когда поменялось, и что было удалено.
 ///
-/// **Зачем он вообще нужен.** Слияние ([SyncMerge]) сравнивает время правки,
-/// но у половины моделей такого поля нет: у операции есть дата операции, а не
-/// дата, когда её последний раз редактировали. Добавлять поле в каждую модель
-/// значило бы менять формат уже записанных на диск данных ради служебной
-/// мелочи.
-///
-/// И главное: удаление вообще нельзя записать в модель — записи больше нет.
-/// Надгробие обязано лежать снаружи. Раз оно всё равно снаружи, туда же
-/// логично класть и отметку времени: одно место вместо двух.
-///
-/// **Как отметки появляются.** Никак — сами. Журнал подписывается на
-/// изменения бокса ([BoxBase.watch]) и отмечает всё, что в нём произошло.
-/// Расставлять вызовы `touch()` по восьми сервисам значило бы гарантированно
-/// один пропустить, и запись молча перестала бы синхронизироваться.
+/// Журнал является частью sync identity не меньше, чем сами данные. В нём
+/// лежат timestamps и tombstones, а значит глобальный journal на общем
+/// устройстве способен перенести конфликтную метку сотрудника A в merge
+/// сотрудника B даже тогда, когда их data-boxes уже раздельные. Поэтому
+/// journal тоже хранится в account-scoped Hive namespace.
 class SyncJournal {
-  static const String boxName = 'wesios_sync_journal';
+  static const String baseBoxName = 'wesios_sync_journal';
+  static String get boxName => SyncAccountScope.boxName(baseBoxName);
 
   static Box<dynamic>? _box;
+  static String? _openedBoxName;
   static final Map<String, StreamSubscription<BoxEvent>> _watchers = {};
 
   /// Отметки, которые ставит движок, применяя чужие правки.
@@ -58,39 +52,47 @@ class SyncJournal {
   /// подписка видит изменение и честно отмечает его как «правка прямо
   /// сейчас», после чего на следующем проходе эта же запись уезжает обратно
   /// на сервер как более свежая. И так до бесконечности.
-  ///
-  /// Ожидание снимается первым же событием по этому ключу, поэтому порядок
-  /// доставки событий значения не имеет — а он в Hive не гарантирован.
   static final Map<String, SyncStamp> _expected = {};
 
   /// Счётчик **своих** правок — тех, что сделал человек, а не привёз обмен.
-  ///
-  /// По нему запускается автоматическая синхронизация. Считать здесь любые
-  /// изменения бокса нельзя: движок, применяя чужие правки, пишет в те же
-  /// боксы, счётчик бы дёрнулся, обмен запустился бы снова, снова записал —
-  /// и так по кругу, без единой правки от человека.
-  ///
-  /// Отличить одно от другого умеет только это место: движок предупреждает
-  /// про свои записи через [expect], и такие события сюда не попадают.
   static final ValueNotifier<int> localChanges = ValueNotifier<int>(0);
 
   static String key(String collection, String id) => '$collection/$id';
 
   static Future<Box<dynamic>> open() async {
-    final box = _box;
-    if (box != null && box.isOpen) return box;
-    final opened = Hive.isBoxOpen(boxName)
-        ? Hive.box<dynamic>(boxName)
-        : await Hive.openBox<dynamic>(boxName);
+    final currentName = boxName;
+    final cached = _box;
+    if (cached != null && cached.isOpen && _openedBoxName == currentName) {
+      return cached;
+    }
+
+    // Account rebind всегда сначала вызывает SyncEngine.reset()/detach(), но
+    // сам journal-box мог оставаться открытым. Не переиспользуем его для новой
+    // server identity: tombstone `profile/me` или одинаковый id Sandbox от
+    // предыдущего пользователя не должен участвовать в новом merge.
+    if (cached != null && cached.isOpen && _openedBoxName != currentName) {
+      await cached.close();
+    }
+
+    final opened = Hive.isBoxOpen(currentName)
+        ? Hive.box<dynamic>(currentName)
+        : await Hive.openBox<dynamic>(currentName);
     _box = opened;
+    _openedBoxName = currentName;
     return opened;
   }
 
   static Box<dynamic>? get _opened {
+    final currentName = boxName;
     final box = _box;
-    if (box != null && box.isOpen) return box;
-    if (!Hive.isBoxOpen(boxName)) return null;
-    return _box = Hive.box<dynamic>(boxName);
+    if (box != null && box.isOpen && _openedBoxName == currentName) return box;
+
+    // Getter не открывает/закрывает Hive асинхронно. Если identity уже
+    // изменилась, старый journal считается недоступным до следующего open().
+    // Это fail-closed: лучше временно не увидеть stamp, чем прочитать чужой.
+    if (!Hive.isBoxOpen(currentName)) return null;
+    _openedBoxName = currentName;
+    return _box = Hive.box<dynamic>(currentName);
   }
 
   /// Начинает следить за боксом. Повторный вызов ничего не ломает.
@@ -109,12 +111,9 @@ class SyncJournal {
       final expected = _expected.remove(k);
       _opened?.put(
         k,
-        // Время — по общей для всех устройств шкале, а не по своим часам:
-        // иначе спор двух правок выигрывает тот, у кого часы спешат.
         (expected ?? SyncStamp(SyncClock.now(), deleted: event.deleted))
             .encode(),
       );
-      // Ожидания не было — значит правку сделал человек, и её надо отправить.
       if (expected == null) localChanges.value++;
     });
   }
@@ -128,18 +127,14 @@ class SyncJournal {
   }
 
   /// Предупредить журнал, что следующее изменение этого ключа — не правка
-  /// человека, а применение чужой. Вызывается движком прямо перед записью.
+  /// человека, а применение чужой.
   static void expect(String collection, String id, SyncStamp stamp) {
     _expected[key(collection, id)] = stamp;
   }
 
-  /// Снять одно ожидание — запись, которую собирались применить, применить
-  /// не удалось.
   static void forget(String collection, String id) =>
       _expected.remove(key(collection, id));
 
-  /// Забыть все ожидания. Движок делает это в конце прохода, чтобы
-  /// невыполненное ожидание не приклеилось к следующей настоящей правке.
   static void clearExpectations() => _expected.clear();
 
   static SyncStamp? stampOf(String collection, String id) =>
@@ -153,7 +148,6 @@ class SyncJournal {
     await _opened?.put(key(collection, id), stamp.encode());
   }
 
-  /// Все отметки одной коллекции: `id → отметка`.
   static Map<String, SyncStamp> forCollection(String collection) {
     final box = _opened;
     if (box == null) return const {};
@@ -169,13 +163,6 @@ class SyncJournal {
   }
 
   /// Проставить отметки записям, которые появились до журнала.
-  ///
-  /// Первый запуск после обновления: в боксах лежат данные, а отметок нет.
-  /// Без этого шага они выглядели бы как «не менялось никогда» и проиграли бы
-  /// любому спору с сервером — то есть тихо стёрлись бы чужими.
-  ///
-  /// Время берётся [at] и должно быть **позже** всего, что лежит на сервере,
-  /// иначе смысл теряется. Движок передаёт сюда момент первого запуска.
   static Future<void> seed(
     String collection,
     Iterable<String> ids,
@@ -193,9 +180,6 @@ class SyncJournal {
   }
 
   /// Выбросить надгробия старше срока.
-  ///
-  /// Живые отметки не трогаем никогда: без отметки запись снова становится
-  /// «не менялась никогда».
   static Future<void> pruneTombstones(
     DateTime now, {
     Duration keepFor = const Duration(days: 180),
