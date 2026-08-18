@@ -27,11 +27,57 @@ function leaders(map) {
     .slice(0, 8);
 }
 
+function currentBalance(e, ctx, policy, organizationId) {
+  const accounts = rows(e, ctx, "accounts");
+  const transactions = rows(e, ctx, "transactions");
+  if (!Array.isArray(accounts) || !Array.isArray(transactions)) {
+    throw new Error("invalid ledger");
+  }
+
+  let balance = 0;
+  for (const row of accounts) {
+    const p = policy.payload(row);
+    if (String(p.organizationId || policy.ROOT_ORG) !== organizationId || p.archived === true) continue;
+    const opening = Number(p.openingBalance || 0);
+    if (Number.isFinite(opening)) balance += opening;
+  }
+
+  // Keep balance semantics aligned with AccountService/Horizon: recurring
+  // rows are templates, future rows do not affect actual cash, and old
+  // materialized recurring-income children are excluded to avoid double count.
+  const recurringIncomeIds = [];
+  for (const row of transactions) {
+    const p = policy.payload(row);
+    if (String(p.organizationId || policy.ROOT_ORG) !== organizationId) continue;
+    if (p.isRecurring === true && String(p.type || "expense") === "income") {
+      recurringIncomeIds.push(String(p.id || row.getString("rid") || ""));
+    }
+  }
+  const now = Date.now();
+  for (const row of transactions) {
+    const p = policy.payload(row);
+    if (String(p.organizationId || policy.ROOT_ORG) !== organizationId) continue;
+    if (p.isRecurring === true) continue;
+    const id = String(p.id || row.getString("rid") || "");
+    if (String(p.type || "expense") === "income" && recurringIncomeIds.some((parent) => parent && id.indexOf(parent + "_") === 0)) continue;
+    const amount = Number(p.amount);
+    const at = Date.parse(String(p.date || ""));
+    if (!Number.isFinite(amount) || amount < 0 || !Number.isFinite(at) || at > now) continue;
+    balance += String(p.type || "expense") === "income" ? amount : -amount;
+  }
+  return round(balance);
+}
+
 module.exports = {
   definitions: function(e, ctx) {
     const policy = require(`${__hooks}/wesi_ai_finance_policy.js`);
     if (!policy.hasModule(ctx)) return [];
     return [
+      {
+        name: "finance_balance",
+        description: "Получить текущий фактический баланс разрешённой АКТИВНОЙ организации WesiOS из того же ledger, что использует приложение. Не используй будущие или recurring-template операции как уже совершённые.",
+        parameters: {type: "object", properties: {organizationId: {type: "string", description: "Используй только если активная организация не передана WesiOS"}}},
+      },
       {
         name: "finance_summary",
         description: "Посчитать на основном сервере Wesi сводку реальных разрешённых финансов АКТИВНОЙ организации за период. Если WesiOS передал activeOrganizationId, не подменяй его другой организацией и не выдумывай ID. Возвращает transactionCount, доходы, расходы, net, категории, recurring и anomalies.",
@@ -69,6 +115,20 @@ module.exports = {
     const requested = String(activeOrganizationId || input.organizationId || "").trim();
     const organizationId = policy.select(state, requested);
     if (!organizationId) return {ok: false, code: "FORBIDDEN", message: "Нет права просматривать финансы этой организации"};
+
+    if (name === "finance_balance") {
+      try {
+        return {ok: true, result: {
+          organizationId: organizationId,
+          organizationName: state.orgs[organizationId] ? state.orgs[organizationId].name : organizationId,
+          reportingCurrency: state.orgs[organizationId] ? state.orgs[organizationId].baseCurrency : "RUB",
+          currentBalance: currentBalance(e, ctx, policy, organizationId),
+          asOf: new Date().toISOString(),
+        }};
+      } catch (_) {
+        return {ok: false, code: "FINANCE_DATA_UNAVAILABLE", message: "Не удалось прочитать фактический баланс WesiOS. Нулевой баланс не подставлен."};
+      }
+    }
 
     const now = new Date();
     const defaultTo = now.toISOString().slice(0, 10);
