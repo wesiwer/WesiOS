@@ -1,0 +1,13 @@
+roadmap_projects_diffs=0
+roadmap_projects_different_fields=
+roadmap_items_diffs=2
+roadmap_items_freshness_per_record_newer=2
+roadmap_items_different_fields=endDate:1,progress:1,startDate:1,updatedAt:2
+crm_clients_diffs=1
+crm_clients_freshness_per_record_newer=1
+crm_clients_different_fields=status:1,updatedAt:1
+crm_deals_diffs=1
+crm_deals_freshness_per_record_newer=1
+crm_deals_different_fields=closedAt:1,stage:1,updatedAt:1
+crm_interactions_diffs=0
+crm_interactions_different_fields=
