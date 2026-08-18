@@ -45,13 +45,23 @@ class SshConnectionCheck {
 class SshClientService {
   SshClientService._();
 
-  /// dartssh2 2.11 passes the legacy MD5 host-key digest to this callback.
-  /// Store it in an explicit, human-readable form instead of attempting to
-  /// decode arbitrary digest bytes as UTF-8.
+  /// dartssh2 <=2.17 supplied the legacy raw MD5 digest, while newer
+  /// releases supply an OpenSSH-style SHA256 fingerprint encoded as UTF-8.
+  /// Accept both forms so already saved legacy host keys remain readable and
+  /// newly discovered keys use the stronger SHA256 representation.
   static String _fingerprint(dynamic raw) {
     if (raw is String) return raw;
     if (raw is Iterable<int>) {
-      final hex = raw
+      final bytes = raw.toList(growable: false);
+      try {
+        final text = utf8.decode(bytes, allowMalformed: false);
+        if (text.startsWith('SHA256:') || text.startsWith('MD5:')) {
+          return text;
+        }
+      } catch (_) {
+        // Legacy digest bytes are intentionally not valid UTF-8 text.
+      }
+      final hex = bytes
           .map((byte) => byte.toRadixString(16).padLeft(2, '0'))
           .join(':');
       return 'MD5:$hex';
@@ -152,10 +162,8 @@ class SshClientService {
       client = await _connect(target, profile);
       await client.authenticated.timeout(const Duration(seconds: 15));
 
-      // runWithResult was added after the Flutter-3.24-compatible package
-      // line. execute() already exposes stdout/stderr/exitCode and works on
-      // dartssh2 2.11, so keep the old Flutter toolchain without losing
-      // command metadata.
+      // execute() keeps stdout/stderr/exitCode explicit and remains compatible
+      // across the dartssh2 releases supported by WesiOS.
       session = await client.execute(command).timeout(const Duration(seconds: 15));
       final stdoutFuture = session.stdout.expand((chunk) => chunk).toList();
       final stderrFuture = session.stderr.expand((chunk) => chunk).toList();
