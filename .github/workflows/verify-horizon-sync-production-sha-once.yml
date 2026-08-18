@@ -68,3 +68,5 @@ jobs:
             [ "$actual" = "$expected" ] || { echo "mismatch:$f expected=$expected actual=$actual"; exit 1; }
             echo "match:$f $actual"
           done
+
+# validation: 2026-08-18 final sync/profile production SHA pass
