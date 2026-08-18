@@ -1,0 +1,88 @@
+name: Telegram Gateway Gate
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/telegram-gate.yml'
+      - '.github/workflows/deploy-wesi-telegram.yml'
+      - 'server/WESI_TELEGRAM.md'
+      - 'server/pb_hooks/wesi_telegram*.js'
+      - 'server/pb_hooks/wesi_telegram*.mjs'
+      - 'server/pb_hooks/wesi_ai_finance_tools.js'
+      - 'server/pb_hooks/wesi_ai_task_tools.js'
+      - 'lib/core/routes/app_router.dart'
+      - 'lib/core/services/telegram_link_service.dart'
+      - 'lib/features/profile/profile_with_telegram.dart'
+      - 'lib/features/profile/telegram_link_screen.dart'
+      - 'android/app/src/main/AndroidManifest.xml'
+      - 'test/telegram_deep_link_test.dart'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: telegram-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  server:
+    name: Server hooks
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Syntax check Telegram contour
+        shell: bash
+        run: |
+          set -euo pipefail
+          for file in \
+            server/pb_hooks/wesi_telegram_lib.js \
+            server/pb_hooks/wesi_telegram_store.js \
+            server/pb_hooks/wesi_telegram_gateway.js \
+            server/pb_hooks/wesi_telegram.pb.js \
+            server/pb_hooks/wesi_ai_finance_tools.js \
+            server/pb_hooks/wesi_ai_task_tools.js; do
+            node --check "$file"
+          done
+
+      - name: Run Telegram unit tests
+        run: node server/pb_hooks/wesi_telegram_lib_test.mjs
+
+      - name: Reject legacy Vercel dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -R -E '@vercel/postgres|telegram-webhook/' server/pb_hooks/wesi_telegram*.js; then
+            echo '::error::Production Telegram gateway must not depend on the legacy Vercel prototype.'
+            exit 1
+          fi
+
+  flutter:
+    name: Flutter analyze and deep links
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Analyze Telegram integration
+        run: |
+          flutter analyze --no-fatal-infos \
+            lib/core/routes/app_router.dart \
+            lib/core/services/telegram_link_service.dart \
+            lib/features/profile/profile_with_telegram.dart \
+            lib/features/profile/telegram_link_screen.dart \
+            test/telegram_deep_link_test.dart
+
+      - name: Test Telegram deep-link routing
+        run: flutter test test/telegram_deep_link_test.dart

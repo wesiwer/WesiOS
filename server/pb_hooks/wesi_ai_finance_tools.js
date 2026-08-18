@@ -83,6 +83,27 @@ module.exports = {
     const organizationId = policy.select(state, requested);
     if (!organizationId) return {ok: false, code: "FORBIDDEN", message: "Нет права просматривать финансы этой организации"};
 
+    // Internal read alias for Wesi Telegram. It deliberately stays out of
+    // definitions(), so the public Wesi AI capability registry remains stable.
+    if (name === "finance_balance") {
+      const balance = balanceState(e, ctx, policy, organizationId);
+      if (!balance) {
+        return {
+          ok: false,
+          code: "FINANCE_DATA_UNAVAILABLE",
+          message: "Не удалось прочитать счета WesiOS. Нулевой остаток не подставлен.",
+        };
+      }
+      return {ok: true, result: {
+        organizationId: organizationId,
+        organizationName: state.orgs[organizationId] ? state.orgs[organizationId].name : organizationId,
+        reportingCurrency: state.orgs[organizationId] ? state.orgs[organizationId].baseCurrency : "RUB",
+        currentBalance: balance.currentBalance,
+        accounts: balance.accounts,
+        asOf: new Date().toISOString(),
+      }};
+    }
+
     const now = new Date();
     const defaultTo = now.toISOString().slice(0, 10);
     const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 2, now.getUTCDate()));

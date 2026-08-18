@@ -126,11 +126,28 @@ function taskVisible(access, ctx, p) {
   return String(p.assignee || "") === ctx.employeeId || String(p.responsibleEmployeeId || "") === ctx.employeeId;
 }
 
+function localDay(value, offsetMinutes) {
+  const date = value instanceof Date ? value : new Date(String(value || ""));
+  if (!Number.isFinite(date.getTime())) return "";
+  const offset = Math.max(-840, Math.min(840, Number(offsetMinutes || 0)));
+  return new Date(date.getTime() + offset * 60000).toISOString().slice(0, 10);
+}
+
+function dayState(value, now, offsetMinutes) {
+  if (!value) return "none";
+  const dueDay = localDay(value, offsetMinutes);
+  const nowDay = localDay(now, offsetMinutes);
+  if (!dueDay || !nowDay) return "none";
+  if (dueDay < nowDay) return "overdue";
+  if (dueDay === nowDay) return "today";
+  return "future";
+}
+
 module.exports = {
   definitions: function(e, ctx) {
     if (!ctx.isOwner && ctx.modules.indexOf("tasks") < 0) return [];
     return [
-      {name: "tasks_list", description: "Получить реальные задачи WesiOS, доступные текущему сотруднику.", parameters: {type: "object", properties: {status: {type: "string", enum: ["backlog", "inProgress", "review", "done"]}, limit: {type: "integer", minimum: 1, maximum: 50}}}},
+      {name: "tasks_list", description: "Получить реальные задачи WesiOS, доступные текущему сотруднику. При активной организации список ограничивается ею; dueMode позволяет получить задачи на сегодня или просроченные.", parameters: {type: "object", properties: {organizationId: {type: "string"}, status: {type: "string", enum: ["backlog", "inProgress", "review", "done"]}, dueMode: {type: "string", enum: ["today", "overdue"]}, timezoneOffsetMinutes: {type: "integer", minimum: -840, maximum: 840}, limit: {type: "integer", minimum: 1, maximum: 100}}}},
       {name: "tasks_create", description: "Создать реальную задачу WesiOS. Можно назначить другому сотруднику только при наличии соответствующего права.", parameters: {type: "object", required: ["title"], properties: {title: {type: "string"}, description: {type: "string"}, dueDate: {type: "string", description: "ISO date YYYY-MM-DD"}, assignee: {type: "string", description: "Имя, логин или id сотрудника; пусто означает текущего сотрудника"}, organizationId: {type: "string"}, priority: {type: "string", enum: ["low", "normal", "high", "urgent"]}}}},
     ];
   },
@@ -152,16 +169,35 @@ module.exports = {
           "-stamp", 5000, 0, {owner: ctx.ownerId},
         );
       const status = String(input.status || "");
-      const limit = Math.max(1, Math.min(50, Number(input.limit || 20)));
+      const dueMode = String(input.dueMode || "");
+      if (dueMode && ["today", "overdue"].indexOf(dueMode) < 0) {
+        return {ok: false, code: "VALIDATION_ERROR", message: "Некорректный dueMode"};
+      }
+      const timezoneOffsetMinutes = Math.max(-840, Math.min(840, Number(input.timezoneOffsetMinutes || 0)));
+      const requestedOrg = String(activeOrganizationId || input.organizationId || "").trim();
+      let organizationId = "";
+      if (requestedOrg) {
+        organizationId = chooseOrganization(access, requestedOrg);
+        if (!organizationId || organizationId !== requestedOrg) {
+          return {ok: false, code: "FORBIDDEN", message: "Нет доступа к задачам этой организации"};
+        }
+      }
+      const limit = Math.max(1, Math.min(100, Number(input.limit || 20)));
+      const now = new Date();
       const out = [];
+      let totalCount = 0;
       for (const row of rows) {
         const p = payloadOf(row);
         if (!taskVisible(access, ctx, p)) continue;
+        const taskOrgId = String(p.organizationId || ROOT_ORG);
+        if (organizationId && taskOrgId !== organizationId) continue;
         if (status && String(p.status || "backlog") !== status) continue;
-        out.push({id: String(p.id || row.getString("rid")), title: String(p.title || ""), status: String(p.status || "backlog"), priority: String(p.priority || "normal"), dueDate: p.dueDate || null, assignee: p.assignee || null, organizationId: String(p.organizationId || ROOT_ORG)});
-        if (out.length >= limit) break;
+        if (dueMode && dayState(p.dueDate, now, timezoneOffsetMinutes) !== dueMode) continue;
+        totalCount++;
+        if (out.length >= limit) continue;
+        out.push({id: String(p.id || row.getString("rid")), title: String(p.title || ""), status: String(p.status || "backlog"), priority: String(p.priority || "normal"), dueDate: p.dueDate || null, assignee: p.assignee || null, organizationId: taskOrgId});
       }
-      return {ok: true, result: {tasks: out}};
+      return {ok: true, result: {organizationId: organizationId || null, timezoneOffsetMinutes: timezoneOffsetMinutes, totalCount: totalCount, tasks: out}};
     }
 
     if (name === "tasks_create") {
