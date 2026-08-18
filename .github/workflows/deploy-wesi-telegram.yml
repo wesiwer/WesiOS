@@ -1,6 +1,13 @@
 name: Deploy Wesi Telegram
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'server/pb_hooks/wesi_telegram*.js'
+      - 'server/pb_hooks/wesi_ai_finance_tools.js'
+      - 'server/pb_hooks/wesi_ai_task_tools.js'
+      - '.github/workflows/deploy-wesi-telegram.yml'
   workflow_dispatch:
     inputs:
       bot_username:
@@ -28,8 +35,8 @@ jobs:
     env:
       MAIN_HOST: ${{ secrets.WESI_SERVER_HOST }}
       MAIN_USER: ${{ secrets.WESI_SERVER_USER }}
-      BOT_USERNAME: ${{ inputs.bot_username }}
-      PUBLIC_BASE_URL: ${{ inputs.public_base_url }}
+      BOT_USERNAME: ${{ inputs.bot_username || 'WesiOSBot' }}
+      PUBLIC_BASE_URL: ${{ inputs.public_base_url || 'https://api.wesi-inc.ru' }}
 
     steps:
       - uses: actions/checkout@v4
@@ -149,8 +156,6 @@ jobs:
           atomic_install "$REMOTE/wesi_ai_finance_tools.js" "$HOOK_DIR/wesi_ai_finance_tools.js" 0644
           atomic_install "$REMOTE/wesi_ai_task_tools.js" "$HOOK_DIR/wesi_ai_task_tools.js" 0644
           atomic_install "$REMOTE/wesi-telegram.json" "$HOOK_DIR/.wesi-telegram.json" 0600
-          # Install the route file last so hot reload never observes it without
-          # its dependencies/config.
           atomic_install "$REMOTE/wesi_telegram.pb.js" "$HOOK_DIR/wesi_telegram.pb.js" 0644
 
           sleep 4
