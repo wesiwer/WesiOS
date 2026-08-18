@@ -1,0 +1,74 @@
+name: Wesi AI Long Run Gate
+
+on:
+  pull_request:
+    paths:
+      - 'server/wesi-ai-stream/**'
+      - 'server/pb_hooks/wesi_ai_run_policy.js'
+      - 'server/pb_hooks/wesi_ai_stream_runtime_v2.js'
+      - 'lib/features/ai/**'
+      - 'test/wesi_ai_run_summary_chip_test.dart'
+      - 'test/wesi_ai_subagent_visibility_test.dart'
+      - '.github/workflows/wesi-ai-long-run-ci.yml'
+      - '.github/workflows/deploy-wesi-ai-streaming.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: wesi-ai-long-run-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gateway:
+    name: Long-run gateway contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Syntax check long-run contour
+        run: |
+          set -euo pipefail
+          node --check server/wesi-ai-stream/gateway.mjs
+          node --check server/wesi-ai-stream/long_run_integration.test.mjs
+          node --check server/wesi-ai-stream/step_io.mjs
+          node --check server/pb_hooks/wesi_ai_run_policy.js
+          node --check server/pb_hooks/wesi_ai_stream_runtime_v2.js
+
+      - name: Prove autonomous run exceeds legacy four-turn ceiling
+        run: node --test server/wesi-ai-stream/long_run_integration.test.mjs
+
+      - name: Run complete streaming gateway suite
+        run: node --test server/wesi-ai-stream/*.test.mjs
+
+  flutter:
+    name: Long-run UI contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Analyze long-run UI
+        run: |
+          flutter analyze --no-fatal-infos \
+            lib/features/ai/models/wesi_ai_activity.dart \
+            lib/features/ai/widgets/wesi_ai_rich_message.dart \
+            lib/features/ai/widgets/wesi_ai_run_summary_chip.dart \
+            lib/features/ai/controllers/wesi_ai_chat_controller.dart \
+            lib/features/ai/ai_assistant_v2_screen.dart
+
+      - name: Test long-run UI and specialist visibility
+        run: |
+          flutter test test/wesi_ai_run_summary_chip_test.dart
+          flutter test test/wesi_ai_subagent_visibility_test.dart
