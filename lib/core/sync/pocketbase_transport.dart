@@ -6,15 +6,7 @@ import 'sync_endpoint.dart';
 import 'sync_merge.dart';
 import 'sync_transport.dart';
 
-/// Связь с сервером синхронизации WesiOS поверх PocketBase.
-///
-/// Прямые CRUD-запросы к `wesios_records` намеренно не используются:
-/// встроенные правила коллекции оставляют каждую запись видимой только её
-/// auth-владельцу. Корпоративный обмен сотрудников проходит через
-/// `/api/wesi/sync/*`, где сервер проверяет WesiOS session, employeeId,
-/// модульные права, организационные гранты и область конкретной записи.
 class PocketBaseTransport implements SyncTransport {
-  /// Оставлены публичными для совместимости старых тестов/диагностики.
   static const String collectionName = 'wesios_records';
   static const int pageSize = 500;
 
@@ -57,9 +49,6 @@ class PocketBaseTransport implements SyncTransport {
     _sessionId = null;
   }
 
-  /// Прямой password-auth больше не используется: он обходил бы почтовый
-  /// второй фактор. Вход выполняет защищённый экран WesiOS, после чего этот
-  /// транспорт получает готовый server token + revocable session id.
   @override
   Future<SyncResult<String>> signIn(String login, String password) async {
     return const SyncResult.fail(
@@ -131,9 +120,6 @@ class PocketBaseTransport implements SyncTransport {
     if (!isSignedIn) return const SyncResult.fail(SyncFailure.notSignedIn);
     final res = await _send('GET', '/api/wesi/sync/revision-v2');
     if (res.failure != null) {
-      // During a rolling deploy an updated client may start before the new
-      // PocketBase hook. Keep live sync alive on the legacy endpoint until
-      // revision-v2 becomes available.
       if (res.failure!.code == 'NOT_WESIOS') {
         final legacy = await _send('GET', '/api/wesi/sync/revision');
         if (legacy.failure != null) return SyncResult.fail(legacy.failure!);
@@ -150,18 +136,10 @@ class PocketBaseTransport implements SyncTransport {
     return SyncResult.ok(revision);
   }
 
-  /// Старый формат ответа PocketBase оставлен для unit-тестов миграционного
-  /// слоя. Рабочий transport получает готовую строку с `/api/wesi/sync/revision-v2`.
   static String revisionFromResponse(Map<String, dynamic> json) {
-    // Current legacy WesiOS hook already returns the same compact revision
-    // string as revision-v2. Accept it first so a rolling deploy fallback is
-    // genuinely live instead of silently collapsing every response to empty.
     final direct = json['revision'];
     if (direct is String && direct.isNotEmpty) return direct;
 
-    // Older pre-gateway responses exposed the newest record through items.
-    // Keep this parser for backwards compatibility with those installations
-    // and with migration fixtures.
     final items = json['items'];
     if (items is! List || items.isEmpty) return 'empty';
     final first = items.first;
@@ -171,9 +149,6 @@ class PocketBaseTransport implements SyncTransport {
     return '$id|$stamp';
   }
 
-  /// Отказы, после которых продолжать бессмысленно: дело не в записи, а в
-  /// связи или в самом сервере. Всё остальное — беда конкретной записи
-  /// (слишком большая, конфликт ключей), и она не повод бросать остальные.
   static const Set<String> _fatalCodes = {
     'NOT_SIGNED_IN',
     'NETWORK',
@@ -192,7 +167,9 @@ class PocketBaseTransport implements SyncTransport {
     if (records.isEmpty) return const SyncPushResult();
 
     final delivered = <String>[];
+    final acceptedStamps = <String, DateTime>{};
     SyncFailure? firstFailure;
+
     for (final r in records) {
       final res = await _send(
         'POST',
@@ -205,36 +182,42 @@ class PocketBaseTransport implements SyncTransport {
         },
       );
       if (res.failure != null) {
-        // Отказ в доступе — не поломка. Локальная база может содержать
-        // строки, которые видел предыдущий сотрудник на общем устройстве;
-        // сервер — настоящая граница доступа, и его «нельзя» означает, что
-        // строка просто не наша. Считать это ошибкой значило бы держать
-        // отчёт вечно красным у любого, чей доступ ограничен.
         if (res.failure!.code == 'FORBIDDEN') continue;
 
         firstFailure ??= res.failure;
-        // Остальное пропускаем и берёмся за следующую запись: одна упрямая
-        // запись не должна держать взаперти всё, что за ней в очереди.
         if (_fatalCodes.contains(res.failure!.code)) break;
         continue;
       }
 
-      // Сервер повторно проверяет LWW прямо перед сохранением. Между нашим
-      // fetch и push другой клиент мог успеть записать более новую версию.
-      // Такой stale push возвращается как HTTP 200 + applied:false: это не
-      // сетевая ошибка, но считать запись доставленной нельзя, иначе afterUpload
-      // (например статус сообщения) солжёт. Следующий revision-poll подтянет
-      // авторитетную серверную версию.
+      // HTTP 200 + applied:false means the server rejected this stale write
+      // at its LWW boundary. It must NOT be reported as delivered; the next
+      // revision-driven pull will apply the authoritative remote row.
       if (res.value!['applied'] == false) continue;
 
-      // Идентификатор записи на сервере запоминать больше не нужно: запись
-      // идёт через собственный обработчик, и решение «создать или обновить»
-      // принимает он сам по паре «коллекция + идентификатор». Заодно исчезли
-      // дубли, которые возникали, когда два устройства создавали одну и ту
-      // же запись одновременно.
       delivered.add(r.id);
+
+      // The server can normalize an invalid/far-future client timestamp to its
+      // own clock. Preserve the timestamp that was actually committed so the
+      // local journal converges to the same LWW coordinate immediately.
+      final accepted = DateTime.tryParse('${res.value!['stamp'] ?? ''}');
+      if (accepted != null) {
+        acceptedStamps[r.id] = accepted;
+      } else {
+        // The write already happened, so do not retry it blindly as if it
+        // failed. Mark the pass degraded; SyncEngine will use an epoch journal
+        // fallback for this delivered row, forcing a safe authoritative pull.
+        firstFailure ??= SyncFailure(
+          'REMOTE_DATA_INVALID',
+          'Сервер принял $collection:${r.id}, но не вернул корректное время записи',
+        );
+      }
     }
-    return SyncPushResult(deliveredIds: delivered, failure: firstFailure);
+
+    return SyncPushResult(
+      deliveredIds: delivered,
+      acceptedStamps: acceptedStamps,
+      failure: firstFailure,
+    );
   }
 
   static int item2int(Object? raw) =>
@@ -267,8 +250,6 @@ class PocketBaseTransport implements SyncTransport {
         req.write(jsonEncode(body));
       }
       final res = await req.close().timeout(const Duration(seconds: 25));
-      // Сверяем часы по каждому ответу: это единственный момент, когда
-      // устройство вообще слышит время сервера.
       await SyncClock.observeServerDate(
         res.headers.value(HttpHeaders.dateHeader),
         sentAt: sentAt,
