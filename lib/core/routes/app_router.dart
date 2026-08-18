@@ -29,13 +29,23 @@ import '../../features/chats/chats_screen.dart';
 import '../../features/organizations/organizations_screen.dart';
 import '../../features/organizations/inter_org_transfer_screen.dart';
 import '../../features/organizations/my_finance_screen.dart';
+import '../../features/organizations/services/organization_context.dart';
 import '../../features/team/models/team_permissions.dart';
 import '../../features/team/services/team_service.dart';
 import '../sync/sync_endpoint.dart';
 
 class AppRouter {
   static Route<dynamic> onGenerateRoute(RouteSettings settings) {
-    switch (settings.name) {
+    final uri = Uri.tryParse(settings.name ?? '');
+    final routeName = uri != null && uri.path.isNotEmpty ? uri.path : settings.name;
+    final deepLinkOrganizationId = uri?.queryParameters['organizationId'];
+
+    Widget orgAware(Widget child) => _DeepLinkOrganizationGate(
+          organizationId: deepLinkOrganizationId,
+          child: child,
+        );
+
+    switch (routeName) {
       case '/':
         return MaterialPageRoute(builder: (_) => const SplashScreen());
       case '/welcome':
@@ -43,16 +53,16 @@ class AppRouter {
       case '/login':
         return _slideUpRoute(const LoginScreen());
       case '/home':
-        return _fadeRoute(_AccessGate(child: HomeScreen()));
+        return _fadeRoute(_AccessGate(child: orgAware(HomeScreen())));
       case '/treasury':
         return _slideUpRoute(_AccessGate(
           module: TeamModules.treasury,
-          child: TreasuryScreen(),
+          child: orgAware(TreasuryScreen()),
         ));
       case '/treasury/forecast':
         return _slideUpRoute(_AccessGate(
           module: TeamModules.forecast,
-          child: TreasuryForecastScreen(),
+          child: orgAware(TreasuryForecastScreen()),
         ));
       case '/treasury/dashboard':
         return _slideUpRoute(_AccessGate(
@@ -87,7 +97,7 @@ class AppRouter {
       case '/tasks':
         return _slideUpRoute(_AccessGate(
           module: TeamModules.tasks,
-          child: TasksScreen(),
+          child: orgAware(TasksScreen()),
         ));
       case '/roadmap':
         return _slideUpRoute(_AccessGate(
@@ -107,7 +117,7 @@ class AppRouter {
       case '/ai':
         return _slideUpRoute(_AccessGate(
           module: TeamModules.ai,
-          child: const AiAssistantV2Screen(),
+          child: orgAware(const AiAssistantV2Screen()),
         ));
       case '/shield':
         return _slideUpRoute(_AccessGate(
@@ -237,4 +247,51 @@ class _AccessGate extends StatelessWidget {
       },
     );
   }
+}
+
+class _DeepLinkOrganizationGate extends StatefulWidget {
+  const _DeepLinkOrganizationGate({
+    required this.child,
+    required this.organizationId,
+  });
+
+  final Widget child;
+  final String? organizationId;
+
+  @override
+  State<_DeepLinkOrganizationGate> createState() =>
+      _DeepLinkOrganizationGateState();
+}
+
+class _DeepLinkOrganizationGateState extends State<_DeepLinkOrganizationGate> {
+  String? _applied;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _apply());
+  }
+
+  @override
+  void didUpdateWidget(covariant _DeepLinkOrganizationGate oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.organizationId != widget.organizationId) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _apply());
+    }
+  }
+
+  Future<void> _apply() async {
+    final id = widget.organizationId?.trim() ?? '';
+    if (id.isEmpty || id == _applied || !SyncEndpoint.isConnected) return;
+    try {
+      await OrganizationContext.selectOrganization(id);
+      _applied = id;
+    } catch (_) {
+      // Deep links never broaden access. If the organization is no longer
+      // available, the existing validated context remains active.
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
 }
