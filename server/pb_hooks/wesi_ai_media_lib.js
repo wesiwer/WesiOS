@@ -1,4 +1,6 @@
-const dataAccess = require((typeof __hooks !== "undefined" ? __hooks + "/" : "./") + "wesi_ai_data_access.js");
+const base = typeof __hooks !== "undefined" ? __hooks + "/" : "./";
+const dataAccess = require(base + "wesi_ai_data_access.js");
+const atomic = require(base + "wesi_sync_atomic.js");
 const PUBLIC_BASE = "https://api.wesi-inc.ru";
 const STORAGE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const MAX_FILE_BYTES = 128 * 1024 * 1024;
@@ -80,11 +82,6 @@ function makeContentBlock(payload) {
     data.url = mediaUrl(payload.jobId, payload.fileToken);
     data.mimeType = String(payload.mimeType || "");
   } else {
-    // The Flutter block validator intentionally accepts only http(s) media
-    // blocks. Pending/failed states therefore retain the authenticated Main
-    // status URL. This also lets a persisted pending card resume polling after
-    // an app restart and lets a failed status replace that card instead of
-    // being discarded and polled forever.
     data.url = statusUrl(payload.jobId);
   }
   return {type: "media", data: data};
@@ -92,8 +89,6 @@ function makeContentBlock(payload) {
 
 function createJob(ctx, kind, prompt, title, extra) {
   const jobId = "wam_" + $security.randomString(28);
-  const collection = $app.findCollectionByNameOrId("wesios_records");
-  const record = new Record(collection);
   const now = new Date().toISOString();
   const payload = Object.assign({
     jobId: jobId,
@@ -105,23 +100,30 @@ function createJob(ctx, kind, prompt, title, extra) {
     createdAt: now,
     updatedAt: now
   }, extra && typeof extra === "object" ? extra : {});
-  record.set("owner", String(ctx.ownerId || ""));
-  record.set("org", "");
-  record.set("coll", "ai_media");
-  record.set("rid", "media:" + jobId);
-  record.set("payload", payload);
-  record.set("stamp", now);
-  record.set("deleted", false);
-  $app.save(record);
-  return record;
+  atomic.commit($app, {
+    owner: String(ctx.ownerId || ""),
+    org: "",
+    coll: "ai_media",
+    rid: "media:" + jobId,
+    payload: payload,
+    stamp: now,
+    deleted: false,
+  });
+  return findJob(jobId);
 }
 
 function savePayload(record, payload) {
   const now = new Date().toISOString();
   payload.updatedAt = now;
-  record.set("payload", payload);
-  record.set("stamp", now);
-  $app.save(record);
+  atomic.commit($app, {
+    owner: record.getString("owner"),
+    org: record.getString("org"),
+    coll: record.getString("coll"),
+    rid: record.getString("rid"),
+    payload: payload,
+    stamp: now,
+    deleted: false,
+  });
   return payload;
 }
 
@@ -173,7 +175,7 @@ function persistRelayArtifact(ai, cfg, record, relayMedia) {
   const filename = payload.jobId + "." + ext;
   const path = rootDir() + "/" + filename;
   try {
-    $os.writeFile(path, bytes, 416); // 0640
+    $os.writeFile(path, bytes, 416);
   } catch (_) {
     return {ok: false, code: "WAI_MEDIA_STORAGE_FAILED"};
   }
