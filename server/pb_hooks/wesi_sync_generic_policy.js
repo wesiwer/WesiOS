@@ -304,4 +304,16 @@ function authorize(txApp, existing, input, ctx) {
   }
 }
 
-module.exports = {authorize, payloadOf, grantApplies, taskOwned, chatVisible};
+function authorizeFresh(txApp, existing, input, requestCtx) {
+  const fresh = require(`${__hooks}/wesi_sync_authz.js`).refresh(txApp, requestCtx);
+  return authorize(txApp, existing, input, fresh);
+}
+
+module.exports = {
+  authorize,
+  authorizeFresh,
+  payloadOf,
+  grantApplies,
+  taskOwned,
+  chatVisible,
+};
