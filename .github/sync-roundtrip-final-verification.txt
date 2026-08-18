@@ -1,0 +1,6 @@
+TARGET_SYNC_TEST=0
+00:00 +0: loading /home/runner/work/WesiOS/WesiOS/test/sync_engine_test.dart
+00:00 +0: (setUpAll)
+00:00 +0: движок применённая чужая запись не уезжает обратно на следующем проходе
+00:00 +1: (tearDownAll)
+00:00 +1: All tests passed!
