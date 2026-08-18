@@ -47,6 +47,17 @@ routerAdd("POST", "/api/wesi/telegram/webhook", (e) => {
       return e.json(200, {ok: true});
     }
   } catch (_) {}
+
+  // Small interaction layer handles actions that intentionally don't belong
+  // to the business command gateway, such as a real Telegram push-channel test.
+  try {
+    const interactions = require(`${__hooks}/wesi_telegram_interactions.js`);
+    const interaction = interactions.handle(e);
+    if (interaction && interaction.handled === true) {
+      return e.json(200, {ok: true});
+    }
+  } catch (_) {}
+
   const gateway = require(`${__hooks}/wesi_telegram_gateway.js`);
   return gateway.webhook(e);
 });
