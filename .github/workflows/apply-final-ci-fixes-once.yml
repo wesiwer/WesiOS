@@ -1,0 +1,51 @@
+name: Apply Final CI Fixes Once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/apply-final-ci-fixes-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Apply exact CI fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          codec = Path('lib/core/sync/sync_codec.dart')
+          s = codec.read_text()
+          old = """    final accountId =\n        _strOrNull(fields['accountId']) ?? AccountModel.mainIdFor(orgId);\n"""
+          new = """    final accountId = _strOrNull(fields['accountId']);\n"""
+          if old not in s:
+              raise SystemExit('sync_codec accountId snippet not found')
+          s = s.replace(old, new, 1)
+          s = s.replace("      accountId: _strOrNull(fields['accountId']),\n", "      accountId: accountId,\n", 1)
+          codec.write_text(s)
+
+          crm = Path('server/pb_hooks/wesi_sync_crm_runtime.js')
+          s = crm.read_text()
+          old = """  if (!manager(ctx)) {\n    if (existing && !clientWritable(ctx, existing)) {\n      forbidden(\"CRM-клиент принадлежит другому сотруднику\");\n    }\n    if (!input.deleted && String(target.ownerEmployeeId || \"\") !== ctx.employeeId) {\n      forbidden(\"Нельзя назначить CRM-клиента другому сотруднику\");\n    }\n  }\n"""
+          new = """  if (!manager(ctx)) {\n    if (existing && !clientWritable(ctx, existing)) {\n      forbidden(\"CRM-клиент принадлежит другому сотруднику\");\n    }\n    if (!existing && !input.deleted && !String(target.ownerEmployeeId || \"\").trim()) {\n      target.ownerEmployeeId = ctx.employeeId;\n    }\n    if (!input.deleted && String(target.ownerEmployeeId || \"\") !== ctx.employeeId) {\n      forbidden(\"Нельзя назначить CRM-клиента другому сотруднику\");\n    }\n  }\n"""
+          if old not in s:
+              raise SystemExit('CRM authorizeClient snippet not found')
+          s = s.replace(old, new, 1)
+          s = s.replace("""  authorize,\n  clientVisible,\n""", """  authorize,\n  authorizeClient,\n  authorizeDeal,\n  authorizeInteraction,\n  clientVisible,\n""", 1)
+          crm.write_text(s)
+          PY
+
+          git config user.name 'WesiOS CI Fixes'
+          git config user.email 'actions@users.noreply.github.com'
+          git add lib/core/sync/sync_codec.dart server/pb_hooks/wesi_sync_crm_runtime.js
+          git commit -m 'fix(sync): close final CRM and analyzer regressions'
+          git push origin HEAD:main
