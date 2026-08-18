@@ -55,7 +55,7 @@ class _DelayedPrepareCollection extends SyncCollection<String> {
     await release.future;
     return Hive.isBoxOpen(boxName)
         ? Hive.box<String>(boxName)
-        : Hive.openBox<String>(boxName);
+        : await Hive.openBox<String>(boxName);
   }
 }
 
