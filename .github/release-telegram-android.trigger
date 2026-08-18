@@ -1,2 +1,3 @@
 Wesi Telegram MVP Android release
-version=0.22.27+102
+version=0.22.28+103
+sync-hardening-final
