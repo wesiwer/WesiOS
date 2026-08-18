@@ -1,0 +1,41 @@
+name: Node Contracts Current Main Once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/node-contracts-current-main-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  node-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Run all PocketBase hook contracts
+        shell: bash
+        run: |
+          set +e
+          node --test server/pb_hooks/*_test.mjs >/tmp/node.log 2>&1
+          NODE=$?
+          set -e
+          {
+            echo "SOURCE=$(git rev-parse HEAD)"
+            echo "NODE_SYNC=$NODE"
+            echo '=== FAILURES ==='
+            grep -n -E 'not ok|failureType|error:|ERR_|AssertionError|TypeError' /tmp/node.log || true
+            echo '=== SUMMARY ==='
+            tail -n 40 /tmp/node.log
+          } > .github/node-contracts-current-main.txt
+          git config user.name 'WesiOS Node Contracts'
+          git config user.email 'actions@users.noreply.github.com'
+          git switch -C diag/node-contracts-current-main
+          git add .github/node-contracts-current-main.txt
+          git commit -m 'ops: capture node contracts current main'
+          git push --force origin HEAD:diag/node-contracts-current-main
+          test "$NODE" -eq 0
