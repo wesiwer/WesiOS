@@ -39,7 +39,7 @@ jobs:
           MAIN_KEY: ${{ secrets.WESI_SERVER_SSH_KEY }}
           BOT_TOKEN_PRIMARY: ${{ secrets.WESI_TELEGRAM_BOT_TOKEN }}
           BOT_TOKEN_LEGACY: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          WEBHOOK_SECRET: ${{ secrets.WESI_TELEGRAM_WEBHOOK_SECRET }}
+          WEBHOOK_SECRET_INPUT: ${{ secrets.WESI_TELEGRAM_WEBHOOK_SECRET }}
         run: |
           set -euo pipefail
           test -n "${MAIN_HOST:-}"
@@ -69,12 +69,9 @@ jobs:
           done
           node server/pb_hooks/wesi_telegram_lib_test.mjs
 
-          if [ -z "${WEBHOOK_SECRET:-}" ]; then
-            WEBHOOK_SECRET="$(python3 - <<'PY'
-          import hashlib, os
-          print(hashlib.sha256(('wesios-telegram-webhook-v1:' + os.environ['BOT_TOKEN']).encode()).hexdigest())
-          PY
-          )"
+          WEBHOOK_SECRET="${WEBHOOK_SECRET_INPUT:-}"
+          if [ -z "$WEBHOOK_SECRET" ]; then
+            WEBHOOK_SECRET="$(python3 -c 'import hashlib,sys; print(hashlib.sha256(("wesios-telegram-webhook-v1:"+sys.argv[1]).encode()).hexdigest())' "$BOT_TOKEN")"
           fi
           if ! [[ "$WEBHOOK_SECRET" =~ ^[A-Za-z0-9_-]{24,256}$ ]]; then
             echo '::error::WESI_TELEGRAM_WEBHOOK_SECRET must be 24-256 chars [A-Za-z0-9_-].'
@@ -82,7 +79,7 @@ jobs:
           fi
 
           umask 077
-          python3 - <<'PY'
+          BOT_TOKEN="$BOT_TOKEN" WEBHOOK_SECRET="$WEBHOOK_SECRET" python3 - <<'PY'
           import json, os
           with open('wesi-telegram.json', 'w', encoding='utf-8') as f:
               json.dump({
@@ -165,10 +162,7 @@ jobs:
         run: |
           set -euo pipefail
           webhook_url="${PUBLIC_BASE_URL%/}/api/wesi/telegram/webhook"
-          response="$(curl -fsS --max-time 20 \
-            -X POST "https://api.telegram.org/bot${BOT_TOKEN}/setWebhook" \
-            -H 'Content-Type: application/json' \
-            --data-binary "$(python3 - <<PY
+          payload="$(python3 - <<'PY'
           import json, os
           print(json.dumps({
               'url': os.environ['PUBLIC_BASE_URL'].rstrip('/') + '/api/wesi/telegram/webhook',
@@ -177,7 +171,11 @@ jobs:
               'drop_pending_updates': False,
           }))
           PY
-          )")"
+          )"
+          response="$(curl -fsS --max-time 20 \
+            -X POST "https://api.telegram.org/bot${BOT_TOKEN}/setWebhook" \
+            -H 'Content-Type: application/json' \
+            --data-binary "$payload")"
           echo "$response" | python3 -c 'import json,sys; data=json.load(sys.stdin); assert data.get("ok") is True, data; print("TELEGRAM_SET_WEBHOOK_OK")'
 
           info="$(curl -fsS --max-time 20 "https://api.telegram.org/bot${BOT_TOKEN}/getWebhookInfo")"
