@@ -149,21 +149,17 @@ function revision(e) {
   const ctx = e.get("wesiSyncContext");
   if (!ctx) throw new UnauthorizedError("Нет контекста синхронизации");
 
-  let rows = [];
-  rows = require(`${__hooks}/wesi_sync_data_access.js`).records(e.app,
-      "wesios_records",
-      "owner={:company} || owner={:private}",
-      "-updated,-id",
-      1,
-      0,
-      {company: ctx.ownerId, private: e.auth.id},
-    );
-
-  if (!rows.length) return e.json(200, {revision: "empty"});
-  const first = rows[0];
-  return e.json(200, {
-    revision: String(first.id || "") + "|" + first.getString("updated"),
-  });
+  // Do not derive a live change token from the single newest business row.
+  // Two committed rows may have the same PocketBase `updated` timestamp and
+  // leave that max-row token unchanged. The owner-scoped nonce marker is
+  // touched by collection-level AfterSuccess hooks for EVERY wesios_records
+  // writer, including Wesi AI server tools that bypass the HTTP sync gateway.
+  const value = require(`${__hooks}/wesi_sync_revision.js`).readForContext(
+    e.app,
+    ctx.ownerId,
+    e.auth.id,
+  );
+  return e.json(200, {revision: value});
 }
 
 module.exports = {
