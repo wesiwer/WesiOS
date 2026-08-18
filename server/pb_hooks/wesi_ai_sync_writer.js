@@ -9,6 +9,7 @@
 const base = typeof __hooks !== "undefined" ? __hooks + "/" : "./";
 const atomic = require(base + "wesi_sync_atomic.js");
 const authz = require(base + "wesi_sync_authz.js");
+const dataAccess = require(base + "wesi_sync_data_access.js");
 const genericPolicy = require(base + "wesi_sync_generic_policy.js");
 const crmPolicy = require(base + "wesi_sync_crm_runtime.js");
 
@@ -41,10 +42,6 @@ function delta(before, next) {
       out[key] = b[key];
     }
   }
-  // Current Wesi AI mutation tools preserve unspecified keys by cloning the
-  // old payload first. Fail closed if a future tool starts removing keys:
-  // represent an explicit removal as null instead of silently reviving stale
-  // data from the transaction-current row.
   for (const key of Object.keys(a)) {
     if (!Object.prototype.hasOwnProperty.call(b, key)) out[key] = null;
   }
@@ -60,9 +57,7 @@ function requireModule(ctx, coll) {
     : coll === "roadmap_projects" || coll === "roadmap_items" ? "roadmap"
     : crmCollections[coll] ? "crm"
     : coll === "audio_beats" ? "audio"
-    : coll === "transactions" || coll === "accounts" || coll === "inter_org_transfers"
-      ? null
-      : null;
+    : null;
   if (needed && modules.indexOf(needed) < 0) {
     throw new ForbiddenError("Раздел больше не открыт этому сотруднику");
   }
@@ -83,6 +78,16 @@ function authorize(txApp, existing, input, requestCtx) {
     return;
   }
   genericPolicy.authorize(txApp, existing, input, fresh);
+}
+
+function currentPayload(app, ownerId, coll, rid, fallback) {
+  const row = dataAccess.first(
+    app,
+    "wesios_records",
+    "owner={:owner} && coll={:coll} && rid={:rid}",
+    {owner: ownerId, coll: coll, rid: rid},
+  );
+  return row ? atomic.payloadOf(row) : cloneMap(fallback);
 }
 
 function write(e, requestCtx, options) {
@@ -127,6 +132,16 @@ function write(e, requestCtx, options) {
         : cloneMap(input.payload);
     },
   });
+
+  if (!result.applied) {
+    authoritativePayload = currentPayload(
+      e.app,
+      requestCtx.ownerId,
+      coll,
+      rid,
+      authoritativePayload || next,
+    );
+  }
 
   return {
     applied: result.applied,
