@@ -14,7 +14,7 @@ jobs:
   dispatch-release:
     runs-on: ubuntu-latest
     steps:
-      - name: Dispatch signed release workflow (final retry 2)
+      - name: Dispatch signed release workflow (final current-main retry)
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -22,5 +22,5 @@ jobs:
           gh workflow run release-app.yml \
             --repo "$GITHUB_REPOSITORY" \
             --ref main \
-            -f notes='Исправлена и усилена синхронизация: atomic LWW, CRM/File permissions, Profile/Shield migration, Wesi AI concurrent writes и отзыв доступа.' \
+            -f notes='Исправлена и усилена синхронизация: atomic LWW, CRM/File permissions, Profile/Shield migration, Wesi AI concurrent writes и отзыв доступа. Обновлены зависимости и Android toolchain для текущего Flutter stable.' \
             -f deploy_to_server=true

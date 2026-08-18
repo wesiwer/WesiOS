@@ -1,0 +1,67 @@
+name: Verify Modern SSH Stack V5
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/verify-modern-ssh-stack-v5.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Verify modern SSH stack
+        shell: bash
+        run: |
+          set +e
+          flutter pub get >/tmp/pub.log 2>&1
+          PUB=$?
+          flutter analyze --no-fatal-warnings --no-fatal-infos >/tmp/analyze.log 2>&1
+          ANALYZE=$?
+          flutter test >/tmp/tests.log 2>&1
+          TESTS=$?
+          flutter build apk --debug >/tmp/android.log 2>&1
+          ANDROID=$?
+          node --test server/pb_hooks/*_test.mjs >/tmp/node.log 2>&1
+          NODE=$?
+          set -e
+          {
+            echo "SOURCE=$(git rev-parse HEAD)"
+            echo "PUB_GET=$PUB"
+            echo "ANALYZE=$ANALYZE"
+            echo "TESTS=$TESTS"
+            echo "ANDROID_DEBUG=$ANDROID"
+            echo "NODE_SYNC=$NODE"
+            echo '=== PUB ==='
+            tail -n 50 /tmp/pub.log
+            echo '=== ANALYZE ERRORS ==='
+            grep -n 'error •' /tmp/analyze.log || true
+            echo '=== TEST FAILURES ==='
+            grep -n -E 'Some tests failed|Expected:|Actual:|TestFailure|FAILED|Exception:' /tmp/tests.log | tail -n 120 || true
+            echo '=== ANDROID ERRORS ==='
+            grep -n -E '^e:|error:|FAILURE:|What went wrong|Exception|Could not|Unresolved reference|BUILD FAILED' /tmp/android.log | tail -n 160 || true
+            echo '=== NODE FAILURES ==='
+            grep -n -E 'not ok|AssertionError|failureType|ERR_' /tmp/node.log | tail -n 120 || true
+            echo '=== TAILS ==='
+            tail -n 60 /tmp/tests.log
+            tail -n 120 /tmp/android.log
+            tail -n 100 /tmp/node.log
+          } > .github/verify-modern-ssh-stack-v5.txt
+          git config user.name 'WesiOS Verify V5'
+          git config user.email 'actions@users.noreply.github.com'
+          git switch -C diag/verify-modern-ssh-stack-v5
+          git add .github/verify-modern-ssh-stack-v5.txt
+          git commit -m 'ops: capture modern SSH stack v5'
+          git push --force origin HEAD:diag/verify-modern-ssh-stack-v5
+          test "$PUB" -eq 0 -a "$ANALYZE" -eq 0 -a "$TESTS" -eq 0 -a "$ANDROID" -eq 0 -a "$NODE" -eq 0
