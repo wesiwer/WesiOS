@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 /// Одна запись в синхронизации: значение плюс момент последней правки.
 ///
 /// [updatedAt] — не «когда создали», а «когда последний раз меняли». Именно
@@ -65,6 +67,29 @@ class SyncPlan {
 /// разрешения споров должны быть видны целиком в одном месте и проверяться
 /// тестами, а не выясняться по логам после потери данных.
 class SyncMerge {
+  /// Каноническая JSON-форма нужна только для сравнения payload при полном
+  /// совпадении времени. Обычный `Map == Map` сравнивает идентичность объекта,
+  /// а обычный jsonEncode зависит от порядка ключей. Здесь сортируем ключи
+  /// рекурсивно, чтобы одинаковые данные не запускали ложный apply.
+  static String _canonicalJson(Object? value) => jsonEncode(_canonical(value));
+
+  static Object? _canonical(Object? value) {
+    if (value is Map) {
+      final keys = value.keys.map((e) => '$e').toList()..sort();
+      return <String, Object?>{
+        for (final key in keys) key: _canonical(value[key]),
+      };
+    }
+    if (value is List) return [for (final item in value) _canonical(item)];
+    return value;
+  }
+
+  static bool _sameFields(
+    Map<String, dynamic> a,
+    Map<String, dynamic> b,
+  ) =>
+      _canonicalJson(a) == _canonicalJson(b);
+
   /// Побеждает более поздняя правка — **по записи**, а не по всему документу.
   ///
   /// Слияние целыми документами означало бы, что правка одной операции на
@@ -103,15 +128,37 @@ class SyncMerge {
         merged[id] = r;
         toApplyLocally.add(r);
       } else {
-        // Ровно одинаковое время — не «одно и то же». Часы двух устройств
-        // расходятся, и совпадение до миллисекунды скорее случайность.
-        // При споре выбираем удаление: воскресить стёртое хуже, чем
-        // потерять правку, сделанную в ту же миллисекунду на другом
-        // устройстве. Первое — потеря доверия к удалению, второе —
-        // крайне редкий случай, который человек переделает.
-        merged[id] = l.deleted ? l : r;
-        if (l.deleted && !r.deleted) toUpload.add(l);
-        if (r.deleted && !l.deleted) toApplyLocally.add(r);
+        // Ровно одинаковое время — не обязательно «одно и то же». Часы двух
+        // устройств могут совпасть до миллисекунды, а payload уже отличаться.
+        // Сначала сохраняем старое правило: при точном временном споре удаление
+        // сильнее живой записи, чтобы удалённое не воскресало.
+        if (l.deleted != r.deleted) {
+          if (l.deleted) {
+            merged[id] = l;
+            toUpload.add(l);
+          } else {
+            merged[id] = r;
+            toApplyLocally.add(r);
+          }
+          continue;
+        }
+
+        // Два одинаковых надгробия уже сошлись независимо от payload.
+        if (l.deleted) {
+          merged[id] = r;
+          continue;
+        }
+
+        // Критический tie-case: раньше при одинаковом времени и разных живых
+        // payload `merged` выбирал remote, но никакого действия не планировал.
+        // Поэтому локальная и серверная стороны могли остаться разными навсегда.
+        // На точном tie сервер является арбитром: если данные различаются,
+        // remote явно применяется локально. Если семантически совпадают —
+        // ничего делать не надо.
+        merged[id] = r;
+        if (!_sameFields(l.fields, r.fields)) {
+          toApplyLocally.add(r);
+        }
       }
     }
 
