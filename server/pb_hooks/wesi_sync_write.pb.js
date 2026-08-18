@@ -354,6 +354,27 @@ routerAdd("POST", "/api/wesi/sync/{collection}", (e) => {
   // row-level visibility rules and receive the deletion.
   if (deleted && existing) incoming = before;
 
+  // Re-check LWW at the authoritative write boundary. The client may have
+  // fetched this row before another device committed a newer version. Without
+  // this guard the late stale request would overwrite the newer server row.
+  if (existing) {
+    const decision = require(`${__hooks}/wesi_sync_lww.js`).decide(
+      existing.getString("stamp"),
+      existing.getBool("deleted"),
+      stamp,
+      deleted,
+    );
+    if (!decision.apply) {
+      return e.json(200, {
+        "ok": true,
+        "rid": rid,
+        "stamp": existing.getString("stamp"),
+        "applied": false,
+        "reason": decision.reason,
+      });
+    }
+  }
+
   const recordsCollection = e.app.findCollectionByNameOrId("wesios_records");
   const record = existing || new Record(recordsCollection);
   record.set("owner", ownerScope);
@@ -365,5 +386,5 @@ routerAdd("POST", "/api/wesi/sync/{collection}", (e) => {
   record.set("deleted", deleted);
   e.app.save(record);
 
-  return e.json(200, {"ok": true, "rid": rid, "stamp": stamp});
+  return e.json(200, {"ok": true, "rid": rid, "stamp": stamp, "applied": true});
 }, $apis.requireAuth("users"));
