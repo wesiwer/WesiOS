@@ -19,6 +19,7 @@ RUNTIME_FILES=(
   dynamic_subagent_orchestrator.mjs
   public_deliberation.mjs
   multi_agent_workspace.mjs
+  step_io.mjs
   package.json
 )
 
@@ -114,6 +115,9 @@ for _ in $(seq 1 30); do
 done
 if [ "$ready" != true ]; then
   "${SUDO[@]}" systemctl status wesi-ai-stream --no-pager -l || true
+  # Include the service's own stack trace in Actions diagnostics. Do not dump
+  # the EnvironmentFile or /proc environ: they contain production secrets.
+  "${SUDO[@]}" journalctl -u wesi-ai-stream -n 80 --no-pager -o cat || true
   exit 1
 fi
 "${SUDO[@]}" systemctl is-active --quiet wesi-ai-stream
