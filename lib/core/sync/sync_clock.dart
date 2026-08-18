@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 
 /// Часы, по которым решаются споры между устройствами.
@@ -9,6 +12,7 @@ import 'package:hive/hive.dart';
 class SyncClock {
   static const String _boxName = 'wesios_settings';
   static const String _key = 'sync_clock_offset_ms';
+  static const String _logicalKey = 'sync_clock_last_logical_ms';
 
   static const Duration _sane = Duration(days: 370);
 
@@ -16,11 +20,14 @@ class SyncClock {
   static bool _loaded = false;
 
   /// Последний выданный локальный LWW timestamp в миллисекундах Unix epoch.
-  /// Не хранится постоянно: его задача — различить быстрые последовательные
-  /// изменения внутри живого процесса. Между перезапусками физически попасть
-  /// в ту же миллисекунду практически невозможно, а сервер всё равно является
-  /// окончательной LWW-границей.
+  ///
+  /// Важный инвариант: watermark хранится не только в памяти, но и в Hive.
+  /// Иначе после перезапуска приложения и перевода системных часов назад
+  /// первая новая локальная правка могла получить timestamp старее уже
+  /// синхронизированной версии и проиграть LWW, хотя пользователь изменил
+  /// запись позже.
   static int? _lastLogicalMs;
+  static bool _logicalLoaded = false;
 
   static Box<dynamic>? get _box =>
       Hive.isBoxOpen(_boxName) ? Hive.box<dynamic>(_boxName) : null;
@@ -34,6 +41,15 @@ class SyncClock {
     return _offset;
   }
 
+  static int? _logicalWatermark() {
+    if (!_logicalLoaded) {
+      final raw = _box?.get(_logicalKey);
+      if (raw is int && raw >= 0) _lastLogicalMs = raw;
+      _logicalLoaded = true;
+    }
+    return _lastLogicalMs;
+  }
+
   /// Текущий момент по общей для устройств server-adjusted шкале.
   ///
   /// JavaScript/PocketBase timestamps имеют миллисекундную точность. Раньше
@@ -42,16 +58,27 @@ class SyncClock {
   /// сервере такой tie специально оставляет уже существующую запись, поэтому
   /// вторая локальная правка могла потеряться.
   ///
-  /// Здесь время сначала приводится к миллисекундам, а затем при необходимости
-  /// логически увеличивается на 1 мс. Поэтому последовательность stamps строго
-  /// возрастает и полностью представима сервером без потери точности.
+  /// Время сначала приводится к миллисекундам, затем сравнивается с последним
+  /// логическим watermark. Watermark переживает перезапуск процесса, поэтому
+  /// последовательность локальных timestamps не откатывается назад вместе с
+  /// системными часами.
   static DateTime now() {
     final physicalMs = DateTime.now().add(offset).millisecondsSinceEpoch;
-    final previous = _lastLogicalMs;
+    final previous = _logicalWatermark();
     final logicalMs = previous != null && physicalMs <= previous
         ? previous + 1
         : physicalMs;
     _lastLogicalMs = logicalMs;
+
+    final box = _box;
+    if (box != null) {
+      // Hive обновляет in-memory value сразу; disk flush возвращается Future.
+      // now() должен оставаться синхронным, потому что его вызывает Hive
+      // watcher при каждой локальной правке. Не блокируем UI, но обязательно
+      // запускаем persistence каждой выданной LWW-координаты.
+      unawaited(box.put(_logicalKey, logicalMs));
+    }
+
     return DateTime.fromMillisecondsSinceEpoch(logicalMs);
   }
 
@@ -79,12 +106,26 @@ class SyncClock {
     await _box?.put(_key, delta.inMilliseconds);
   }
 
-  /// Забыть измеренное смещение и логический процессный watermark.
+  /// Забыть измеренное смещение и persisted logical watermark.
+  ///
+  /// Это полный диагностический reset часов. Обычный перезапуск приложения
+  /// этот метод не вызывает — иначе межперезапускная монотонность потеряется.
   static Future<void> reset() async {
     _offset = Duration.zero;
     _loaded = true;
     _lastLogicalMs = null;
+    _logicalLoaded = true;
     await _box?.delete(_key);
+    await _box?.delete(_logicalKey);
+  }
+
+  /// Имитирует только новый процесс, не стирая persisted clock state.
+  @visibleForTesting
+  static void reloadProcessStateForTesting() {
+    _offset = Duration.zero;
+    _loaded = false;
+    _lastLogicalMs = null;
+    _logicalLoaded = false;
   }
 
   static DateTime? _parseHttpDate(String raw) {
