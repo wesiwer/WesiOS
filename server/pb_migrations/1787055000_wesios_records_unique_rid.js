@@ -9,6 +9,17 @@
 /// The migration is transactional. First collapse any historical duplicates
 /// using the same ordering as WesiOS LWW, then persist the unique index.
 migrate((app) => {
+  // On a clean install migrations run before setup-collections.sh creates the
+  // application table. Do not make first startup depend on a table that does
+  // not exist yet; setup-collections.sh will create it with the same UNIQUE
+  // index. Existing installations continue through the repair below.
+  let collection = null;
+  try {
+    collection = app.findCollectionByNameOrId("wesios_records");
+  } catch (_) {
+    return;
+  }
+
   const rows = arrayOf(new DynamicModel({
     id: "",
     owner: "",
@@ -75,7 +86,6 @@ migrate((app) => {
       .execute();
   }
 
-  const collection = app.findCollectionByNameOrId("wesios_records");
   collection.addIndex(
     "idx_wesios_rid",
     true,
