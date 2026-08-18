@@ -3,7 +3,8 @@
 // Every persisted wesios_records business row touches an owner-scoped marker.
 // New clients read its random nonce. Older clients still call the legacy
 // revision endpoint, which sorts by record `stamp`; therefore the marker stamp
-// is also maintained as a strictly increasing millisecond logical clock.
+// is maintained as a strictly increasing logical clock that is ALWAYS newer
+// than every business stamp for the same owner.
 
 const dataAccess = require(
   (typeof __hooks !== "undefined" ? __hooks + "/" : "./") +
@@ -41,17 +42,37 @@ function markerRows(app, owner) {
   );
 }
 
+function latestBusinessByStamp(app, owner) {
+  if (!owner) return null;
+  const rows = dataAccess.records(
+    app,
+    "wesios_records",
+    "owner={:owner} && coll!={:marker}",
+    "-stamp,-id",
+    1,
+    0,
+    { owner: owner, marker: markerCollection },
+  );
+  return rows.length ? rows[0] : null;
+}
+
 function nonce() {
   return String(Date.now()) + ":" + $security.randomString(24);
 }
 
-function nextMarkerStamp(existing) {
+function nextMarkerStamp(existing, businessStamp) {
   let previousMs = -1;
   for (const record of existing || []) {
     const parsed = Date.parse(String(record.getString("stamp") || ""));
     if (Number.isFinite(parsed) && parsed > previousMs) previousMs = parsed;
   }
-  const nextMs = Math.max(Date.now(), previousMs + 1);
+
+  const businessMs = Date.parse(String(businessStamp || ""));
+  const nextMs = Math.max(
+    Date.now(),
+    previousMs + 1,
+    Number.isFinite(businessMs) ? businessMs + 1 : -1,
+  );
   return new Date(nextMs).toISOString();
 }
 
@@ -61,7 +82,11 @@ function touch(app, owner) {
 
   const value = nonce();
   const existing = markerRows(app, owner);
-  const markerStamp = nextMarkerStamp(existing);
+  const latestBusiness = latestBusinessByStamp(app, owner);
+  const markerStamp = nextMarkerStamp(
+    existing,
+    latestBusiness ? latestBusiness.getString("stamp") : null,
+  );
 
   if (!existing.length) {
     const collection = app.findCollectionByNameOrId("wesios_records");
@@ -149,4 +174,5 @@ module.exports = {
   readForContext,
   isMarker,
   nextMarkerStamp,
+  latestBusinessByStamp,
 };
