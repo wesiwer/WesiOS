@@ -677,7 +677,7 @@ class TransactionsSync extends SyncCollection<TransactionModel> {
       organizationBaseCurrency:
           _str(fields['organizationBaseCurrency'], 'RUB').toUpperCase(),
       fxRateToReporting: fxRate,
-      fxRateAt: _date(fields['fxRateAt']) ?? date,
+      fxRateAt: _date(fields['fxRateAt']),
       fxSource: _str(fields['fxSource'], 'sync/legacy'),
     );
   }
