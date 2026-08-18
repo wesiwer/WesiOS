@@ -1,0 +1,46 @@
+name: Verify Sync Roundtrip Once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/verify-sync-roundtrip-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - name: Run target regression
+        shell: bash
+        run: |
+          set +e
+          flutter test test/sync_engine_test.dart --plain-name 'движок применённая чужая запись не уезжает обратно на следующем проходе' -r expanded > /tmp/test.log 2>&1
+          code=$?
+          set -e
+          echo "TARGET_SYNC_TEST=$code" > /tmp/result.txt
+          tail -n 120 /tmp/test.log >> /tmp/result.txt
+      - name: Publish result branch
+        if: always()
+        shell: bash
+        run: |
+          git reset --hard "$GITHUB_SHA"
+          cp /tmp/result.txt .github/sync-roundtrip-verification.txt
+          git config user.name 'WesiOS Sync Verification'
+          git config user.email 'actions@users.noreply.github.com'
+          git switch -C diag/sync-roundtrip-verification
+          git add .github/sync-roundtrip-verification.txt
+          git commit -m 'ops: record sync round-trip verification'
+          git push --force origin HEAD:diag/sync-roundtrip-verification
