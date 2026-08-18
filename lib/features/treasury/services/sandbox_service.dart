@@ -1,5 +1,6 @@
 import 'dart:math';
 import 'package:hive_flutter/hive_flutter.dart';
+import '../../../core/sync/sync_account_scope.dart';
 import '../models/transaction_model.dart';
 import 'anomaly_engine.dart';
 import 'forecast_engine.dart';
@@ -18,11 +19,24 @@ import 'treasury_service.dart';
 /// ([ForecastEngine], [AnomalyEngine], [RecurringEngine]) — поведение
 /// гарантированно идентично, различаются только данные.
 class SandboxService {
-  static const String _boxName = 'wesios_sandbox';
+  static const String baseBoxName = 'wesios_sandbox';
+  static String get boxName => SyncAccountScope.boxName(baseBoxName);
+
   Box<TransactionModel>? _box;
+  String? _openedBoxName;
 
   Future<Box<TransactionModel>> get _sandboxBox async {
-    _box ??= await Hive.openBox<TransactionModel>(_boxName);
+    final currentName = boxName;
+    if (_box?.isOpen == true && _openedBoxName == currentName) return _box!;
+
+    // Сервис может пережить logout/login в памяти. Нельзя продолжать
+    // использовать уже закэшированный Box предыдущего сотрудника после того,
+    // как auth user изменился.
+    if (_box?.isOpen == true && _openedBoxName != currentName) {
+      await _box!.close();
+    }
+    _box = await Hive.openBox<TransactionModel>(currentName);
+    _openedBoxName = currentName;
     return _box!;
   }
 
