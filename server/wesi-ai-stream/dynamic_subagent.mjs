@@ -279,6 +279,11 @@ export function buildDynamicSubagentEvent(spec, phase, detail = {}) {
   validateDynamicSubagentSpec(spec);
   const allowedPhases = new Set(['planned', 'start', 'tool', 'workspace', 'result', 'conflict', 'fallback']);
   if (!allowedPhases.has(phase)) throw new Error('WAI_SUBAGENT_EVENT_INVALID');
+  // «(субагент)» подписывает каждую строку централизованно, а не в шести
+  // местах вызова. Co-Agent (Зейн ↔ Нирвана) даёт похожие по форме подписи
+  // («Нирвана: проверка», «Передано Нирвана»), и без явной метки человек не
+  // может на глаз отличить временного специалиста от второй персоны.
+  const label = cleanText(detail.label, 160);
   return {
     type: 'agent',
     phase,
@@ -286,7 +291,7 @@ export function buildDynamicSubagentEvent(spec, phase, detail = {}) {
     name: spec.role,
     agentId: spec.agentId,
     parentRequestId: spec.parentRequestId,
-    label: cleanText(detail.label, 180),
+    label: label ? `${label} (субагент)` : label,
     detail: cleanText(detail.detail, 500),
     // Поручение едет вместе с событием. Без него ход мыслей показывает, что
     // специалист появился, но не за чем — а именно это и хочет видеть человек.

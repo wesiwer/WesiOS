@@ -306,3 +306,35 @@ test('причина передачи слова написана словами
     `в ходе мыслей показывается служебный код «${handoff.detail}»`);
   assert.match(handoff.detail, /специализаци|режим|часть/);
 });
+
+test('каждое событие субагента подписано (субагент), Co-Agent — нет', async () => {
+  const subagentEvents = [];
+  await runDynamicSubagents({
+    prepared: prepared(),
+    invokeModel: stubModel({plan: TWO_SPECIALISTS}),
+    invokeTool: stubTool,
+    emit: (ev) => subagentEvents.push(ev),
+    signal: null,
+  });
+  const agentRows = subagentEvents.filter((ev) => ev.type === 'agent');
+  assert.ok(agentRows.length > 0);
+  for (const ev of agentRows) {
+    assert.match(ev.label, /\(субагент\)$/,
+      `строка субагента без метки: «${ev.label}»`);
+  }
+
+  const coagentEvents = [];
+  await runPersonaCoagent({
+    prepared: prepared(),
+    invokeModel: stubModel({plan: TWO_SPECIALISTS, decision: 'accept'}),
+    invokeTool: stubTool,
+    emit: (ev) => coagentEvents.push(ev),
+    signal: null,
+  });
+  const coagentRows = coagentEvents.filter((ev) => ev.type === 'agent');
+  assert.ok(coagentRows.length > 0);
+  for (const ev of coagentRows) {
+    assert.doesNotMatch(ev.label, /\(субагент\)/,
+      `Co-Agent помечен как субагент: «${ev.label}» — их нельзя путать, это разные механизмы`);
+  }
+});

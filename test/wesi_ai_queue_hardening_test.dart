@@ -830,4 +830,54 @@ void main() {
     expect(persisted.metadata['workStartedAt'], isNotNull);
     expect(persisted.metadata['workDurationMs'], isA<int>());
   });
+
+  test(
+      'инструмент, вызванный субагентом, подписан именем и меткой (субагент)',
+      () async {
+    // agentName в событии — сигнал, что инструмент запустил не сам ведущий,
+    // а временный специалист. Без метки (субагент) в подписи человек не
+    // может на глаз отличить его от Co-Agent, чьи события выглядят похоже.
+    final api = _StreamingControlledApi();
+    final store = _MemoryStore('employee-subagent-tool');
+    final controller = WesiAiManagedChatController(store: store, api: api);
+    await controller.load();
+    await controller.createConversation(WesiAiPersona.zane);
+    final conversationId = controller.state.activeConversationId!;
+
+    final sending = controller.addUserMessage('проверь форму входа');
+    await _waitUntil(() => api.onDelta != null && api.activityCallback != null);
+    api.activityCallback!({
+      'type': 'tool',
+      'phase': 'start',
+      'role': 'subagent',
+      'agentName': 'Security Reviewer',
+      'name': 'knowledge_search',
+    });
+    api.activityCallback!({
+      'type': 'tool',
+      'phase': 'result',
+      'role': 'subagent',
+      'agentName': 'Security Reviewer',
+      'name': 'knowledge_search',
+    });
+    api.onDelta!('Готово');
+    await _waitUntil(() => controller.state.messagesFor(conversationId).any(
+          (message) =>
+              message.metadata['transportStreaming'] == true &&
+              message.text == 'Готово',
+        ));
+
+    api.reply.complete(
+        const WesiAiReply(answer: 'Готово', requestId: 'subagent-tool-1'));
+    await sending;
+    final activity = controller.state.messagesFor(conversationId).last
+        .metadata['activity'] as List;
+    final toolEvent = activity
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .singleWhere((item) => item['sourceName'] == 'knowledge_search');
+    expect(toolEvent['label'], contains('Security Reviewer'));
+    expect(toolEvent['label'], contains('(субагент)'));
+    expect(toolEvent['status'], 'result');
+  });
 }

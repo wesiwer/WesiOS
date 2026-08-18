@@ -14,7 +14,7 @@ void main() {
     <String, dynamic>{
       'id': 'a1',
       'kind': 'agent',
-      'label': 'Зову специалиста · Security Reviewer',
+      'label': 'Зову специалиста · Security Reviewer (субагент)',
       'detail': 'Поручаю: проверить форму входа на слабые проверки',
       'status': 'start',
       'textOffset': 0,
@@ -22,14 +22,14 @@ void main() {
     <String, dynamic>{
       'id': 'a2',
       'kind': 'agent',
-      'label': 'Security Reviewer · инструмент knowledge_search',
+      'label': 'Security Reviewer · инструмент knowledge_search (субагент)',
       'status': 'result',
       'textOffset': 0,
     },
     <String, dynamic>{
       'id': 'a3',
       'kind': 'agent',
-      'label': 'Security Reviewer · готово',
+      'label': 'Security Reviewer · готово (субагент)',
       'detail': 'Найдено две слабости в проверке пароля',
       'status': 'result',
       'textOffset': 0,
@@ -81,6 +81,11 @@ void main() {
     expect(inWorkLog('Зову специалиста · Security Reviewer'), findsOneWidget);
   });
 
+  testWidgets('призыв специалиста подписан как (субагент)', (tester) async {
+    await pump(tester, showWorkLog: true);
+    expect(inWorkLog('(субагент)'), findsWidgets);
+  });
+
   testWidgets('видно, что именно поручено специалисту', (tester) async {
     await pump(tester, showWorkLog: true);
     expect(inWorkLog('проверить форму входа на слабые проверки'),
@@ -93,6 +98,8 @@ void main() {
     expect(inWorkLog('Security Reviewer · инструмент knowledge_search'),
         findsOneWidget);
   });
+
+
 
   testWidgets('видно, чем специалист закончил', (tester) async {
     await pump(tester, showWorkLog: true);

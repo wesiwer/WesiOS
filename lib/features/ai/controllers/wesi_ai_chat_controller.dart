@@ -469,7 +469,7 @@ class WesiAiChatController extends ChangeNotifier {
               ? 'Запущен инструмент'
               : (agentName.isEmpty
                   ? 'Инструмент · $name'
-                  : '$agentName · инструмент $name');
+                  : '$agentName · инструмент $name (субагент)');
           activity.add(activityEntry(
             kind: toolKind,
             label: toolLabel,
@@ -498,7 +498,7 @@ class WesiAiChatController extends ChangeNotifier {
                   ? 'Инструмент завершён'
                   : (agentName.isEmpty
                       ? 'Инструмент · $name'
-                      : '$agentName · инструмент $name'),
+                      : '$agentName · инструмент $name (субагент)'),
               sourceName: name,
               status: 'result',
               detail: streamedToolDetail(raw),
