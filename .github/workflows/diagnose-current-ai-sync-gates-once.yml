@@ -1,0 +1,66 @@
+name: Diagnose Current AI Sync Gates Once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/diagnose-current-ai-sync-gates-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Diagnose patchers and Node contracts
+        shell: bash
+        run: |
+          set -u
+          base=$(git rev-parse HEAD)
+          ai=PASS
+          sync=PASS
+          ai_stage=complete
+          sync_stage=complete
+
+          python3 .github/scripts/fix-ai-tool-mutation-sync.py >/tmp/ai_patch.log 2>&1 || { ai=FAIL; ai_stage=patch; }
+          if [ "$ai" = PASS ]; then
+            node --check server/pb_hooks/wesi_ai_stream_v2.pb.js >/tmp/ai_node.log 2>&1 || { ai=FAIL; ai_stage=stream_syntax; }
+          fi
+          if [ "$ai" = PASS ]; then
+            node --check server/pb_hooks/wesi_ai_routes.pb.js >>/tmp/ai_node.log 2>&1 || { ai=FAIL; ai_stage=main_syntax; }
+          fi
+          if [ "$ai" = PASS ]; then
+            node --test server/pb_hooks/wesi_ai_tool_mutation_contract_test.mjs >>/tmp/ai_node.log 2>&1 || { ai=FAIL; ai_stage=mutation_contract; }
+          fi
+          git reset --hard "$base" >/dev/null
+          git clean -fd >/dev/null
+
+          python3 .github/scripts/fix-sync-new-collection-policy.py >/tmp/sync_patch.log 2>&1 || { sync=FAIL; sync_stage=patch; }
+          if [ "$sync" = PASS ]; then
+            node --check server/pb_hooks/wesi_sync_new_collection_policy.js >/tmp/sync_node.log 2>&1 || { sync=FAIL; sync_stage=policy_syntax; }
+          fi
+          if [ "$sync" = PASS ]; then
+            node --check server/pb_hooks/wesi_sync_read.pb.js >>/tmp/sync_node.log 2>&1 || { sync=FAIL; sync_stage=read_syntax; }
+          fi
+          if [ "$sync" = PASS ]; then
+            node --check server/pb_hooks/wesi_sync_write.pb.js >>/tmp/sync_node.log 2>&1 || { sync=FAIL; sync_stage=write_syntax; }
+          fi
+          if [ "$sync" = PASS ]; then
+            node --test server/pb_hooks/wesi_sync_new_collection_policy_test.mjs >>/tmp/sync_node.log 2>&1 || { sync=FAIL; sync_stage=policy_contract; }
+          fi
+          git reset --hard "$base" >/dev/null
+          git clean -fd >/dev/null
+
+          printf 'AI_NODE=%s\nAI_STAGE=%s\nSYNC_NODE=%s\nSYNC_STAGE=%s\nSOURCE=%s\n' "$ai" "$ai_stage" "$sync" "$sync_stage" "$base" > .github/current-gate-diagnostic.txt
+          git config user.name 'WesiOS Gate Diagnostics'
+          git config user.email 'actions@users.noreply.github.com'
+          git add .github/current-gate-diagnostic.txt
+          git commit -m 'ops: record current AI and sync gate diagnostics'
+          git pull --rebase origin main
+          git push origin HEAD:main
