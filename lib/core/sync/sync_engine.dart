@@ -8,7 +8,6 @@ import 'sync_journal.dart';
 import 'sync_merge.dart';
 import 'sync_transport.dart';
 
-/// Что произошло с одной коллекцией.
 class SyncCollectionReport {
   final String collection;
   final int uploaded;
@@ -25,12 +24,9 @@ class SyncCollectionReport {
   bool get ok => failure == null;
 }
 
-/// Итог прохода.
 class SyncReport {
   final DateTime at;
   final List<SyncCollectionReport> collections;
-
-  /// Отказ, из-за которого не начали вообще: нет адреса, нет входа, нет сети.
   final SyncFailure? failure;
 
   const SyncReport({
@@ -40,15 +36,10 @@ class SyncReport {
   });
 
   int get uploaded => collections.fold(0, (sum, c) => sum + c.uploaded);
-
   int get applied => collections.fold(0, (sum, c) => sum + c.applied);
-
   int get changed => uploaded + applied;
-
-  /// Проход считается удачным, только если удались все коллекции.
   bool get ok => failure == null && collections.every((c) => c.ok);
 
-  /// Первая настоящая причина отказа — её и показываем.
   SyncFailure? get firstFailure {
     if (failure != null) return failure;
     for (final c in collections) {
@@ -60,42 +51,22 @@ class SyncReport {
   String describe({bool russian = true}) {
     final f = firstFailure;
     if (f != null) return f.describe(russian: russian);
-    if (changed == 0) {
-      return russian ? 'Всё уже совпадает' : 'Already in sync';
-    }
+    if (changed == 0) return russian ? 'Всё уже совпадает' : 'Already in sync';
     return russian
         ? 'Отправлено $uploaded, получено $applied'
         : 'Sent $uploaded, received $applied';
   }
 }
 
-/// Синхронизация устройств.
 class SyncEngine {
   static final ValueNotifier<bool> busy = ValueNotifier<bool>(false);
   static final ValueNotifier<SyncReport?> lastReport =
       ValueNotifier<SyncReport?>(null);
 
   static bool _journalReady = false;
-
-  /// Единственный prepare текущего lifecycle.
-  ///
-  /// Холодный запуск раньше делал `runOnLaunch()->prepare()` при busy=false и
-  /// почти одновременно запускал SyncAuto. Быстрый revision poll мог войти во
-  /// второй `run()->prepare()`. Оба прохода открывали account-scoped boxes,
-  /// seed'или timestamps и ставили watchers параллельно. Один shared Future
-  /// делает подготовку атомарной относительно всех callers.
   static Future<void>? _prepareFuture;
-
-  /// Generation текущего жизненного цикла sync engine.
-  ///
-  /// Нужна отдельно от SyncAuto: ручной/чатовый проход тоже может быть активен
-  /// в момент logout/account switch. Старый run не должен после смены identity
-  /// применить remote row в динамически вычисленный private box нового user.
   static int _runGeneration = 0;
 
-  /// Немедленно делает все уже запущенные production-run протухшими.
-  /// Реальный сетевой Future нельзя отменить задним числом, но после ближайшего
-  /// await старый проход увидит generation mismatch и остановится до apply/push.
   static void invalidateActiveRun() {
     _runGeneration++;
     SyncJournal.discardExpectations();
@@ -106,7 +77,6 @@ class SyncEngine {
     return '${session?['userId']}|${session?['sessionId']}|${session?['token']}';
   }
 
-  /// Открыть журнал и подписать его на все синхронизируемые боксы.
   static Future<void> prepare({DateTime? now}) async {
     if (_journalReady) return;
 
@@ -152,24 +122,37 @@ class SyncEngine {
     }
 
     if (cancelled()) return;
-    if (SyncEndpoint.seededAt == null) {
-      final at = now ?? SyncClock.now();
-      for (final c in SyncCodec.collections) {
-        if (cancelled()) return;
-        await SyncJournal.seed(c.name, c.local().keys, at);
-      }
+
+    // Missing journal stamps are not only a first-install problem. A later
+    // app version may introduce a new sync collection after this account has
+    // already completed many successful exchanges. The old single
+    // `sync_seeded_at` marker cannot tell whether THAT collection was seeded.
+    //
+    // Seed missing rows on every new lifecycle. On the true first exchange the
+    // existing server-wins rule protects conflicts, so using current time is
+    // fine. For an established account, an unknown legacy timestamp is seeded
+    // at epoch: a matching remote row wins, while a local-only row is still
+    // uploaded because the server has no competing record.
+    final observedAt = now ?? SyncClock.now();
+    final seedAt = SyncEndpoint.lastRun == null
+        ? observedAt
+        : DateTime.fromMillisecondsSinceEpoch(0, isUtc: true);
+    for (final c in SyncCodec.collections) {
       if (cancelled()) return;
-      await SyncEndpoint.markSeeded(at);
+      await SyncJournal.seed(c.name, c.local().keys, seedAt);
+    }
+    if (cancelled()) return;
+
+    // Keep the coarse marker for compatibility/diagnostics, but correctness no
+    // longer depends on it being collection-aware.
+    if (SyncEndpoint.seededAt == null) {
+      await SyncEndpoint.markSeeded(observedAt);
       if (cancelled()) return;
     }
 
     _journalReady = true;
   }
 
-  /// Сбросить подписки и результат последнего прохода.
-  ///
-  /// Сначала инвалидируем уже идущий run/prepare и ждём их выхода. Только
-  /// затем можно отвязать journal и открыть private boxes другой учётки.
   static Future<void> reset() async {
     invalidateActiveRun();
 
@@ -177,9 +160,7 @@ class SyncEngine {
     if (preparing != null) {
       try {
         await preparing;
-      } catch (_) {
-        // Reset всё равно обязан завершить очистку после неудачного prepare.
-      }
+      } catch (_) {}
     }
 
     while (busy.value) {
@@ -192,10 +173,6 @@ class SyncEngine {
   }
 
   static Future<void> runOnLaunch() async {
-    // При включённом Sync сразу входим в run(): он выставляет busy=true ДО
-    // prepare(), поэтому запущенный рядом SyncAuto не сможет начать второй
-    // полный проход. Если Sync выключен, journal всё равно готовим, чтобы
-    // локальные изменения получали timestamps для будущего включения.
     if (!SyncEndpoint.enabled) {
       await prepare();
       return;
@@ -240,11 +217,6 @@ class SyncEngine {
           if (!remote.containsKey(e.key)) e.key: e.value,
       };
 
-  /// Один проход по всем коллекциям.
-  ///
-  /// Тестовый injected [transport] не привязывается к реальной server-session,
-  /// чтобы существующие unit-тесты могли работать без SyncEndpoint. Production
-  /// transport дополнительно фиксирует fingerprint auth-session на старте.
   static Future<SyncReport> run({
     SyncTransport? transport,
     DateTime? now,
@@ -319,8 +291,6 @@ class SyncEngine {
           failure: cancelledFailure(),
         ));
       }
-      // Fresh remote expectations must survive until the asynchronous Hive
-      // watcher consumes them; only expired entries are pruned here.
       SyncJournal.pruneExpectations();
 
       final report = SyncReport(at: at, collections: reports);
@@ -359,8 +329,6 @@ class SyncEngine {
       return SyncCollectionReport(collection: c.name, failure: remote.failure);
     }
 
-    // После сетевого await identity проверена, поэтому синхронный localState
-    // читается из того же account namespace, с которым начался этот run.
     final plan = SyncMerge.merge(
       local: firstEverExchange
           ? _onlyNewTo(localState(c, at), remote.value!)
@@ -377,7 +345,7 @@ class SyncEngine {
       await SyncJournal.record(
         c.name,
         id,
-        SyncStamp(DateTime.fromMillisecondsSinceEpoch(0)),
+        SyncStamp(DateTime.fromMillisecondsSinceEpoch(0, isUtc: true)),
       );
     }
 
@@ -464,14 +432,9 @@ class SyncEngine {
     }
 
     if (plan.toUpload.isEmpty) {
-      return SyncCollectionReport(
-        collection: c.name,
-        applied: applied,
-      );
+      return SyncCollectionReport(collection: c.name, applied: applied);
     }
 
-    // Последняя проверка непосредственно перед write boundary: старый run не
-    // должен отправлять plan, рассчитанный до account switch.
     if (cancelled()) return cancelledReport(applied: applied);
     final pushed = await t.push(c.name, plan.toUpload);
     if (cancelled()) return cancelledReport(applied: applied);
