@@ -4,6 +4,7 @@ import 'dart:math';
 
 import 'package:hive_flutter/hive_flutter.dart';
 
+import '../../../core/sync/sync_account_scope.dart';
 import '../../organizations/models/organization_model.dart';
 import '../../organizations/services/organization_context.dart';
 import '../models/transaction_model.dart';
@@ -144,7 +145,8 @@ class HorizonLiveCalibrationReport {
 class HorizonPredictionRegistry {
   HorizonPredictionRegistry._();
 
-  static const String boxName = 'wesios_horizon_prediction_registry';
+  static const String baseBoxName = 'wesios_horizon_prediction_registry';
+  static String get boxName => SyncAccountScope.boxName(baseBoxName);
   static const String _recordsKey = 'issued_predictions_v1';
   static const List<int> trackedHorizons = [14, 30, 90, 180];
   static const int _maxRecords = 730;
