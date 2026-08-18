@@ -34,7 +34,6 @@ function safeStamp(raw) {
   const parsed = Date.parse(String(raw || ""));
   const now = Date.now();
   if (!Number.isFinite(parsed)) return new Date(now).toISOString();
-  // Migration must not manufacture a future LWW winner from an old bad clock.
   return new Date(Math.min(parsed, now)).toISOString();
 }
 
@@ -47,17 +46,6 @@ function legacyBytesToBase64(value) {
   return null;
 }
 
-/// Idempotent migration from the old overloaded `profile_private` collection.
-///
-/// Old clients synchronized both user profile fields and Shield settings as
-/// separate key/value rows in one collection. Current WesiOS has two explicit
-/// authorities instead:
-///   * profile/me     — one canonical profile record;
-///   * shield_private — keyed Shield configuration only.
-///
-/// Canonical targets are created through transactional createIfAbsent. That is
-/// stronger than an outer "if (!existing) save": two concurrent migration/
-/// current-client requests cannot let legacy data overwrite a canonical row.
 function migrateLegacyProfilePrivate(e) {
   const ctx = e.get("wesiSyncContext");
   if (!ctx) throw new UnauthorizedError("Нет контекста синхронизации");
@@ -162,15 +150,20 @@ function read(e, collection, scope, requiredModule, privateKeyed) {
 
   const privateScope = scope === "private" || privateKeyed === true;
   const owner = privateScope ? e.auth.id : ctx.ownerId;
-  let records = [];
-  records = require(`${__hooks}/wesi_sync_data_access.js`).records(e.app,
-      "wesios_records",
-      "owner={:owner} && coll={:coll}",
-      "id",
-      0,
-      0,
-      {owner: owner, coll: collection},
-    );
+  let records = require(`${__hooks}/wesi_sync_data_access.js`).records(e.app,
+    "wesios_records",
+    "owner={:owner} && coll={:coll}",
+    "id",
+    0,
+    0,
+    {owner: owner, coll: collection},
+  );
+
+  // Profile is a singleton channel. Historical malformed rows with another rid
+  // must never be delivered into the same local ProfileService key.
+  if (collection === "profile") {
+    records = records.filter((row) => row.getString("rid") === "me");
+  }
 
   return e.json(200, {
     items: records.map(function(row) {
@@ -199,6 +192,9 @@ function write(e, collection, scope, requiredModule, privateKeyed) {
   const rid = String(body.rid || "").trim();
   if (!rid || rid.length > 180) {
     throw new BadRequestError("Некорректный id синхронизации");
+  }
+  if (collection === "profile" && rid !== "me") {
+    throw new BadRequestError("Профиль синхронизируется только как profile/me");
   }
 
   const incoming =
@@ -250,11 +246,6 @@ function revision(e) {
   const ctx = e.get("wesiSyncContext");
   if (!ctx) throw new UnauthorizedError("Нет контекста синхронизации");
 
-  // Do not derive a live change token from the single newest business row.
-  // Two committed rows may have the same PocketBase `updated` timestamp and
-  // leave that max-row token unchanged. The owner-scoped nonce marker is
-  // touched by collection-level AfterSuccess hooks for EVERY wesios_records
-  // writer, including Wesi AI server tools that bypass the HTTP sync gateway.
   const value = require(`${__hooks}/wesi_sync_revision.js`).readForContext(
     e.app,
     ctx.ownerId,
