@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 
 import 'pocketbase_transport.dart';
@@ -207,6 +209,81 @@ class SyncEngine {
           if (!remote.containsKey(e.key)) e.key: e.value,
       };
 
+  /// Optimistic local precondition for a plan built earlier in the same run.
+  ///
+  /// Most WesiOS boxes are keyed by sync id, so direct Hive lookup is O(1).
+  /// A few keyed/private codecs map local keys to different server ids; they
+  /// fall back to their explicit `local()` projection.
+  static dynamic _localValueBySyncId(
+    SyncCollection<dynamic> c,
+    String id,
+  ) {
+    final box = c.box();
+    if (box != null) {
+      try {
+        final direct = box.get(id);
+        if (direct != null && c.shouldSync(direct) && c.idOf(direct) == id) {
+          return direct;
+        }
+      } catch (_) {}
+    }
+    try {
+      return c.local()[id];
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static Object? _canonical(Object? value) {
+    if (value is Map) {
+      final keys = value.keys.map((e) => '$e').toList()..sort();
+      return <String, Object?>{
+        for (final key in keys) key: _canonical(value[key]),
+      };
+    }
+    if (value is List) return [for (final item in value) _canonical(item)];
+    return value;
+  }
+
+  static bool _sameFields(
+    Map<String, dynamic> a,
+    Map<String, dynamic> b,
+  ) {
+    try {
+      return jsonEncode(_canonical(a)) == jsonEncode(_canonical(b));
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static bool _localSnapshotStillCurrent(
+    SyncCollection<dynamic> c,
+    String id,
+    SyncRecord? snapshot,
+  ) {
+    final currentStamp = SyncJournal.stampOf(c.name, id);
+    final currentValue = _localValueBySyncId(c, id);
+
+    if (snapshot == null) {
+      return currentValue == null && currentStamp == null;
+    }
+
+    if (currentStamp == null ||
+        currentStamp.updatedAt != snapshot.updatedAt ||
+        currentStamp.deleted != snapshot.deleted) {
+      return false;
+    }
+
+    if (snapshot.deleted) return currentValue == null;
+    if (currentValue == null) return false;
+
+    try {
+      return _sameFields(c.encode(currentValue), snapshot.fields);
+    } catch (_) {
+      return false;
+    }
+  }
+
   static Future<SyncReport> run({
     SyncTransport? transport,
     DateTime? now,
@@ -314,33 +391,45 @@ class SyncEngine {
 
     Future<bool> applyAuthoritative(SyncRecord r) async {
       if (cancelled()) return false;
+
+      // Register the expected box event first, but do NOT move the journal to
+      // remote time until the local payload/delete actually succeeds.
       SyncJournal.expect(
         c.name,
         r.id,
         SyncStamp(r.updatedAt, deleted: r.deleted),
       );
+
+      var accepted = false;
+      try {
+        if (r.deleted) {
+          await c.removeById(r.id);
+          accepted = true;
+        } else {
+          accepted = await c.applyFields(r.fields);
+        }
+      } catch (_) {
+        accepted = false;
+      }
+
+      if (cancelled()) {
+        SyncJournal.forget(c.name, r.id);
+        return false;
+      }
+      if (!accepted) {
+        SyncJournal.forget(c.name, r.id);
+        return false;
+      }
+
+      // The watcher may already have consumed the expectation; recording the
+      // same stamp here makes the invariant explicit even when the watcher is
+      // delivered later.
       await SyncJournal.record(
         c.name,
         r.id,
         SyncStamp(r.updatedAt, deleted: r.deleted),
       );
-      if (cancelled()) {
-        SyncJournal.forget(c.name, r.id);
-        return false;
-      }
-
-      try {
-        if (r.deleted) {
-          await c.removeById(r.id);
-          return !cancelled();
-        }
-        final accepted = await c.applyFields(r.fields);
-        if (!accepted) SyncJournal.forget(c.name, r.id);
-        return accepted && !cancelled();
-      } catch (_) {
-        SyncJournal.forget(c.name, r.id);
-        return false;
-      }
+      return !cancelled();
     }
 
     Future<void> resetIncompleteStamp(String id) async {
@@ -355,15 +444,19 @@ class SyncEngine {
       return SyncCollectionReport(collection: c.name, failure: remote.failure);
     }
 
+    final allLocalBefore = localState(c, at);
+    final mergeLocal = firstEverExchange
+        ? _onlyNewTo(allLocalBefore, remote.value!)
+        : allLocalBefore;
     final plan = SyncMerge.merge(
-      local: firstEverExchange
-          ? _onlyNewTo(localState(c, at), remote.value!)
-          : localState(c, at),
+      local: mergeLocal,
       remote: remote.value!,
     );
 
     var applied = 0;
     SyncFailure? applyFailure;
+    var concurrentLocalChange = false;
+    String? concurrentId;
     var pending = List<SyncRecord>.from(plan.toApplyLocally);
 
     while (pending.isNotEmpty) {
@@ -372,6 +465,18 @@ class SyncEngine {
 
       for (final r in pending) {
         if (cancelled()) return cancelledReport(applied: applied);
+
+        // Let any Hive watcher event queued by a user action run before the
+        // optimistic precondition is checked.
+        await Future<void>.delayed(Duration.zero);
+        if (cancelled()) return cancelledReport(applied: applied);
+
+        if (!_localSnapshotStillCurrent(c, r.id, allLocalBefore[r.id])) {
+          concurrentLocalChange = true;
+          concurrentId ??= r.id;
+          continue;
+        }
+
         final accepted = await applyAuthoritative(r);
         if (cancelled()) return cancelledReport(applied: applied);
 
@@ -404,6 +509,11 @@ class SyncEngine {
         'REMOTE_APPLY_INCOMPLETE',
         'Не удалось применить ${c.name}:$first$suffix',
       );
+    } else if (concurrentLocalChange) {
+      applyFailure = SyncFailure(
+        'LOCAL_CHANGED_DURING_SYNC',
+        'Локальная запись ${c.name}:${concurrentId ?? '?'} изменилась во время синхронизации; конфликт будет пересчитан',
+      );
     }
 
     if (cancelled()) return cancelledReport(applied: applied);
@@ -419,6 +529,24 @@ class SyncEngine {
 
     if (plan.toUpload.isEmpty) {
       return SyncCollectionReport(collection: c.name, applied: applied);
+    }
+
+    // Revalidate the local side immediately before the request. A local edit
+    // that happened while other remote rows were being applied invalidates the
+    // old upload plan; never send that stale payload.
+    for (final r in plan.toUpload) {
+      await Future<void>.delayed(Duration.zero);
+      if (cancelled()) return cancelledReport(applied: applied);
+      if (!_localSnapshotStillCurrent(c, r.id, allLocalBefore[r.id])) {
+        return SyncCollectionReport(
+          collection: c.name,
+          applied: applied,
+          failure: SyncFailure(
+            'LOCAL_CHANGED_DURING_SYNC',
+            'Локальная запись ${c.name}:${r.id} изменилась до отправки; план будет пересчитан',
+          ),
+        );
+      }
     }
 
     if (cancelled()) return cancelledReport(applied: applied);
@@ -450,17 +578,17 @@ class SyncEngine {
         id,
         SyncStamp(_epoch, deleted: true),
       );
-      await SyncJournal.record(
-        c.name,
-        id,
-        SyncStamp(_epoch, deleted: true),
-      );
       try {
         await c.removeById(id);
         if (cancelled()) {
           SyncJournal.forget(c.name, id);
           return cancelledReport(applied: applied + policyApplied);
         }
+        await SyncJournal.record(
+          c.name,
+          id,
+          SyncStamp(_epoch, deleted: true),
+        );
         policyApplied++;
       } catch (_) {
         SyncJournal.forget(c.name, id);
@@ -485,11 +613,6 @@ class SyncEngine {
         final source = uploadedById[id];
         if (source == null) continue;
 
-        // Do not let an HTTP response for an older snapshot erase a user edit
-        // made while the request was in flight. Reconcile the accepted server
-        // timestamp only if the journal still describes exactly the record we
-        // sent. If it changed meanwhile, the newer local stamp must survive so
-        // the next sync can upload the newer payload.
         final current = SyncJournal.stampOf(c.name, id);
         final unchangedSincePlan = current != null &&
             current.updatedAt == source.updatedAt &&
