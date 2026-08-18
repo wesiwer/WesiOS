@@ -1,0 +1,65 @@
+name: Diagnose Production AI Tool Results Once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/diagnose-production-ai-tool-results-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Prepare SSH
+        env:
+          KEY: ${{ secrets.WESI_SERVER_SSH_KEY }}
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          KNOWN: ${{ secrets.WESI_SERVER_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_diag && chmod 600 ~/.ssh/id_diag
+          if [ -n "${KNOWN:-}" ]; then printf '%s\n' "$KNOWN" > ~/.ssh/known_hosts; else ssh-keyscan -H "$HOST" > ~/.ssh/known_hosts 2>/dev/null; fi
+      - name: Aggregate privacy-safe tool events
+        env:
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          USER: ${{ secrets.WESI_SERVER_USER }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/id_diag -o BatchMode=yes -o UserKnownHostsFile=~/.ssh/known_hosts "$USER@$HOST" 'python3 -' > /tmp/tool-summary.txt <<'PY'
+          import json, sqlite3
+          from collections import Counter
+          con=sqlite3.connect('file:/opt/pocketbase/pb_data/data.db?mode=ro',uri=True); con.row_factory=sqlite3.Row
+          rows=list(con.execute("select owner,payload,stamp from wesios_records where coll='critical_audit' and deleted=0 order by stamp desc limit 1000"))
+          owner=None
+          # Choose the owner with the newest Wesi AI tool event; output never exposes owner id.
+          events=[]
+          for r in rows:
+              try:p=json.loads(r['payload']) if isinstance(r['payload'],str) else r['payload']
+              except Exception:continue
+              if not isinstance(p,dict) or p.get('event')!='wesi_ai_tool':continue
+              if owner is None: owner=str(r['owner'])
+              if str(r['owner'])!=owner:continue
+              a=p.get('after') if isinstance(p.get('after'),dict) else {}
+              events.append((str(a.get('tool') or 'unknown'),str(p.get('reason') or 'OK'),bool(a.get('ok')),str(a.get('risk') or ''),str(a.get('persona') or '')))
+              if len(events)>=250:break
+          print('events='+str(len(events)))
+          for (tool,code,ok,risk,persona),count in sorted(Counter(events).items(),key=lambda x:(-x[1],x[0])):
+              safe=lambda s: ''.join(ch for ch in s if ch.isalnum() or ch in '._-')[:80]
+              print('tool=%s code=%s ok=%s risk=%s persona=%s count=%d'%(safe(tool),safe(code),str(ok).lower(),safe(risk),safe(persona),count))
+          con.close()
+          PY
+          cp /tmp/tool-summary.txt .github/production-ai-tool-summary.txt
+          git config user.name 'WesiOS AI Diagnostics'
+          git config user.email 'actions@users.noreply.github.com'
+          git add .github/production-ai-tool-summary.txt
+          git commit -m 'ops: record production AI tool result summary'
+          git pull --rebase origin main
+          git push origin HEAD:main
