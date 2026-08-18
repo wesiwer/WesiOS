@@ -1,0 +1,9 @@
+roadmap_state_rows=2
+roadmap_legacy_items=28
+roadmap_projects_rows=1
+roadmap_items_rows=27
+crm_state_rows=3
+crm_legacy_items=3
+crm_clients_rows=1
+crm_deals_rows=1
+crm_interactions_rows=1
