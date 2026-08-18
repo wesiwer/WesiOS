@@ -49,3 +49,5 @@ jobs:
             sleep $((attempt * 2))
           done
           exit 1
+
+# retry: validate together with session-generation guards from 2636f153
