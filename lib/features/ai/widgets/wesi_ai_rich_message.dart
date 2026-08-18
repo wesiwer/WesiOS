@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../models/wesi_ai_activity.dart';
+import 'wesi_ai_code_console.dart';
 import 'wesi_ai_visualization.dart';
 
 enum WesiAiRichBlockKind {
@@ -141,7 +142,8 @@ class WesiAiRichParser {
     return normalized.replaceAllMapped(
       RegExp(r'^\s{0,3}#{1,6}\s+(.+)$', multiLine: true),
       (match) {
-        final title = (match.group(1) ?? '').trim().replaceAll(RegExp(r'\*+'), '').trim();
+        final title =
+            (match.group(1) ?? '').trim().replaceAll(RegExp(r'\*+'), '').trim();
         return title.isEmpty ? '' : '**$title**';
       },
     );
@@ -335,7 +337,11 @@ class WesiAiRichMessage extends StatelessWidget {
       switch (block.kind) {
         case WesiAiRichBlockKind.code:
           widgets.add(
-            WesiAiCodeBlock(code: block.text, language: block.language),
+            WesiAiCodeBlock(
+              code: block.text,
+              language: block.language,
+              runnable: !streaming,
+            ),
           );
           break;
         case WesiAiRichBlockKind.quote:
@@ -356,7 +362,11 @@ class WesiAiRichMessage extends StatelessWidget {
           final question = WesiAiClarification.tryParse(block.text);
           if (question == null) {
             widgets.add(
-              WesiAiCodeBlock(code: block.text, language: block.language),
+              WesiAiCodeBlock(
+                code: block.text,
+                language: block.language,
+                runnable: !streaming,
+              ),
             );
           } else {
             widgets.add(
@@ -381,7 +391,11 @@ class WesiAiRichMessage extends StatelessWidget {
           final chart = WesiAiChartSpec.tryParse(block.text);
           if (chart == null) {
             widgets.add(
-              WesiAiCodeBlock(code: block.text, language: block.language),
+              WesiAiCodeBlock(
+                code: block.text,
+                language: block.language,
+                runnable: !streaming,
+              ),
             );
           } else {
             widgets.add(WesiAiChartBlock(spec: chart));
@@ -526,7 +540,8 @@ class WesiAiInlineParser {
   /// [outer] — оформление, внутри которого идёт разбор. Вложенность разбирается
   /// рекурсивно: `**жирный с *курсивом* внутри**` должен дать жирный текст и
   /// жирный курсив, а не жирный текст с видимыми звёздочками.
-  static List<WesiAiInlineToken> _tokens(String source, WesiAiInlineKind outer) {
+  static List<WesiAiInlineToken> _tokens(
+      String source, WesiAiInlineKind outer) {
     final result = <WesiAiInlineToken>[];
     final plain = StringBuffer();
 
@@ -587,7 +602,8 @@ class WesiAiInlineParser {
         _ => WesiAiInlineKind.italic,
       };
 
-  static WesiAiInlineKind _combine(WesiAiInlineKind outer, WesiAiInlineKind inner) {
+  static WesiAiInlineKind _combine(
+      WesiAiInlineKind outer, WesiAiInlineKind inner) {
     if (outer == WesiAiInlineKind.plain) return inner;
     if (outer == inner) return outer;
     final bold = _isBold(outer) || _isBold(inner);
@@ -685,7 +701,6 @@ class WesiAiFormattedText extends StatelessWidget {
   }
 }
 
-
 /// Моноширинный блок с содержимым шага: чем звали инструмент и что он вернул.
 ///
 /// Отдельный виджет, а не встроенный `Text`, потому что содержимое бывает
@@ -768,8 +783,14 @@ class WesiAiStepPayload extends StatelessWidget {
 class WesiAiCodeBlock extends StatelessWidget {
   final String code;
   final String language;
+  final bool runnable;
 
-  const WesiAiCodeBlock({super.key, required this.code, this.language = ''});
+  const WesiAiCodeBlock({
+    super.key,
+    required this.code,
+    this.language = '',
+    this.runnable = true,
+  });
 
   Future<void> _copy(BuildContext context) async {
     await Clipboard.setData(ClipboardData(text: code));
@@ -777,6 +798,12 @@ class WesiAiCodeBlock extends StatelessWidget {
     ScaffoldMessenger.of(context)
         .showSnackBar(const SnackBar(content: Text('Код скопирован')));
   }
+
+  Future<void> _run(BuildContext context) => WesiAiCodeConsole.open(
+        context,
+        code: code,
+        language: language,
+      );
 
   Future<void> _expand(BuildContext context) => showDialog<void>(
         context: context,
@@ -841,6 +868,13 @@ class WesiAiCodeBlock extends StatelessWidget {
                     ),
                   ),
                 ),
+                if (runnable && WesiAiCodeConsole.supports(language))
+                  IconButton.filledTonal(
+                    tooltip: 'Запустить код',
+                    visualDensity: VisualDensity.compact,
+                    onPressed: () => _run(context),
+                    icon: const Icon(Icons.play_arrow_rounded, size: 19),
+                  ),
                 IconButton(
                   tooltip: 'Копировать код',
                   visualDensity: VisualDensity.compact,

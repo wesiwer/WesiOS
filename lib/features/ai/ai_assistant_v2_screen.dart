@@ -47,6 +47,7 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
   @override
   void initState() {
     super.initState();
+    _composer.addListener(_onComposerChanged);
     _voice.addListener(_onVoiceChanged);
     final employee = TeamService.current;
     if (employee != null) {
@@ -55,6 +56,10 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
       )..addListener(_refresh);
       unawaited(_controller!.load());
     }
+  }
+
+  void _onComposerChanged() {
+    if (mounted) setState(() {});
   }
 
   void _refresh() {
@@ -131,6 +136,7 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
     _session?.dispose();
     _voice.removeListener(_onVoiceChanged);
     _voice.dispose();
+    _composer.removeListener(_onComposerChanged);
     _composer.dispose();
     _scroll.dispose();
     super.dispose();
@@ -1004,6 +1010,9 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
     return const <WesiAiRunChange>[];
   }
 
+  bool get _composerHasPayload =>
+      _composer.text.trim().isNotEmpty || _attachments.isNotEmpty;
+
   Widget _composerBar(WesiAiManagedChatController controller) => Padding(
         padding: const EdgeInsets.fromLTRB(12, 5, 12, 12),
         child: Center(
@@ -1025,39 +1034,45 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
                     // который возникает сразу после длинной работы.
                     WesiAiRunSummaryChip(changes: _lastRunChanges(controller)),
                     if (controller.queuedTurnCount > 0)
-                      Container(
-                        margin: const EdgeInsets.fromLTRB(4, 2, 4, 7),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 8,
-                        ),
-                        decoration: BoxDecoration(
-                          color:
-                              Theme.of(context).colorScheme.secondaryContainer,
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'В очереди: ${controller.queuedTurnCount}',
-                              style:
-                                  const TextStyle(fontWeight: FontWeight.w700),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(4, 2, 4, 7),
+                          child: Material(
+                            color: Theme.of(context)
+                                .colorScheme
+                                .surfaceContainerHighest,
+                            shape: StadiumBorder(
+                              side: BorderSide(
+                                color: Theme.of(context).dividerColor,
+                              ),
                             ),
-                            const SizedBox(height: 3),
-                            Text(
-                              controller.queuedTurns
-                                  .take(3)
-                                  .map(
-                                    (turn) =>
-                                        '${turn.intentLabel}: ${turn.preview}',
-                                  )
-                                  .join(' · '),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: Theme.of(context).textTheme.bodySmall,
+                            clipBehavior: Clip.antiAlias,
+                            child: InkWell(
+                              customBorder: const StadiumBorder(),
+                              onTap: () => _showQueuedTurns(controller),
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 8,
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(Icons.schedule_rounded,
+                                        size: 19),
+                                    const SizedBox(width: 7),
+                                    Text(
+                                      '${controller.queuedTurnCount}',
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
                             ),
-                          ],
+                          ),
                         ),
                       ),
                     if (_attachments.isNotEmpty)
@@ -1118,24 +1133,6 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
                           icon: const Icon(Icons.photo_camera_outlined),
                         ),
                         const Spacer(),
-                        if (controller.sending)
-                          IconButton(
-                            tooltip: 'Остановить текущую работу',
-                            onPressed: () =>
-                                unawaited(controller.stopActiveWork()),
-                            icon: const Icon(Icons.stop_circle_outlined),
-                          ),
-                        if (controller.sending ||
-                            controller.queuedTurnCount > 0)
-                          Padding(
-                            padding: const EdgeInsets.only(right: 6),
-                            child: Text(
-                              controller.sending
-                                  ? 'Ответ обрабатывается'
-                                  : 'Обрабатываю очередь',
-                              style: Theme.of(context).textTheme.labelSmall,
-                            ),
-                          ),
                         IconButton(
                           tooltip: _voice.listening
                               ? 'Остановить диктовку'
@@ -1161,13 +1158,23 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
                                 : Icons.headset_mic_outlined,
                           ),
                         ),
-                        IconButton.filled(
-                          tooltip: controller.sending
-                              ? 'Добавить сообщение в очередь'
-                              : 'Отправить',
-                          onPressed: () => _send(controller),
-                          icon: const Icon(Icons.arrow_upward_rounded),
-                        ),
+                        if (controller.sending && !_composerHasPayload)
+                          IconButton.filled(
+                            tooltip: 'Остановить текущую работу',
+                            onPressed: () =>
+                                unawaited(controller.stopActiveWork()),
+                            icon: const Icon(Icons.stop_rounded),
+                          )
+                        else
+                          IconButton.filled(
+                            tooltip: controller.sending
+                                ? 'Добавить сообщение в очередь'
+                                : 'Отправить',
+                            onPressed: _composerHasPayload
+                                ? () => _send(controller)
+                                : null,
+                            icon: const Icon(Icons.arrow_upward_rounded),
+                          ),
                       ],
                     ),
                   ],
@@ -1177,6 +1184,104 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
           ),
         ),
       );
+
+  Future<void> _showQueuedTurns(
+    WesiAiManagedChatController controller,
+  ) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      useSafeArea: true,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (sheetContext) => AnimatedBuilder(
+        animation: controller,
+        builder: (context, _) {
+          final queued = controller.queuedTurns;
+          final height = MediaQuery.sizeOf(context).height * 0.58;
+          return SizedBox(
+            height: height,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 2, 12, 10),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          'Очередь',
+                          style:
+                              Theme.of(context).textTheme.titleLarge?.copyWith(
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                        ),
+                      ),
+                      if (queued.isNotEmpty)
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 5,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Theme.of(context)
+                                .colorScheme
+                                .surfaceContainerHighest,
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: Text('${queued.length}'),
+                        ),
+                      IconButton(
+                        tooltip: 'Закрыть',
+                        onPressed: () => Navigator.of(sheetContext).pop(),
+                        icon: const Icon(Icons.close_rounded),
+                      ),
+                    ],
+                  ),
+                ),
+                const Divider(height: 1),
+                Expanded(
+                  child: queued.isEmpty
+                      ? const Center(child: Text('Очередь пуста'))
+                      : ListView.separated(
+                          padding: const EdgeInsets.fromLTRB(12, 10, 12, 18),
+                          itemCount: queued.length,
+                          separatorBuilder: (_, __) =>
+                              const SizedBox(height: 8),
+                          itemBuilder: (context, index) {
+                            final turn = queued[index];
+                            final local = turn.queuedAt.toLocal();
+                            final hour = local.hour.toString().padLeft(2, '0');
+                            final minute =
+                                local.minute.toString().padLeft(2, '0');
+                            return Card(
+                              margin: EdgeInsets.zero,
+                              child: ListTile(
+                                leading: CircleAvatar(
+                                  child: Text('${index + 1}'),
+                                ),
+                                title: Text(
+                                  turn.preview,
+                                  maxLines: 4,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                subtitle: Padding(
+                                  padding: const EdgeInsets.only(top: 4),
+                                  child: Text(
+                                    '${turn.intentLabel} · $hour:$minute',
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
 
   Future<void> _pickAttachments() async {
     try {
@@ -1218,10 +1323,13 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
         barrierColor: Colors.black87,
         builder: (dialogContext) {
           final size = MediaQuery.sizeOf(dialogContext);
-          final width = size.width < 620 ? size.width - 24 : 560.0;
-          final height = (size.height * 0.78).clamp(420.0, 720.0).toDouble();
+          final width = size.width < 620 ? size.width - 32 : 520.0;
+          final height = (size.height * 0.58).clamp(360.0, 560.0).toDouble();
           return Dialog(
-            insetPadding: const EdgeInsets.all(12),
+            insetPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 24,
+            ),
             clipBehavior: Clip.antiAlias,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(24),
@@ -1254,7 +1362,7 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
     WesiAiManagedChatController controller,
     String answer,
   ) async {
-    if (controller.processing || answer.trim().isEmpty) return;
+    if (answer.trim().isEmpty) return;
     _composer.value = TextEditingValue(
       text: answer.trim(),
       selection: TextSelection.collapsed(offset: answer.trim().length),

@@ -238,9 +238,8 @@ class _WesiAiCodeConsoleSheetState extends State<_WesiAiCodeConsoleSheet> {
     WesiEnvironmentScanner scanner, {
     required bool python,
   }) async {
-    final names = python
-        ? const <String>['python3', 'python']
-        : const <String>['node'];
+    final names =
+        python ? const <String>['python3', 'python'] : const <String>['node'];
     String? candidate;
     for (final name in names) {
       candidate ??= scanner.resolveExecutable(name);
@@ -275,7 +274,8 @@ class _WesiAiCodeConsoleSheetState extends State<_WesiAiCodeConsoleSheet> {
   Future<String?> _findManagedExecutable(Set<String> names) async {
     try {
       final support = await getApplicationSupportDirectory();
-      final runtimeRoot = Directory(p.join(support.path, 'WesiOS', 'AIRuntime'));
+      final runtimeRoot =
+          Directory(p.join(support.path, 'WesiOS', 'AIRuntime'));
       if (!await runtimeRoot.exists()) return null;
       return _findInDirectory(runtimeRoot, names, depth: 0);
     } catch (_) {
@@ -294,7 +294,8 @@ class _WesiAiCodeConsoleSheetState extends State<_WesiAiCodeConsoleSheet> {
       await for (final entity in directory.list(followLinks: false)) {
         if (++seen > 800) break;
         final basename = p.basename(entity.path).toLowerCase();
-        final type = await FileSystemEntity.type(entity.path, followLinks: false);
+        final type =
+            await FileSystemEntity.type(entity.path, followLinks: false);
         if (type == FileSystemEntityType.file && names.contains(basename)) {
           return File(entity.path).absolute.path;
         }
