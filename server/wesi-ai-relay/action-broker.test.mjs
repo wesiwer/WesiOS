@@ -28,6 +28,11 @@ function harness({sessionId = 'session-1', app: sharedApp} = {}) {
   const rows = sharedApp?._rows ?? new Map();
   const app = sharedApp ?? {
     _rows: rows,
+    // PocketBase выполняет запись через транзакцию и передаёт обработчику
+    // транзакционный app. Фикстура одиночная и без изоляции, поэтому
+    // достаточно вызвать обработчик с тем же app: проверяется поведение
+    // писателя, а не движок транзакций.
+    runInTransaction(handler) { return handler(app); },
     findCollectionByNameOrId() { return {}; },
     save(record) {
       const key = `${record.get('coll')}:${record.get('rid')}`;

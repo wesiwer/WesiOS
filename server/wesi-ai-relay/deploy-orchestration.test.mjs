@@ -4,8 +4,24 @@ import fs from 'node:fs';
 
 test('Relay installer includes every runtime module required by server imports', () => {
   const deploy = fs.readFileSync('server/wesi-ai-relay/deploy-relay.sh', 'utf8');
-  assert.match(deploy, /text-stream\.mjs/);
-  assert.match(deploy, /staged-upload\.mjs/);
+
+  // Проверка была по именам файлов: text-stream.mjs, staged-upload.mjs. Это
+  // ловило ровно те два модуля, которые кто-то не забыл вписать, и молчало
+  // про следующий новый. Так и вышло со speakers.mjs.
+  //
+  // Установщик больше не перечисляет файлы вручную, поэтому проверяется само
+  // свойство: под установку попадает каждый рабочий модуль каталога.
+  assert.match(deploy, /for path in "\$SOURCE_DIR"\/\*\.mjs/,
+    'deploy-relay.sh снова ставит фиксированный список — новый модуль потеряется');
+  assert.match(deploy, /\*\.test\.mjs\) continue ;;/,
+    'тесты не должны уезжать на боевой сервер');
+
+  const runtime = fs.readdirSync('server/wesi-ai-relay')
+    .filter((name) => name.endsWith('.mjs') && !name.endsWith('.test.mjs'));
+  assert.ok(runtime.includes('text-stream.mjs'));
+  assert.ok(runtime.includes('staged-upload.mjs'));
+  assert.ok(runtime.includes('speakers.mjs'));
+
   assert.match(deploy, /GROQ_API_KEY_B64/);
   assert.match(deploy, /MISTRAL_API_KEY_B64/);
   assert.match(deploy, /OPENROUTER_API_KEY_B64/);
