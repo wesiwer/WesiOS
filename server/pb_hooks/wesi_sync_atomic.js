@@ -10,6 +10,12 @@ const base = typeof __hooks !== "undefined" ? __hooks + "/" : "./";
 const dataAccess = require(base + "wesi_sync_data_access.js");
 const lww = require(base + "wesi_sync_lww.js");
 
+const appendOnlyCollections = {
+  transaction_audit: true,
+  critical_audit: true,
+  file_handovers: true,
+};
+
 function payloadOf(record) {
   if (!record) return {};
   try {
@@ -63,8 +69,18 @@ function fill(record, input, payload) {
   record.set("deleted", input.deleted);
 }
 
+function rejectAppendOnlyDelete(input) {
+  if (appendOnlyCollections[input.coll] !== true || !input.deleted) return;
+  const message = "Append-only sync collection cannot be deleted: " + input.coll;
+  if (typeof BadRequestError !== "undefined") {
+    throw new BadRequestError(message);
+  }
+  throw new Error(message);
+}
+
 function commit(app, rawInput) {
   const input = normalizedInput(rawInput);
+  rejectAppendOnlyDelete(input);
   let result = null;
 
   app.runInTransaction((txApp) => {
@@ -72,6 +88,18 @@ function commit(app, rawInput) {
     // a single writer/transaction is allowed and using the outer app here can
     // deadlock or reintroduce a stale decision.
     const existing = currentRow(txApp, input);
+
+    // Append-only history is immutable at the same atomic boundary as LWW.
+    // This specifically closes the race where two first-writes both passed an
+    // outer `existing == null` policy check before one of them committed.
+    if (existing && appendOnlyCollections[input.coll] === true) {
+      result = {
+        applied: false,
+        stamp: existing.getString("stamp"),
+        reason: "append-only-existing",
+      };
+      return;
+    }
 
     if (existing) {
       const decision = lww.decide(
@@ -118,6 +146,7 @@ function commit(app, rawInput) {
 // shield_private that a current client has already created.
 function createIfAbsent(app, rawInput) {
   const input = normalizedInput(rawInput);
+  rejectAppendOnlyDelete(input);
   let result = null;
 
   app.runInTransaction((txApp) => {
@@ -147,4 +176,5 @@ module.exports = {
   commit,
   createIfAbsent,
   payloadOf,
+  appendOnlyCollections,
 };
