@@ -1,0 +1,50 @@
+name: Fast Current Main Check Once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/fast-current-main-check-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Check pub resolution and Node contracts
+        shell: bash
+        run: |
+          set +e
+          flutter pub get >/tmp/pub.log 2>&1
+          PUB=$?
+          node --test server/pb_hooks/*_test.mjs >/tmp/node.log 2>&1
+          NODE=$?
+          set -e
+          {
+            echo "SOURCE=$(git rev-parse HEAD)"
+            echo "PUB_GET=$PUB"
+            echo "NODE_SYNC=$NODE"
+            echo '=== PUB ==='
+            cat /tmp/pub.log
+            echo '=== NODE FAILURES ==='
+            grep -n -E 'not ok|failureType|error:|ERR_|AssertionError|TypeError' /tmp/node.log || true
+            echo '=== NODE TAIL ==='
+            tail -n 220 /tmp/node.log
+          } > .github/fast-current-main-check.txt
+          git config user.name 'WesiOS Fast Check'
+          git config user.email 'actions@users.noreply.github.com'
+          git switch -C diag/fast-current-main-check
+          git add .github/fast-current-main-check.txt
+          git commit -m 'ops: capture fast current main check'
+          git push --force origin HEAD:diag/fast-current-main-check
+          test "$PUB" -eq 0 -a "$NODE" -eq 0
