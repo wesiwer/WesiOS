@@ -5,8 +5,6 @@ import 'dart:ui' as ui;
 
 import 'package:hive/hive.dart';
 
-import '../../features/crm/services/crm_service.dart';
-import '../../features/roadmap/services/roadmap_service.dart';
 import '../../features/team/models/employee_model.dart';
 import '../../features/team/services/team_service.dart';
 import '../security/secret_vault.dart';
@@ -81,12 +79,6 @@ class SyncFeatureExtensions {
   static Future<void> install() async {
     if (!_registered) {
       _registered = true;
-      if (SyncCodec.byName('roadmap_state') == null) {
-        SyncCodec.collections.add(_RoadmapStateSync());
-      }
-      if (SyncCodec.byName('crm_state') == null) {
-        SyncCodec.collections.add(_CrmStateSync());
-      }
       if (SyncCodec.byName('profile_private') == null) {
         SyncCodec.collections.add(_ProfilePrivateSync());
       }
@@ -420,28 +412,6 @@ abstract class _KeyedStateSync extends SyncCollection<dynamic> {
     await b.put(incoming.key, incoming.value);
     return true;
   }
-}
-
-class _RoadmapStateSync extends _KeyedStateSync {
-  @override
-  String get name => 'roadmap_state';
-  @override
-  String get boxName => RoadmapService.boxName;
-  @override
-  Set<String> get keys => const {'projects_v1', 'items_v1'};
-  @override
-  void notifyChanged() => RoadmapService.revision.value++;
-}
-
-class _CrmStateSync extends _KeyedStateSync {
-  @override
-  String get name => 'crm_state';
-  @override
-  String get boxName => CrmService.boxName;
-  @override
-  Set<String> get keys => const {'clients_v1', 'deals_v1', 'interactions_v1'};
-  @override
-  void notifyChanged() => CrmService.revision.value++;
 }
 
 class _ProfilePrivateSync extends _KeyedStateSync {
