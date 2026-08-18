@@ -129,14 +129,30 @@ function taskVisible(access, ctx, p) {
   return String(p.assignee || "") === ctx.employeeId || String(p.responsibleEmployeeId || "") === ctx.employeeId;
 }
 
+function dayState(value, now) {
+  if (!value) return "none";
+  const due = new Date(String(value));
+  if (!Number.isFinite(due.getTime())) return "none";
+  const dueDay = due.toISOString().slice(0, 10);
+  const nowDay = now.toISOString().slice(0, 10);
+  if (dueDay < nowDay) return "overdue";
+  if (dueDay === nowDay) return "today";
+  return "future";
+}
+
 module.exports = {
   definitions: function(e, ctx) {
     if (!ctx.isOwner && ctx.modules.indexOf("tasks") < 0) return [];
     return [
       {
         name: "tasks_list",
-        description: "Получить реальные задачи WesiOS, доступные текущему сотруднику.",
-        parameters: {type: "object", properties: {status: {type: "string", enum: ["backlog", "inProgress", "review", "done"]}, limit: {type: "integer", minimum: 1, maximum: 50}}},
+        description: "Получить реальные задачи WesiOS, доступные текущему сотруднику. Если передана активная организация, список ограничивается ею; dueMode позволяет получить задачи на сегодня или просроченные без клиентского угадывания.",
+        parameters: {type: "object", properties: {
+          organizationId: {type: "string", description: "Используй только если активная организация не передана WesiOS"},
+          status: {type: "string", enum: ["backlog", "inProgress", "review", "done"]},
+          dueMode: {type: "string", enum: ["today", "overdue"]},
+          limit: {type: "integer", minimum: 1, maximum: 100}
+        }},
       },
       {
         name: "tasks_create",
@@ -164,16 +180,30 @@ module.exports = {
           "-stamp", 5000, 0, {owner: ctx.ownerId},
         );
       const status = String(input.status || "");
-      const limit = Math.max(1, Math.min(50, Number(input.limit || 20)));
+      const dueMode = String(input.dueMode || "");
+      if (dueMode && ["today", "overdue"].indexOf(dueMode) < 0) return {ok: false, code: "VALIDATION_ERROR", message: "Некорректный dueMode"};
+      const requestedOrg = String(activeOrganizationId || input.organizationId || "").trim();
+      let organizationId = "";
+      if (requestedOrg) {
+        organizationId = chooseOrganization(access, requestedOrg);
+        if (!organizationId || organizationId !== requestedOrg) return {ok: false, code: "FORBIDDEN", message: "Нет доступа к задачам этой организации"};
+      }
+      const limit = Math.max(1, Math.min(100, Number(input.limit || 20)));
+      const now = new Date();
       const out = [];
+      let totalCount = 0;
       for (const row of rows) {
         const p = payloadOf(row);
         if (!taskVisible(access, ctx, p)) continue;
+        const taskOrgId = String(p.organizationId || ROOT_ORG);
+        if (organizationId && taskOrgId !== organizationId) continue;
         if (status && String(p.status || "backlog") !== status) continue;
-        out.push({id: String(p.id || row.getString("rid")), title: String(p.title || ""), status: String(p.status || "backlog"), priority: String(p.priority || "normal"), dueDate: p.dueDate || null, assignee: p.assignee || null, organizationId: String(p.organizationId || ROOT_ORG)});
-        if (out.length >= limit) break;
+        if (dueMode && dayState(p.dueDate, now) !== dueMode) continue;
+        totalCount++;
+        if (out.length >= limit) continue;
+        out.push({id: String(p.id || row.getString("rid")), title: String(p.title || ""), status: String(p.status || "backlog"), priority: String(p.priority || "normal"), dueDate: p.dueDate || null, assignee: p.assignee || null, organizationId: taskOrgId});
       }
-      return {ok: true, result: {tasks: out}};
+      return {ok: true, result: {organizationId: organizationId || null, totalCount: totalCount, tasks: out}};
     }
 
     if (name === "tasks_create") {
