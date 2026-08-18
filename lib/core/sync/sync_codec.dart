@@ -620,8 +620,7 @@ class TransactionsSync extends SyncCollection<TransactionModel> {
     final date = _date(fields['date']);
     final orgId =
         _strOrNull(fields['organizationId']) ?? OrganizationModel.rootId;
-    final accountId =
-        _strOrNull(fields['accountId']) ?? AccountModel.mainIdFor(orgId);
+    final accountId = _strOrNull(fields['accountId']);
     if (id == null ||
         amount == null ||
         !amount.isFinite ||
@@ -656,7 +655,7 @@ class TransactionsSync extends SyncCollection<TransactionModel> {
             ),
       isAnomaly: fields['isAnomaly'] == true,
       zScore: _double(fields['zScore']),
-      accountId: _strOrNull(fields['accountId']),
+      accountId: accountId,
       organizationId: orgId,
       projectId: _strOrNull(fields['projectId']),
       counterpartyId: _strOrNull(fields['counterpartyId']),

@@ -221,6 +221,9 @@ function authorizeClient(txApp, existing, input, ctx) {
     if (existing && !clientWritable(ctx, existing)) {
       forbidden("CRM-клиент принадлежит другому сотруднику");
     }
+    if (!existing && !input.deleted && !String(target.ownerEmployeeId || "").trim()) {
+      target.ownerEmployeeId = ctx.employeeId;
+    }
     if (!input.deleted && String(target.ownerEmployeeId || "") !== ctx.employeeId) {
       forbidden("Нельзя назначить CRM-клиента другому сотруднику");
     }
@@ -335,6 +338,9 @@ module.exports = {
   read,
   write,
   authorize,
+  authorizeClient,
+  authorizeDeal,
+  authorizeInteraction,
   clientVisible,
   dealVisible,
   interactionVisible,
