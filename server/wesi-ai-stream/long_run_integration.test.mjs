@@ -107,7 +107,12 @@ test('maximum tier performs more than four verified tool turns without user cont
         const answer = JSON.stringify({
           wesiTool: {name: 'tasks_list', arguments: {checkpoint: relayCalls}},
         });
-        return ndjson([{type: 'done', answer}]);
+        const split = Math.max(1, Math.floor(answer.length / 2));
+        return ndjson([
+          {type: 'delta', text: answer.slice(0, split)},
+          {type: 'delta', text: answer.slice(split)},
+          {type: 'done', answer},
+        ]);
       }
       return ndjson([
         {type: 'delta', text: 'Все шесть проверок завершены. '},
