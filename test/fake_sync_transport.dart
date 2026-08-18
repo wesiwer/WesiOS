@@ -3,13 +3,9 @@ import 'package:wesios/core/sync/sync_transport.dart';
 
 /// Сервер синхронизации, живущий в памяти теста.
 class FakeSyncTransport implements SyncTransport {
-  /// Состояние «сервера»: коллекция → записи.
   final Map<String, Map<String, SyncRecord>> store = {};
-
   final List<String> calls = [];
-
   SyncFailure? failWith;
-
   bool _signedIn = true;
 
   FakeSyncTransport({bool signedIn = true}) : _signedIn = signedIn;
@@ -35,19 +31,16 @@ class FakeSyncTransport implements SyncTransport {
     return SyncResult.ok(Map.of(store[collection] ?? const {}));
   }
 
-  /// Записи, которые «сервер» отказывается принимать.
+  /// Обычный устойчивый отказ конкретной записи (HTTP 400 и т.п.).
   final Set<String> rejectIds = {};
 
+  /// Policy denial: запись текущей server identity изменять нельзя.
+  final Set<String> forbiddenIds = {};
+
   /// Необязательная нормализация принятого времени конкретной записи.
-  ///
-  /// Реальный сервер использует это, когда часы устройства слишком далеко в
-  /// будущем. По умолчанию fake сохраняет исходный timestamp, как нормальный
-  /// успешный серверный write.
   final Map<String, DateTime> acceptedStampOverrides = {};
 
-  /// Имитирует повреждённый успешный ответ: запись сервер принял, но stamp в
-  /// ответе отсутствует/не разбирается. Engine обязан fail closed перевести
-  /// journal этой записи в epoch и получить серверную версию следующим pull.
+  /// Успешный write без возвращённого stamp.
   final Set<String> omitAcceptedStampIds = {};
 
   @override
@@ -64,9 +57,14 @@ class FakeSyncTransport implements SyncTransport {
     final bucket = store.putIfAbsent(collection, () => {});
     final delivered = <String>[];
     final acceptedStamps = <String, DateTime>{};
+    final forbidden = <String>[];
     SyncFailure? failure;
 
     for (final r in records) {
+      if (forbiddenIds.contains(r.id)) {
+        forbidden.add(r.id);
+        continue;
+      }
       if (rejectIds.contains(r.id)) {
         failure ??= const SyncFailure('HTTP_400', 'Запись не принята');
         continue;
@@ -88,11 +86,11 @@ class FakeSyncTransport implements SyncTransport {
     return SyncPushResult(
       deliveredIds: delivered,
       acceptedStamps: acceptedStamps,
+      forbiddenIds: forbidden,
       failure: failure,
     );
   }
 
-  /// Положить запись «с другого устройства».
   void seed(
     String collection,
     String id,
