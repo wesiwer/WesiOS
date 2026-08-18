@@ -98,6 +98,10 @@ function buildSystem(personaName, profile, sharedMemory, personaMemory, projectM
 
 function invoke(ai, cfg, route, requestId, personaName, profile, message, history, sharedMemory, personaMemory, projectMemory, priorTurns, summary, projectContext, taskStateJson, repairReason, turnContext) {
   const payload = {requestId, route, operation: "lobby", input: {
+    // Relay должен знать, кто сейчас говорит: без этого реплика другого
+    // участника приедет как собственная прошлая речь, и персона продолжит
+    // чужим голосом.
+    persona: personaName,
     system: buildSystem(personaName, profile, sharedMemory, personaMemory, projectMemory, priorTurns, summary, projectContext, taskStateJson, repairReason, turnContext),
     history: history.concat(priorTurns),
     message

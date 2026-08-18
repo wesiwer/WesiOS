@@ -134,9 +134,16 @@ class WesiAiRichParser {
           RegExp(r'(?<!\$)\$([^$\n]+)\$(?!\$)'),
           (match) => _displayInlineMath(match.group(1) ?? ''),
         );
+    // Заголовок становится жирной строкой. Если внутри уже стоят звёздочки,
+    // их надо снять: `### **Итог**` иначе превращался в `****Итог****`, а
+    // такую последовательность инлайн-разбор не понимал и показывал звёздочки
+    // прямо в тексте ответа.
     return normalized.replaceAllMapped(
       RegExp(r'^\s{0,3}#{1,6}\s+(.+)$', multiLine: true),
-      (match) => '**${match.group(1)?.trim() ?? ''}**',
+      (match) {
+        final title = (match.group(1) ?? '').trim().replaceAll(RegExp(r'\*+'), '').trim();
+        return title.isEmpty ? '' : '**$title**';
+      },
     );
   }
 
@@ -480,6 +487,150 @@ class WesiAiClarificationBlock extends StatelessWidget {
   }
 }
 
+/// Разметка внутри строки: что показать обычным текстом, что жирным,
+/// курсивом, моноширинным.
+enum WesiAiInlineKind { plain, bold, italic, boldItalic, code }
+
+class WesiAiInlineToken {
+  final WesiAiInlineKind kind;
+  final String text;
+
+  const WesiAiInlineToken(this.kind, this.text);
+
+  @override
+  bool operator ==(Object other) =>
+      other is WesiAiInlineToken && other.kind == kind && other.text == text;
+
+  @override
+  int get hashCode => Object.hash(kind, text);
+
+  @override
+  String toString() => '${kind.name}:$text';
+}
+
+/// Разбирает строку на куски разметки.
+///
+/// Раньше здесь стояло одно регулярное выражение `\*\*[^*\n]+\*\*`. Оно
+/// не допускало внутри жирного ни звёздочки, ни переноса строки, поэтому
+/// `**Заголовок с *курсивом* внутри**` и жирный текст, разорванный переносом,
+/// оставались на экране вместе со звёздочками. Ровно это пользователь и видел.
+///
+/// Скобки считаются вручную: так парные маркеры находятся независимо от того,
+/// что лежит между ними, а непарные честно остаются обычным текстом.
+class WesiAiInlineParser {
+  static List<WesiAiInlineToken> tokens(String source) =>
+      _tokens(source, WesiAiInlineKind.plain);
+
+  /// [outer] — оформление, внутри которого идёт разбор. Вложенность разбирается
+  /// рекурсивно: `**жирный с *курсивом* внутри**` должен дать жирный текст и
+  /// жирный курсив, а не жирный текст с видимыми звёздочками.
+  static List<WesiAiInlineToken> _tokens(String source, WesiAiInlineKind outer) {
+    final result = <WesiAiInlineToken>[];
+    final plain = StringBuffer();
+
+    void flush() {
+      if (plain.isEmpty) return;
+      result.add(WesiAiInlineToken(outer, plain.toString()));
+      plain.clear();
+    }
+
+    var i = 0;
+    while (i < source.length) {
+      final char = source[i];
+
+      if (char == '`') {
+        final end = source.indexOf('`', i + 1);
+        final newline = source.indexOf('\n', i + 1);
+        if (end > i + 1 && (newline < 0 || newline > end)) {
+          flush();
+          result.add(WesiAiInlineToken(
+              WesiAiInlineKind.code, source.substring(i + 1, end)));
+          i = end + 1;
+          continue;
+        }
+        plain.write(char);
+        i++;
+        continue;
+      }
+
+      if (char == '*') {
+        final run = _runLength(source, i);
+        // Три звёздочки подряд — жирный курсив, две — жирный, одна — курсив.
+        final marker = run >= 3 ? '***' : (run == 2 ? '**' : '*');
+        final closing = _findClosing(source, i + marker.length, marker);
+        if (closing > 0) {
+          final inner = source.substring(i + marker.length, closing);
+          flush();
+          result.addAll(_tokens(inner, _combine(outer, _kindFor(marker))));
+          i = closing + marker.length;
+          continue;
+        }
+        // Непарная звёздочка — обычный символ, а не сломанная разметка.
+        plain.write(source.substring(i, i + run));
+        i += run;
+        continue;
+      }
+
+      plain.write(char);
+      i++;
+    }
+
+    flush();
+    return result;
+  }
+
+  static WesiAiInlineKind _kindFor(String marker) => switch (marker) {
+        '***' => WesiAiInlineKind.boldItalic,
+        '**' => WesiAiInlineKind.bold,
+        _ => WesiAiInlineKind.italic,
+      };
+
+  static WesiAiInlineKind _combine(WesiAiInlineKind outer, WesiAiInlineKind inner) {
+    if (outer == WesiAiInlineKind.plain) return inner;
+    if (outer == inner) return outer;
+    final bold = _isBold(outer) || _isBold(inner);
+    final italic = _isItalic(outer) || _isItalic(inner);
+    if (bold && italic) return WesiAiInlineKind.boldItalic;
+    if (bold) return WesiAiInlineKind.bold;
+    if (italic) return WesiAiInlineKind.italic;
+    return inner;
+  }
+
+  static bool _isBold(WesiAiInlineKind kind) =>
+      kind == WesiAiInlineKind.bold || kind == WesiAiInlineKind.boldItalic;
+
+  static bool _isItalic(WesiAiInlineKind kind) =>
+      kind == WesiAiInlineKind.italic || kind == WesiAiInlineKind.boldItalic;
+
+  static int _runLength(String source, int start) {
+    var end = start;
+    while (end < source.length && source[end] == '*') {
+      end++;
+    }
+    return end - start;
+  }
+
+  /// Ищет закрывающий маркер. Пустой промежуток и промежуток, начинающийся
+  /// или кончающийся пробелом, не считаются разметкой: так строка списка
+  /// `* пункт` не превращает половину абзаца в курсив.
+  static int _findClosing(String source, int from, String marker) {
+    if (from >= source.length) return -1;
+    if (_isSpace(source[from])) return -1;
+    var cursor = from;
+    while (cursor < source.length) {
+      final next = source.indexOf(marker, cursor);
+      if (next < 0 || next == from) return -1;
+      final before = source[next - 1];
+      final runAfter = _runLength(source, next);
+      if (!_isSpace(before) && runAfter == marker.length) return next;
+      cursor = next + (runAfter > 0 ? runAfter : marker.length);
+    }
+    return -1;
+  }
+
+  static bool _isSpace(String char) => char.trim().isEmpty;
+}
+
 class WesiAiFormattedText extends StatelessWidget {
   final String text;
 
@@ -497,48 +648,38 @@ class WesiAiFormattedText extends StatelessWidget {
   }
 
   List<InlineSpan> _inline(String source, TextStyle base) {
-    final spans = <InlineSpan>[];
-    final pattern = RegExp(
-      r'(\*\*[^*\n]+\*\*|`[^`\n]+`|(?<!\*)\*[^*\n]+\*(?!\*))',
-    );
-    var cursor = 0;
-    for (final match in pattern.allMatches(source)) {
-      if (match.start > cursor) {
-        spans.add(
-          TextSpan(text: source.substring(cursor, match.start), style: base),
-        );
-      }
-      final token = match.group(0) ?? '';
-      if (token.startsWith('**')) {
-        spans.add(
-          TextSpan(
-            text: token.substring(2, token.length - 2),
+    return WesiAiInlineParser.tokens(source).map((token) {
+      switch (token.kind) {
+        case WesiAiInlineKind.plain:
+          return TextSpan(text: token.text, style: base);
+        case WesiAiInlineKind.bold:
+          return TextSpan(
+            text: token.text,
             style: base.copyWith(fontWeight: FontWeight.w700),
-          ),
-        );
-      } else if (token.startsWith('`')) {
-        spans.add(
-          TextSpan(
-            text: token.substring(1, token.length - 1),
+          );
+        case WesiAiInlineKind.italic:
+          return TextSpan(
+            text: token.text,
+            style: base.copyWith(fontStyle: FontStyle.italic),
+          );
+        case WesiAiInlineKind.boldItalic:
+          return TextSpan(
+            text: token.text,
+            style: base.copyWith(
+              fontWeight: FontWeight.w700,
+              fontStyle: FontStyle.italic,
+            ),
+          );
+        case WesiAiInlineKind.code:
+          return TextSpan(
+            text: token.text,
             style: base.copyWith(
               fontFamily: 'monospace',
               backgroundColor: Colors.grey.withOpacity(0.12),
             ),
-          ),
-        );
-      } else {
-        spans.add(
-          TextSpan(
-            text: token.substring(1, token.length - 1),
-            style: base.copyWith(fontStyle: FontStyle.italic),
-          ),
-        );
+          );
       }
-      cursor = match.end;
-    }
-    if (cursor < source.length)
-      spans.add(TextSpan(text: source.substring(cursor), style: base));
-    return spans;
+    }).toList(growable: false);
   }
 }
 

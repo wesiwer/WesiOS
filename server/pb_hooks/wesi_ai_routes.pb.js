@@ -151,6 +151,7 @@ routerAdd("POST", "/api/wesi/ai/chat", (e) => {
       route: route,
       operation: persona === "lobby" ? "lobby" : "chat",
       input: {
+        persona: persona === "lobby" ? "" : persona,
         system: system,
         history: cleanHistory,
         message: message || "Проанализируй приложенные файлы.",

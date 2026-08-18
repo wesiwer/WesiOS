@@ -5,6 +5,7 @@ import {
   deleteStagedUploads,
 } from './attachment-preprocessor.mjs';
 import {callGoogleText, parseGoogleRoute, prepareWesiEnsemble} from './google.mjs';
+import {geminiContents, openAiHistory} from './speakers.mjs';
 
 const PROVIDER_ENV = '/etc/wesi-ai-providers.env';
 
@@ -36,12 +37,7 @@ function openAiMessages(input) {
   const messages = [];
   const system = String(input.system || '').trim();
   if (system) messages.push({role: 'system', content: system});
-  for (const item of Array.isArray(input.history) ? input.history : []) {
-    const text = String(item?.text || '').trim();
-    if (!text) continue;
-    const author = String(item?.author || '').toLowerCase();
-    messages.push({role: author === 'user' ? 'user' : 'assistant', content: text});
-  }
+  messages.push(...openAiHistory(input));
   messages.push({role: 'user', content: String(input.message || '')});
   return messages;
 }
@@ -146,11 +142,7 @@ async function streamOpenAiCompatible({url, model, apiKey, input, headers = {}, 
 
 async function streamGoogle(model, input, apiKey, signal, onDelta) {
   if (!apiKey) return {ok: false, status: 503, code: 'WAI_PROVIDER_NOT_CONFIGURED', emitted: false};
-  const history = [];
-  for (const item of Array.isArray(input.history) ? input.history : []) {
-    const text = String(item?.text || '');
-    if (text) history.push({role: String(item?.author || '') === 'user' ? 'user' : 'model', parts: [{text}]});
-  }
+  const history = geminiContents(input);
   const userParts = [];
   const message = String(input.message || '').trim();
   if (message) userParts.push({text: message});

@@ -380,9 +380,36 @@ function aggregateDiffStats(toolResults) {
   return {additions, deletions, files: [...files].slice(0, 80)};
 }
 
-function relayPayload(prepared, toolResults, phase, finalOnly = false) {
+// Публичные «мысли» и сам ответ — это два разных вызова модели. Раньше
+// второй ничего не знал о первом: пользователь видел план «напишу генератор
+// паролей», а получал сортировщик папок, потому что ответ сэмплировался
+// заново и с нуля.
+//
+// Показанная вслух мысль — это обещание. Ответ обязан его выполнять, иначе
+// режим «Думающий» показывает не ход работы, а посторонний текст.
+export function deliberationCommitment(deliberation) {
+  const notes = Array.isArray(deliberation?.notes) ? deliberation.notes : [];
+  if (!notes.length) return '';
+  const plan = notes
+    .slice(-10)
+    .map((note) => `- ${String(note?.title || '').trim()}: ${String(note?.text || '').trim()}`)
+    .filter((line) => line.length > 4)
+    .join('\n');
+  if (!plan) return '';
+  return [
+    '[WESI_AI_PUBLIC_DELIBERATION_COMMITMENT]',
+    'Эти шаги уже показаны пользователю как твой ход мысли:',
+    plan,
+    'Финальный ответ обязан соответствовать им: та же задача, то же решение, тот же подход.',
+    'Если по ходу выяснилось, что план был неверен, сначала прямо скажи, что меняешь и почему, и лишь затем давай другой ответ. Молча подменять тему нельзя.',
+  ].join('\n');
+}
+
+export function relayPayload(prepared, toolResults, phase, finalOnly = false, deliberation = null) {
   const requestId = `${prepared.requestId}_${phase}`;
   const systemParts = [...prepared.systemParts];
+  const commitment = deliberationCommitment(deliberation);
+  if (commitment) systemParts.push(commitment);
   if (toolResults.length) {
     systemParts.push(`[WESI_AI_VERIFIED_TOOL_RESULTS]\n${JSON.stringify(toolResults)}`);
   }
@@ -394,6 +421,9 @@ function relayPayload(prepared, toolResults, phase, finalOnly = false) {
     route: prepared.route,
     operation: 'chat.stream',
     input: {
+      // Relay должен знать говорящего: иначе реплика другой персоны приедет
+      // как собственная прошлая речь.
+      persona: String(prepared.persona || ''),
       system: systemParts.join('\n\n'),
       history: prepared.history,
       message: prepared.message,
@@ -402,7 +432,7 @@ function relayPayload(prepared, toolResults, phase, finalOnly = false) {
   };
 }
 
-async function streamOneTurn({prepared, toolResults, phase, finalOnly, relayUrl, relaySecret, signal, fetchImpl, res}) {
+async function streamOneTurn({prepared, toolResults, phase, finalOnly, relayUrl, relaySecret, signal, fetchImpl, res, deliberation = null}) {
   let full = '';
   let buffer = '';
   let emitted = false;
@@ -431,7 +461,7 @@ async function streamOneTurn({prepared, toolResults, phase, finalOnly, relayUrl,
   await relayStream({
     relayUrl,
     relaySecret,
-    payload: relayPayload(prepared, toolResults, phase, finalOnly),
+    payload: relayPayload(prepared, toolResults, phase, finalOnly, deliberation),
     signal,
     fetchImpl,
     onDelta,
@@ -841,6 +871,7 @@ export function createGateway(options = {}) {
         const streamed = await streamOneTurn({
           prepared: leadPrepared,
           toolResults,
+          deliberation: deliberationState,
           phase: String(turn + 1),
           finalOnly: false,
           relayUrl,
@@ -984,6 +1015,7 @@ export function createGateway(options = {}) {
       const finalStream = await streamOneTurn({
         prepared: leadPrepared,
         toolResults,
+        deliberation: deliberationState,
         phase: 'final',
         finalOnly: true,
         relayUrl,
