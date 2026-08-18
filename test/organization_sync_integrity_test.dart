@@ -74,13 +74,17 @@ void main() {
     expect(
       read,
       contains('const allowedOrg = (row) => ctx.allowedOrgIds['),
-      reason: 'CRM visibility must stay on the strict data scope.',
+      reason: 'Legacy CRM visibility must stay on the strict data scope.',
     );
   });
 
   test('stats visibility cannot widen task, CRM, or audit permissions', () {
     final read = File('server/pb_hooks/wesi_sync_read.pb.js').readAsStringSync();
     final write = File('server/pb_hooks/wesi_sync_write.pb.js').readAsStringSync();
+    final policy =
+        File('server/pb_hooks/wesi_sync_generic_policy.js').readAsStringSync();
+    final crm =
+        File('server/pb_hooks/wesi_sync_crm_runtime.js').readAsStringSync();
 
     expect(
       read,
@@ -97,8 +101,20 @@ void main() {
       isNot(contains('ctx.canAssignTasks || ctx.canSeeOthersStats')),
       reason: 'Viewing other employee indicators must not allow editing their tasks.',
     );
-    expect(read, contains('const manager = ctx.canManageTeam;'));
-    expect(write, contains('const manager = ctx.canManageTeam;'));
+    expect(
+      policy,
+      contains('ctx.isOwner || ctx.canManageTeam || ctx.canAssignTasks'),
+      reason: 'Task write scope may widen only for actual task/team managers.',
+    );
+    expect(policy, isNot(contains('canSeeOthersStats')),
+        reason: 'Stats permission must never participate in transaction-time writes.');
+    expect(
+      crm,
+      contains('return ctx.isOwner || ctx.canManageTeam === true;'),
+      reason: 'Dedicated CRM scope widens only for explicit team management.',
+    );
+    expect(crm, isNot(contains('ctx.canSeeOthersStats === true')),
+        reason: 'Stats permission must not expose or make the whole CRM writable.');
     expect(
       read,
       contains('collection === "critical_audit" && !ctx.isOwner && !ctx.canManageTeam'),
