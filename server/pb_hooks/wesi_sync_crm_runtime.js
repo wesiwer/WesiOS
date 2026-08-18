@@ -26,8 +26,11 @@ function hasCrm(ctx) {
   return ctx.isOwner || ctx.modules.indexOf("crm") >= 0;
 }
 
+// Viewing other employees' KPI/statistics is intentionally NOT a CRM
+// management permission. Only the company owner or an employee with explicit
+// team-management authority may widen row visibility/write scope.
 function manager(ctx) {
-  return ctx.isOwner || ctx.canManageTeam === true || ctx.canSeeOthersStats === true;
+  return ctx.isOwner || ctx.canManageTeam === true;
 }
 
 function orgIdOf(payload) {
@@ -218,128 +221,93 @@ function authorizeClient(txApp, existing, input, ctx) {
     if (existing && !clientWritable(ctx, existing)) {
       forbidden("CRM-клиент принадлежит другому сотруднику");
     }
-    if (!input.deleted) {
-      const requestedOwner = target.ownerEmployeeId == null
-        ? ""
-        : String(target.ownerEmployeeId || "");
-      if (requestedOwner && requestedOwner !== ctx.employeeId) {
-        forbidden("Нельзя назначить CRM-клиента другому сотруднику");
-      }
-      input.payload = Object.assign({}, input.payload, {
-        organizationId: newOrg,
-        ownerEmployeeId: ctx.employeeId,
-      });
+    if (!input.deleted && String(target.ownerEmployeeId || "") !== ctx.employeeId) {
+      forbidden("Нельзя назначить CRM-клиента другому сотруднику");
     }
   }
 }
 
 function authorizeDeal(txApp, existing, input, ctx) {
   if (input.deleted && !existing) bad("Нельзя удалить отсутствующую CRM-сделку");
+  const crm = state(txApp, ctx);
   const before = payloadOf(existing);
   const target = input.deleted ? before : input.payload;
   const newOrg = orgIdOf(target);
   requireOrg(ctx, newOrg);
   if (existing) requireOrg(ctx, orgIdOf(before));
 
-  const crm = state(txApp, ctx);
   const client = parentClient(crm, target.clientId, input.deleted);
-  const cp = payloadOf(client);
-  if (orgIdOf(cp) !== newOrg) {
-    bad("CRM-сделка и клиент должны принадлежать одной организации");
-  }
+  if (orgIdOf(payloadOf(client)) !== newOrg) bad("CRM-клиент и сделка относятся к разным организациям");
 
   if (!manager(ctx)) {
     if (existing && !dealWritable(ctx, crm, existing, input.deleted)) {
       forbidden("CRM-сделка принадлежит другому сотруднику");
     }
-    if (!existing && String(cp.ownerEmployeeId || "") !== ctx.employeeId) {
-      forbidden("Нельзя создать сделку для чужого CRM-клиента");
-    }
-    if (!input.deleted) {
-      const requested = target.responsibleEmployeeId == null
-        ? ""
-        : String(target.responsibleEmployeeId || "");
-      if (requested && requested !== ctx.employeeId) {
-        forbidden("Нельзя назначить CRM-сделку другому сотруднику");
-      }
-      input.payload = Object.assign({}, input.payload, {
-        organizationId: newOrg,
-        responsibleEmployeeId: ctx.employeeId,
-      });
+    if (!input.deleted && String(target.responsibleEmployeeId || "") !== ctx.employeeId) {
+      forbidden("Нельзя назначить CRM-сделку другому сотруднику");
     }
   }
-}
-
-function interactionParentWritable(ctx, crm, payload, allowDeleted) {
-  const client = parentClient(crm, payload.clientId, allowDeleted);
-  const cp = payloadOf(client);
-  requireOrg(ctx, orgIdOf(cp));
-  if (manager(ctx)) return true;
-  if (String(cp.ownerEmployeeId || "") === ctx.employeeId) return true;
-
-  const dealId = payload.dealId == null ? "" : String(payload.dealId || "");
-  if (!dealId) return false;
-  const deal = parentDeal(crm, dealId, allowDeleted);
-  const dp = payloadOf(deal);
-  if (String(dp.clientId || "") !== String(payload.clientId || "") ||
-      orgIdOf(dp) !== orgIdOf(cp)) {
-    bad("CRM-касание связано с чужой сделкой или организацией");
-  }
-  return dealWritable(ctx, crm, deal, allowDeleted);
 }
 
 function authorizeInteraction(txApp, existing, input, ctx) {
-  if (input.deleted && !existing) bad("Нельзя удалить отсутствующее CRM-касание");
+  if (input.deleted && !existing) bad("Нельзя удалить отсутствующее CRM-взаимодействие");
   const crm = state(txApp, ctx);
   const before = payloadOf(existing);
   const target = input.deleted ? before : input.payload;
+  const client = parentClient(crm, target.clientId, input.deleted);
+  const clientPayload = payloadOf(client);
+  requireOrg(ctx, orgIdOf(clientPayload));
+  if (!clientVisible(ctx, crm, client, input.deleted)) {
+    forbidden("Нет доступа к CRM-клиенту этого взаимодействия");
+  }
 
-  if (existing && !interactionParentWritable(ctx, crm, before, input.deleted)) {
-    forbidden("Старый родитель CRM-касания больше не доступен сотруднику");
+  const dealId = target.dealId == null ? "" : String(target.dealId || "");
+  if (dealId) {
+    const deal = parentDeal(crm, dealId, input.deleted);
+    const dp = payloadOf(deal);
+    if (String(dp.clientId || "") !== String(target.clientId || "")) {
+      bad("CRM-сделка принадлежит другому клиенту");
+    }
+    if (!dealVisible(ctx, crm, deal, input.deleted)) {
+      forbidden("Нет доступа к CRM-сделке этого взаимодействия");
+    }
   }
-  if (!interactionParentWritable(ctx, crm, target, input.deleted)) {
-    forbidden("CRM-касание находится вне области сотрудника");
+
+  if (existing && !interactionVisible(ctx, crm, existing)) {
+    forbidden("Нет доступа к исходному CRM-взаимодействию");
   }
+}
+
+function authorize(txApp, existing, input, requestCtx) {
+  // Refresh the employee/module/org/grant snapshot inside the same writer
+  // transaction. A revocation that commits while the POST is waiting for the
+  // writer lock must take effect before this save is authorized.
+  const ctx = require(`${__hooks}/wesi_sync_authz.js`).refresh(txApp, requestCtx);
+  if (!hasCrm(ctx)) forbidden("CRM не открыт этому сотруднику");
+
+  if (input.coll === "crm_clients") return authorizeClient(txApp, existing, input, ctx);
+  if (input.coll === "crm_deals") return authorizeDeal(txApp, existing, input, ctx);
+  if (input.coll === "crm_interactions") return authorizeInteraction(txApp, existing, input, ctx);
+  forbidden("Неизвестная CRM-коллекция");
 }
 
 function write(e, collection) {
   const requestCtx = e.get("wesiSyncContext");
   if (!requestCtx) throw new UnauthorizedError("Нет контекста синхронизации");
-  if (!hasCrm(requestCtx)) forbidden("Раздел CRM не открыт этому сотруднику");
+  if (!hasCrm(requestCtx)) forbidden("CRM не открыт этому сотруднику");
 
   const body = e.requestInfo().body || {};
   const rid = String(body.rid || "").trim();
-  if (!rid || rid.length > 180) bad("Некорректный id CRM-записи");
-  const incoming = body.payload && typeof body.payload === "object" &&
-      !Array.isArray(body.payload)
-    ? body.payload
-    : {};
-  if (incoming.id != null && String(incoming.id) !== rid) {
-    bad("id CRM-записи не совпадает с rid");
-  }
-  const deleted = body.deleted === true;
-  const parsedStamp = Date.parse(String(body.stamp || ""));
-  const now = Date.now();
-  const stamp = Number.isFinite(parsedStamp) && parsedStamp <= now + 5 * 60 * 1000
-    ? new Date(parsedStamp).toISOString()
-    : new Date(now).toISOString();
+  if (!rid || rid.length > 180) bad("Некорректный id синхронизации");
+  const incoming = body.payload && typeof body.payload === "object" && !Array.isArray(body.payload)
+    ? body.payload : {};
+  if (incoming.id != null && String(incoming.id) !== rid) bad("id записи не совпадает с rid");
 
-  const fresh = (txApp) => {
-    const ctx = require(`${__hooks}/wesi_sync_authz.js`).refresh(txApp, requestCtx);
-    if (!hasCrm(ctx)) forbidden("Раздел CRM больше не открыт этому сотруднику");
-    return ctx;
-  };
-  const authorize = collection === "crm_clients"
-    ? function(txApp, existing, input) {
-        authorizeClient(txApp, existing, input, fresh(txApp));
-      }
-    : collection === "crm_deals"
-      ? function(txApp, existing, input) {
-          authorizeDeal(txApp, existing, input, fresh(txApp));
-        }
-      : function(txApp, existing, input) {
-          authorizeInteraction(txApp, existing, input, fresh(txApp));
-        };
+  const suppliedStamp = Date.parse(String(body.stamp || ""));
+  const now = Date.now();
+  const stamp = Number.isFinite(suppliedStamp) && suppliedStamp <= now + 5 * 60 * 1000
+    ? new Date(suppliedStamp).toISOString()
+    : new Date(now).toISOString();
 
   const committed = require(`${__hooks}/wesi_sync_atomic.js`).commit(e.app, {
     owner: requestCtx.ownerId,
@@ -348,8 +316,10 @@ function write(e, collection) {
     rid: rid,
     payload: incoming,
     stamp: stamp,
-    deleted: deleted,
-    authorize: authorize,
+    deleted: body.deleted === true,
+    authorize: function(txApp, existing, input) {
+      authorize(txApp, existing, input, requestCtx);
+    },
   });
 
   return e.json(200, {
@@ -362,14 +332,10 @@ function write(e, collection) {
 }
 
 module.exports = {
-  read: read,
-  write: write,
-  visible: visible,
-  state: state,
-  clientVisible: clientVisible,
-  dealVisible: dealVisible,
-  interactionVisible: interactionVisible,
-  authorizeClient: authorizeClient,
-  authorizeDeal: authorizeDeal,
-  authorizeInteraction: authorizeInteraction,
+  read,
+  write,
+  authorize,
+  clientVisible,
+  dealVisible,
+  interactionVisible,
 };
