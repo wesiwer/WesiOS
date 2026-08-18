@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -80,6 +81,59 @@ class _StampTransport implements SyncTransport {
   void signOut() {}
 }
 
+class _DelayedFirstPushTransport implements SyncTransport {
+  final DateTime firstAcceptedStamp;
+  final Map<String, SyncRecord> server = {};
+  final Completer<void> firstPushStarted = Completer<void>();
+  final Completer<void> releaseFirstPush = Completer<void>();
+  int pushCount = 0;
+
+  _DelayedFirstPushTransport(this.firstAcceptedStamp);
+
+  @override
+  bool get isSignedIn => true;
+
+  @override
+  Future<SyncResult<Map<String, SyncRecord>>> fetch(String collection) async =>
+      SyncResult.ok(Map<String, SyncRecord>.from(server));
+
+  @override
+  Future<SyncPushResult> push(
+    String collection,
+    List<SyncRecord> records,
+  ) async {
+    pushCount++;
+    final thisPush = pushCount;
+    if (thisPush == 1) {
+      if (!firstPushStarted.isCompleted) firstPushStarted.complete();
+      await releaseFirstPush.future;
+    }
+
+    final stamps = <String, DateTime>{};
+    for (final record in records) {
+      final stamp = thisPush == 1 ? firstAcceptedStamp : record.updatedAt;
+      server[record.id] = SyncRecord(
+        id: record.id,
+        fields: Map<String, dynamic>.from(record.fields),
+        updatedAt: stamp,
+        deleted: record.deleted,
+      );
+      stamps[record.id] = stamp;
+    }
+    return SyncPushResult(
+      deliveredIds: records.map((r) => r.id).toList(),
+      acceptedStamps: stamps,
+    );
+  }
+
+  @override
+  Future<SyncResult<String>> signIn(String login, String password) async =>
+      const SyncResult.ok('test');
+
+  @override
+  void signOut() {}
+}
+
 void main() {
   late Directory dir;
   late List<SyncCollection<dynamic>> originalCollections;
@@ -104,7 +158,6 @@ void main() {
     await SyncJournal.open();
     await Hive.box<dynamic>(SyncJournal.boxName).clear();
 
-    // Established account: this is not the special first-exchange path.
     await SyncEndpoint.markRun(base.subtract(const Duration(days: 1)));
     await SyncEngine.prepare(now: base);
     await Hive.box<String>(_StampCollection.testBox).put('row', 'row:local');
@@ -169,5 +222,57 @@ void main() {
       reason:
           'unknown accepted server time must force a safe authoritative pull, not preserve a future local stamp',
     );
+  });
+
+  test('new local edit made while older push is in flight keeps its newer stamp',
+      () async {
+    final box = Hive.box<String>(_StampCollection.testBox);
+    final firstStamp = base.add(const Duration(minutes: 1));
+    await SyncJournal.record(collection.name, 'row', SyncStamp(firstStamp));
+
+    final transport = _DelayedFirstPushTransport(
+      base.add(const Duration(minutes: 1, seconds: 1)),
+    );
+    final firstRun = SyncEngine.run(
+      transport: transport,
+      now: base.add(const Duration(minutes: 2)),
+      only: {collection.name},
+    );
+
+    await transport.firstPushStarted.future;
+
+    // The user edits the same record while HTTP still carries the older
+    // `row:local` snapshot.
+    await box.put('row', 'row:newer-user-edit');
+    await Future<void>.delayed(Duration.zero);
+    final newerStamp = base.add(const Duration(minutes: 3));
+    await SyncJournal.record(collection.name, 'row', SyncStamp(newerStamp));
+
+    transport.releaseFirstPush.complete();
+    final firstReport = await firstRun;
+    expect(firstReport.ok, isTrue, reason: firstReport.describe());
+
+    expect(box.get('row'), 'row:newer-user-edit');
+    expect(
+      SyncJournal.stampOf(collection.name, 'row')?.updatedAt,
+      newerStamp,
+      reason:
+          'response for an older plan must never overwrite a newer local journal stamp',
+    );
+    expect(
+      transport.server['row']?.fields['value'],
+      'row:local',
+      reason: 'the first HTTP request intentionally carried the older snapshot',
+    );
+
+    // Because the newer stamp survived, the very next pass can upload the
+    // newer payload instead of losing it to an equal/older remote timestamp.
+    final secondReport = await SyncEngine.run(
+      transport: transport,
+      now: base.add(const Duration(minutes: 4)),
+      only: {collection.name},
+    );
+    expect(secondReport.ok, isTrue, reason: secondReport.describe());
+    expect(transport.server['row']?.fields['value'], 'row:newer-user-edit');
   });
 }
