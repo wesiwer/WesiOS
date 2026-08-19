@@ -1,0 +1,85 @@
+name: Hotfix owner OTP finalization once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/hotfix-owner-otp-finalization-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  hotfix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Patch start-v2 OTP finalization
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('server/pb_hooks/wesi_auth_bootstrap.pb.js')
+          s=p.read_text(encoding='utf-8')
+          old='  sendCode(email, displayName, purpose, challengeId, challenge, payload);'
+          if s.count(old) < 1:
+              raise SystemExit('start-v2 sendCode call not found')
+          new=r'''  // Finalize the OTP inline. Older production attempts could leave a
+  // challenge persisted with createdAt set but sentAt/hash/delivery empty if
+  // execution failed at the helper boundary. Build the complete OTP state
+  // before delivery and make every delivery failure explicitly terminal.
+  {
+    const code = $security.randomStringWithAlphabet(6, "0123456789");
+    const salt = $security.randomStringWithAlphabet(32, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789");
+    const sentAt = new Date();
+    payload.kind = "otp";
+    payload.email = email;
+    payload.hash = $security.sha256(challengeId + ":" + salt + ":" + code);
+    payload.salt = salt;
+    payload.attempts = 0;
+    payload.sentAt = sentAt.toISOString();
+    payload.expiresAt = new Date(sentAt.getTime() + 10 * 60 * 1000).toISOString();
+    challenge.set("payload", payload);
+    challenge.set("stamp", payload.sentAt);
+    e.app.save(challenge);
+
+    const subject = purpose === "portal" ? "Код входа на портал WesiOS" : "Код входа в WesiOS";
+    const mail = wesiBuildOtpMail(code, purpose);
+    try {
+      payload.delivery = wesiDeliverMail(e.app, email, displayName, subject, mail.html, mail.text);
+      challenge.set("payload", payload);
+      challenge.set("stamp", new Date().toISOString());
+      e.app.save(challenge);
+    } catch (error) {
+      challenge.set("deleted", true);
+      challenge.set("stamp", new Date().toISOString());
+      e.app.save(challenge);
+      console.log("WesiOS start-v2 OTP delivery failed:", error);
+      throw new InternalServerError("Не удалось отправить код на почту. Повторите позже");
+    }
+  }'''
+          s=s.replace(old,new,1)
+          marker='"version": "2026-08-09.owner-email-v11"'
+          if marker not in s:
+              raise SystemExit('owner auth version v11 marker not found')
+          s=s.replace(marker,'"version": "2026-08-09.owner-email-v12"',1)
+          p.write_text(s,encoding='utf-8')
+          PY
+          node --check server/pb_hooks/wesi_auth_bootstrap.pb.js
+          grep -q '2026-08-09.owner-email-v12' server/pb_hooks/wesi_auth_bootstrap.pb.js
+          grep -q 'WesiOS start-v2 OTP delivery failed' server/pb_hooks/wesi_auth_bootstrap.pb.js
+          grep -q 'payload.sentAt = sentAt.toISOString()' server/pb_hooks/wesi_auth_bootstrap.pb.js
+      - name: Commit hotfix to main
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'WesiOS Auth Hotfix'
+          git config user.email 'actions@users.noreply.github.com'
+          git add server/pb_hooks/wesi_auth_bootstrap.pb.js
+          git commit -m 'fix(auth): make owner OTP finalization atomic'
+          git push origin HEAD:main
