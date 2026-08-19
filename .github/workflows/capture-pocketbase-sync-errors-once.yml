@@ -1,0 +1,77 @@
+name: Capture PocketBase sync errors once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/capture-pocketbase-sync-errors-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    environment:
+      name: employee-portal
+      url: https://api.wesi-inc.ru
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Prepare SSH
+        env:
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          KEY: ${{ secrets.WESI_SERVER_SSH_KEY }}
+          KNOWN: ${{ secrets.WESI_SERVER_KNOWN_HOSTS }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_deploy && chmod 600 ~/.ssh/id_deploy
+          if [ -n "${KNOWN:-}" ]; then
+            printf '%s\n' "$KNOWN" > ~/.ssh/known_hosts
+          else
+            ssh-keyscan -H "$HOST" > ~/.ssh/known_hosts 2>/dev/null
+          fi
+          chmod 600 ~/.ssh/known_hosts
+      - name: Capture recent PocketBase service errors
+        env:
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          USER: ${{ secrets.WESI_SERVER_USER }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          SSH="ssh -i $HOME/.ssh/id_deploy -o BatchMode=yes"
+          $SSH "$USER@$HOST" "bash -s" > /tmp/pocketbase.log 2>&1 <<'REMOTE'
+          set +e
+          echo '=== journalctl pocketbase: last 25 minutes ==='
+          journalctl -u pocketbase --since '25 minutes ago' --no-pager -o short-iso 2>&1
+          if [ ${PIPESTATUS[0]} -ne 0 ] && command -v sudo >/dev/null 2>&1; then
+            echo '=== sudo journalctl fallback ==='
+            sudo -n journalctl -u pocketbase --since '25 minutes ago' --no-pager -o short-iso 2>&1
+          fi
+          echo '=== process ==='
+          ps aux | grep '[p]ocketbase' 2>&1
+          REMOTE
+          python3 - <<'PY'
+          import pathlib,re
+          p=pathlib.Path('/tmp/pocketbase.log')
+          s=p.read_text(encoding='utf-8',errors='replace') if p.exists() else ''
+          s=re.sub(r'\b(?:\d{1,3}\.){3}\d{1,3}\b','<redacted-ip>',s)
+          s=re.sub(r'(?i)(authorization|x-wesios-session|token|password)([=: ]+)[^\s\"\']+',r'\1\2<redacted>',s)
+          s=re.sub(r'\b[A-Za-z0-9_\-+/=]{48,}\b','<redacted-long-value>',s)
+          pathlib.Path('.github/latest-pocketbase-sync-errors.log').write_text(s[-60000:],encoding='utf-8')
+          PY
+      - name: Publish diagnostics
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'WesiOS Sync Diagnostics'
+          git config user.email 'actions@users.noreply.github.com'
+          git switch -C diag/pocketbase-sync-errors
+          git add .github/latest-pocketbase-sync-errors.log
+          git commit -m 'diag(sync): capture recent PocketBase exceptions' || true
+          git push --force origin HEAD:diag/pocketbase-sync-errors
