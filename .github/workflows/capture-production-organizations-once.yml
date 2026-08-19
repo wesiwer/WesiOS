@@ -1,4 +1,5 @@
 name: Capture production organizations once
+# trigger: inspect sync payloads after organization apply failure
 
 on:
   push:
@@ -47,8 +48,7 @@ jobs:
           con=sqlite3.connect('file:'+db+'?mode=ro',uri=True)
           con.row_factory=sqlite3.Row
           tables=[r['name'] for r in con.execute("select name from sqlite_master where type='table'")]
-          target='wesios_records'
-          if target not in tables:
+          if 'wesios_records' not in tables:
               print(json.dumps({'error':'wesios_records table missing','tables':tables},ensure_ascii=False)); raise SystemExit
           cols=[r['name'] for r in con.execute('pragma table_info(wesios_records)')]
           rows=[]
