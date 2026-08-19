@@ -1,5 +1,5 @@
 name: Deploy file sync scope fix once
-# trigger: explicit retry 2026-08-19
+# trigger: verify executable-loop fix 2026-08-19
 
 on:
   push:
@@ -27,7 +27,10 @@ jobs:
         run: |
           set -euo pipefail
           node --check server/pb_hooks/wesi_sync_files.pb.js
-          ! grep -Fq 'for (const coll of' server/pb_hooks/wesi_sync_files.pb.js
+          if grep -Eq '^[[:space:]]*for[[:space:]]*\(const[[:space:]]+coll[[:space:]]+of' server/pb_hooks/wesi_sync_files.pb.js; then
+            echo 'Executable coll loop is forbidden in PocketBase route hooks' >&2
+            exit 20
+          fi
           for coll in file_grants file_requests file_handovers; do
             grep -Fq "routerAdd(\"GET\", \"/api/wesi/sync/$coll\"" server/pb_hooks/wesi_sync_files.pb.js
             grep -Fq "routerAdd(\"POST\", \"/api/wesi/sync/$coll\"" server/pb_hooks/wesi_sync_files.pb.js
@@ -68,22 +71,27 @@ jobs:
           grep -Fq 'runtime.read(e, "file_grants")' "$DST"
           grep -Fq 'runtime.read(e, "file_requests")' "$DST"
           grep -Fq 'runtime.read(e, "file_handovers")' "$DST"
-          if grep -Fq 'for (const coll of' "$DST"; then echo 'LEGACY_LOOP_STILL_PRESENT' >&2; exit 32; fi
+          if grep -Eq '^[[:space:]]*for[[:space:]]*\(const[[:space:]]+coll[[:space:]]+of' "$DST"; then
+            echo 'LEGACY_EXECUTABLE_LOOP_STILL_PRESENT' >&2
+            exit 32
+          fi
           echo 'LIVE_FILE_MATCH_MAIN=true'
-          echo 'LEGACY_LOOP_PRESENT=false'
+          echo 'LEGACY_EXECUTABLE_LOOP_PRESENT=false'
           rm -rf "$REMOTE"
           REMOTE_SCRIPT
       - name: Verify protected routes are loaded
         shell: bash
         run: |
           set -euo pipefail
+          : > /tmp/file-sync-routes.txt
           for coll in file_grants file_requests file_handovers; do
             code=$(curl -sS -o /tmp/response.txt -w '%{http_code}' --max-time 20 "https://api.wesi-inc.ru/api/wesi/sync/$coll" || true)
             case "$code" in
-              401|403) echo "$coll=$code" ;;
+              401|403) echo "$coll=$code" | tee -a /tmp/file-sync-routes.txt ;;
               *) echo "Unexpected $coll HTTP $code"; cat /tmp/response.txt; exit 40 ;;
             esac
           done
+          echo 'ROUTES_PROTECTED_AND_LOADED=true' >> /tmp/file-sync-routes.txt
       - name: Publish deployment report
         if: always()
         shell: bash
@@ -92,11 +100,13 @@ jobs:
           python3 - <<'PY' > .github/file-sync-scope-deploy.json
           import json,pathlib,datetime
           text=pathlib.Path('/tmp/deploy-file-sync.txt').read_text(encoding='utf-8',errors='replace') if pathlib.Path('/tmp/deploy-file-sync.txt').exists() else ''
+          routes=pathlib.Path('/tmp/file-sync-routes.txt').read_text(encoding='utf-8',errors='replace') if pathlib.Path('/tmp/file-sync-routes.txt').exists() else ''
           print(json.dumps({
             'checkedAt': datetime.datetime.now(datetime.timezone.utc).isoformat(),
             'headSha': '${{ github.sha }}',
             'liveFileMatchMain': 'LIVE_FILE_MATCH_MAIN=true' in text,
-            'legacyLoopPresent': not ('LEGACY_LOOP_PRESENT=false' in text),
+            'legacyExecutableLoopPresent': not ('LEGACY_EXECUTABLE_LOOP_PRESENT=false' in text),
+            'routesProtectedAndLoaded': 'ROUTES_PROTECTED_AND_LOADED=true' in routes,
           },ensure_ascii=False,indent=2))
           PY
           git config user.name 'WesiOS Sync Hotfix'
