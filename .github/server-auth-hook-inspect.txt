@@ -1,0 +1,16 @@
+=== MAIN HOOK ===
+2026-08-09.owner-email-v12
+INLINE_OTP_PRESENT
+SENT_AT_PATCH_PRESENT
+=== DUPLICATE ROUTES ===
+auth-version=1
+pb_hooks/wesi_auth_bootstrap.pb.js
+start-v2=1
+pb_hooks/wesi_auth_bootstrap.pb.js
+=== LIVE LOCAL VERSION ===
+{"jsonReadable":true,"version":"2026-08-09.owner-email-v12"}
+
+=== PROCESS ===
+ 472099 root     Sun Aug 16 09:02:11 2026 /opt/pocketbase/pocketbase serve --http=<redacted-ip>:8090
+=== RESTART CAPABILITY ===
+SUDO_SYSTEMCTL_UNAVAILABLE
