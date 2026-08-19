@@ -133,19 +133,13 @@ function touch(app, owner) {
 }
 
 function latestBusinessRevision(app, owner) {
-  if (!owner) return "empty";
-  const rows = dataAccess.records(
-    app,
-    "wesios_records",
-    "owner={:owner} && coll!={:marker}",
-    "-updated,-id",
-    1,
-    0,
-    { owner: owner, marker: markerCollection },
-  );
-  if (!rows.length) return "empty";
-  const first = rows[0];
-  return String(first.id || "") + "|" + first.getString("updated");
+  // `wesios_records` uses its explicit sync clock (`stamp`) as the portable
+  // authoritative timestamp. Do not sort/read PocketBase's optional system
+  // `updated` field here: installations with that field disabled reject the
+  // query before revision-v2 can return, producing a generic HTTP 400.
+  const first = latestBusinessByStamp(app, owner);
+  if (!first) return "empty";
+  return String(first.id || "") + "|" + first.getString("stamp");
 }
 
 function readOwner(app, owner) {
