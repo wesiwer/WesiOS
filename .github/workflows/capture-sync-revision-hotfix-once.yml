@@ -1,0 +1,56 @@
+name: Capture sync revision hotfix once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/capture-sync-revision-hotfix-once.yml'
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Capture latest revision hotfix run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          RUN_ID=0
+          for attempt in $(seq 1 90); do
+            RUN_ID=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow deploy-sync-revision-fix-once.yml --limit 1 --json databaseId --jq '.[0].databaseId // 0')
+            [ "$RUN_ID" != 0 ] && break
+            sleep 2
+          done
+          [ "$RUN_ID" != 0 ] || exit 2
+          for attempt in $(seq 1 120); do
+            STATUS=$(gh run view "$RUN_ID" --repo "$GITHUB_REPOSITORY" --json status --jq .status)
+            [ "$STATUS" = completed ] && break
+            sleep 2
+          done
+          gh run view "$RUN_ID" --repo "$GITHUB_REPOSITORY" --json databaseId,status,conclusion,headSha,event,jobs > /tmp/run.json
+          gh run view "$RUN_ID" --repo "$GITHUB_REPOSITORY" --log-failed > /tmp/failed.log 2>&1 || true
+          python3 - <<'PY'
+          import json,re,pathlib
+          run=json.load(open('/tmp/run.json',encoding='utf-8'))
+          log=pathlib.Path('/tmp/failed.log').read_text(encoding='utf-8',errors='replace')
+          log=re.sub(r'\b(?:\d{1,3}\.){3}\d{1,3}\b','<redacted-ip>',log)
+          log=re.sub(r'\b[A-Za-z0-9_\-+/=]{48,}\b','<redacted-long-value>',log)
+          pathlib.Path('.github/sync-revision-hotfix-run.json').write_text(json.dumps(run,ensure_ascii=False,indent=2),encoding='utf-8')
+          pathlib.Path('.github/sync-revision-hotfix-failed.log').write_text(log[-50000:],encoding='utf-8')
+          PY
+          git config user.name 'WesiOS Sync Diagnostics'
+          git config user.email 'actions@users.noreply.github.com'
+          git switch -C diag/sync-revision-hotfix-run
+          git add .github/sync-revision-hotfix-run.json .github/sync-revision-hotfix-failed.log
+          git commit -m "diag(sync): capture revision hotfix $RUN_ID" || true
+          git push --force origin HEAD:diag/sync-revision-hotfix-run
