@@ -124,33 +124,29 @@ Uint8List? _decodePhoto(String raw) {
   }
 }
 
-bool _organizationSnapshotValid(Iterable<OrganizationModel> values) {
-  final nodes = values.toList();
-  if (nodes.isEmpty) return false;
-  final byId = {for (final node in nodes) node.id: node};
-  if (byId.length != nodes.length) return false;
-  final roots = nodes.where((o) => o.isRoot).toList();
-  if (roots.length != 1) return false;
-  if (roots.single.parentId != null) return false;
-  if (roots.single.id != OrganizationModel.rootId) return false;
-  if (roots.single.archived) return false;
-  for (final node in nodes) {
-    if (!node.isRoot) {
-      final parentId = node.parentId;
-      final parentNode = parentId == null ? null : byId[parentId];
-      if (parentNode == null) return false;
-      if (!node.archived && parentNode.archived) return false;
-    }
-    final seen = <String>{node.id};
-    var parent = node.parentId;
-    while (parent != null) {
-      if (!seen.add(parent)) return false;
-      final parentNode = byId[parent];
-      if (parentNode == null) return false;
-      parent = parentNode.parentId;
-    }
+bool _organizationConnectedToRoot(
+  Map<String, OrganizationModel> byId,
+  OrganizationModel node,
+) {
+  if (node.id == OrganizationModel.rootId) {
+    return node.isRoot && node.parentId == null && !node.archived;
   }
-  return true;
+  if (node.isRoot || node.parentId == null || node.parentId!.isEmpty) {
+    return false;
+  }
+  final seen = <String>{node.id};
+  var current = node;
+  while (current.id != OrganizationModel.rootId) {
+    final parentId = current.parentId;
+    if (parentId == null || parentId.isEmpty || !seen.add(parentId)) {
+      return false;
+    }
+    final parent = byId[parentId];
+    if (parent == null) return false;
+    if (!current.archived && parent.archived) return false;
+    current = parent;
+  }
+  return current.isRoot && current.parentId == null && !current.archived;
 }
 
 bool _employeeExists(String id) {
@@ -213,10 +209,24 @@ class OrganizationsSync extends SyncCollection<OrganizationModel> {
       createdBy: _str(fields['createdBy'], 'sync'),
       code: _strOrNull(fields['code']),
       description: _strOrNull(fields['description']),
-      colorValue:
-          fields['colorValue'] == null ? null : _int(fields['colorValue']),
+      colorValue: fields['colorValue'] == null
+          ? null
+          : _int(fields['colorValue']),
       sortOrder: _int(fields['sortOrder']),
     );
+  }
+
+  @override
+  Map<String, OrganizationModel> local() {
+    final b = box();
+    if (b == null) return const {};
+    final byId = <String, OrganizationModel>{
+      for (final row in b.values) row.id: row,
+    };
+    return <String, OrganizationModel>{
+      for (final row in byId.values)
+        if (_organizationConnectedToRoot(byId, row)) row.id: row,
+    };
   }
 
   @override
@@ -224,16 +234,18 @@ class OrganizationsSync extends SyncCollection<OrganizationModel> {
     final b = box();
     final incoming = decode(fields);
     if (b == null || incoming == null) return false;
-    final next = <OrganizationModel>[
+    final byId = <String, OrganizationModel>{
       for (final row in b.values)
-        if (row.id != incoming.id) row,
-      incoming,
-    ];
-    if (next.length == 1 && incoming.isRoot) {
-      await b.put(incoming.id, incoming);
-      return true;
+        if (row.id != incoming.id) row.id: row,
+      incoming.id: incoming,
+    };
+    if (!_organizationConnectedToRoot(byId, incoming)) return false;
+    if (incoming.archived &&
+        byId.values.any(
+          (row) => row.parentId == incoming.id && !row.archived,
+        )) {
+      return false;
     }
-    if (!_organizationSnapshotValid(next)) return false;
     await b.put(incoming.id, incoming);
     return true;
   }
@@ -257,28 +269,28 @@ class EmployeesSync extends SyncCollection<EmployeeModel> {
 
   @override
   Map<String, dynamic> encode(EmployeeModel value) => {
-        'id': value.id,
-        'login': value.login,
-        'fullName': value.fullName,
-        'nickname': value.nickname,
-        'position': value.position,
-        'phone': value.phone,
-        'email': value.email,
-        'socials': value.socials,
-        'notes': value.notes,
-        'permissions': value.permissions.toJson(),
-        // Хэш и соль пароля не уходят в синхронизацию.
-        //
-        // Сервер их всё равно вычищает из ответа, но полагаться только на
-        // это нельзя: тогда защита держится на одной стороне, и откат
-        // сервера к прежней версии молча вернул бы утечку. Проверять пароль
-        // локально приложение давно перестало — вход идёт через сервер.
-        'avatarIndex': value.avatarIndex,
-        'createdAt': value.createdAt.toIso8601String(),
-        'isOwner': value.isOwner,
-        'demoStats': value.demoStats,
-        'photo': value.photo == null ? null : base64Encode(value.photo!),
-      };
+    'id': value.id,
+    'login': value.login,
+    'fullName': value.fullName,
+    'nickname': value.nickname,
+    'position': value.position,
+    'phone': value.phone,
+    'email': value.email,
+    'socials': value.socials,
+    'notes': value.notes,
+    'permissions': value.permissions.toJson(),
+    // Хэш и соль пароля не уходят в синхронизацию.
+    //
+    // Сервер их всё равно вычищает из ответа, но полагаться только на
+    // это нельзя: тогда защита держится на одной стороне, и откат
+    // сервера к прежней версии молча вернул бы утечку. Проверять пароль
+    // локально приложение давно перестало — вход идёт через сервер.
+    'avatarIndex': value.avatarIndex,
+    'createdAt': value.createdAt.toIso8601String(),
+    'isOwner': value.isOwner,
+    'demoStats': value.demoStats,
+    'photo': value.photo == null ? null : base64Encode(value.photo!),
+  };
 
   @override
   EmployeeModel? decode(Map<String, dynamic> fields) {
@@ -369,17 +381,17 @@ class OrganizationGrantsSync extends SyncCollection<OrganizationAccessGrant> {
 
   @override
   Map<String, dynamic> encode(OrganizationAccessGrant value) => {
-        'id': value.id,
-        'employeeId': value.employeeId,
-        'organizationId': value.organizationId,
-        'includeSubtree': value.includeSubtree,
-        'canViewTeamFinance': value.canViewTeamFinance,
-        'canViewSelfFinance': value.canViewSelfFinance,
-        'permissions': value.permissions,
-        'createdAt': value.createdAt.toIso8601String(),
-        'updatedAt': value.updatedAt.toIso8601String(),
-        'createdBy': value.createdBy,
-      };
+    'id': value.id,
+    'employeeId': value.employeeId,
+    'organizationId': value.organizationId,
+    'includeSubtree': value.includeSubtree,
+    'canViewTeamFinance': value.canViewTeamFinance,
+    'canViewSelfFinance': value.canViewSelfFinance,
+    'permissions': value.permissions,
+    'createdAt': value.createdAt.toIso8601String(),
+    'updatedAt': value.updatedAt.toIso8601String(),
+    'createdBy': value.createdBy,
+  };
 
   @override
   OrganizationAccessGrant? decode(Map<String, dynamic> fields) {
@@ -398,7 +410,8 @@ class OrganizationGrantsSync extends SyncCollection<OrganizationAccessGrant> {
       return null;
     }
     if (fields['canViewTeamFinance'] == true &&
-        !permissions.contains(OrganizationPermissions.viewFinance)) return null;
+        !permissions.contains(OrganizationPermissions.viewFinance))
+      return null;
     return OrganizationAccessGrant(
       id: id,
       employeeId: employeeId,
@@ -422,8 +435,8 @@ class OrganizationGrantsSync extends SyncCollection<OrganizationAccessGrant> {
     if (incoming.createdBy == 'migration/internal' ||
         incoming.createdBy == 'migration') {
       if (incoming.organizationId != OrganizationModel.rootId) return false;
-      final target =
-          Hive.box<EmployeeModel>(TeamService.boxName).get(incoming.employeeId);
+      final target = Hive.box<EmployeeModel>(TeamService.boxName)
+          .get(incoming.employeeId);
       if (target == null) return false;
       if (target.isOwner) {
         final incomingSet = incoming.permissions.toSet();
@@ -435,7 +448,8 @@ class OrganizationGrantsSync extends SyncCollection<OrganizationAccessGrant> {
             incomingSet.containsAll(allSet);
       }
       if (incoming.includeSubtree || !incoming.canViewSelfFinance) return false;
-      final financeVisible = target.permissions.allows(TeamModules.treasury) ||
+      final financeVisible =
+          target.permissions.allows(TeamModules.treasury) ||
           target.permissions.allows(TeamModules.forecast) ||
           target.permissions.allows(TeamModules.analytics);
       final expected = financeVisible
@@ -451,7 +465,8 @@ class OrganizationGrantsSync extends SyncCollection<OrganizationAccessGrant> {
           : <String>{OrganizationPermissions.view};
       final incomingSet = incoming.permissions.toSet();
       if (incomingSet.length != expected.length ||
-          !incomingSet.containsAll(expected)) return false;
+          !incomingSet.containsAll(expected))
+        return false;
       if (incoming.canViewTeamFinance !=
           (financeVisible && target.permissions.canSeeOthersStats)) {
         return false;
@@ -460,13 +475,14 @@ class OrganizationGrantsSync extends SyncCollection<OrganizationAccessGrant> {
     }
 
     if (!_employeeExists(incoming.createdBy)) return false;
-    final actor =
-        Hive.box<EmployeeModel>(TeamService.boxName).get(incoming.createdBy);
+    final actor = Hive.box<EmployeeModel>(TeamService.boxName)
+        .get(incoming.createdBy);
     if (actor?.isOwner == true) return true;
     final grants = box();
     if (grants == null) return false;
-    final actorGrants =
-        grants.values.where((g) => g.employeeId == incoming.createdBy).toList();
+    final actorGrants = grants.values
+        .where((g) => g.employeeId == incoming.createdBy)
+        .toList();
     bool covers(OrganizationAccessGrant g) {
       if (g.organizationId == incoming.organizationId) return true;
       if (!g.includeSubtree || !Hive.isBoxOpen(OrganizationService.boxName)) {
@@ -482,21 +498,26 @@ class OrganizationGrantsSync extends SyncCollection<OrganizationAccessGrant> {
     }
 
     final applicable = actorGrants.where(covers).toList();
-    if (!applicable
-        .any((g) => g.allows(OrganizationPermissions.manageMembers))) {
+    if (!applicable.any(
+      (g) => g.allows(OrganizationPermissions.manageMembers),
+    )) {
       return false;
     }
     for (final permission in incoming.permissions) {
-      final permitted = applicable.any((g) =>
-          g.allows(permission) &&
-          (!incoming.includeSubtree || g.includeSubtree));
+      final permitted = applicable.any(
+        (g) =>
+            g.allows(permission) &&
+            (!incoming.includeSubtree || g.includeSubtree),
+      );
       if (!permitted) return false;
     }
     if (incoming.canViewTeamFinance &&
-        !applicable.any((g) =>
-            g.canViewTeamFinance &&
-            g.allows(OrganizationPermissions.viewFinance) &&
-            (!incoming.includeSubtree || g.includeSubtree))) {
+        !applicable.any(
+          (g) =>
+              g.canViewTeamFinance &&
+              g.allows(OrganizationPermissions.viewFinance) &&
+              (!incoming.includeSubtree || g.includeSubtree),
+        )) {
       return false;
     }
     return true;
@@ -509,7 +530,8 @@ class OrganizationGrantsSync extends SyncCollection<OrganizationAccessGrant> {
     if (b == null || incoming == null) return false;
     if (!_employeeExists(incoming.employeeId) ||
         !_organizationExistsActive(incoming.organizationId) ||
-        !_actorMayHaveIssued(incoming)) return false;
+        !_actorMayHaveIssued(incoming))
+      return false;
     await b.put(incoming.id, incoming);
     return true;
   }
@@ -527,21 +549,21 @@ class AccountsSync extends SyncCollection<AccountModel> {
 
   @override
   Map<String, dynamic> encode(AccountModel value) => {
-        'id': value.id,
-        'name': value.name,
-        'kind': value.kind.name,
-        'openingBalance': value.openingBalance,
-        'colorValue': value.colorValue,
-        'createdAt': value.createdAt.toIso8601String(),
-        'archived': value.archived,
-        'note': value.note,
-        'organizationId': value.effectiveOrganizationId,
-        'minimumBalance': value.minimumBalance,
-        'allowNetting': value.allowNetting,
-        'currency': value.currency,
-        'fxHaircut': value.fxHaircut,
-        'transferDelayDays': value.transferDelayDays,
-      };
+    'id': value.id,
+    'name': value.name,
+    'kind': value.kind.name,
+    'openingBalance': value.openingBalance,
+    'colorValue': value.colorValue,
+    'createdAt': value.createdAt.toIso8601String(),
+    'archived': value.archived,
+    'note': value.note,
+    'organizationId': value.effectiveOrganizationId,
+    'minimumBalance': value.minimumBalance,
+    'allowNetting': value.allowNetting,
+    'currency': value.currency,
+    'fxHaircut': value.fxHaircut,
+    'transferDelayDays': value.transferDelayDays,
+  };
 
   @override
   AccountModel? decode(Map<String, dynamic> fields) {
@@ -554,7 +576,8 @@ class AccountsSync extends SyncCollection<AccountModel> {
     if (id == null ||
         createdAt == null ||
         !opening.isFinite ||
-        !minimum.isFinite) return null;
+        !minimum.isFinite)
+      return null;
     return AccountModel(
       id: id,
       name: _str(fields['name']),
@@ -568,8 +591,9 @@ class AccountsSync extends SyncCollection<AccountModel> {
       minimumBalance: minimum,
       allowNetting: fields['allowNetting'] != false,
       currency: _str(fields['currency'], 'RUB').toUpperCase(),
-      fxHaircut:
-          (_double(fields['fxHaircut']) ?? 0.03).clamp(0.0, 0.25).toDouble(),
+      fxHaircut: (_double(fields['fxHaircut']) ?? 0.03)
+          .clamp(0.0, 0.25)
+          .toDouble(),
       transferDelayDays: _int(fields['transferDelayDays']).clamp(0, 14),
     );
   }
@@ -625,14 +649,16 @@ class TransactionsSync extends SyncCollection<TransactionModel> {
         amount == null ||
         !amount.isFinite ||
         amount < 0 ||
-        date == null) return null;
+        date == null)
+      return null;
     final originalAmount = _double(fields['originalAmount']);
     final baseAmount = _double(fields['organizationBaseAmount']);
     final fxRate = _double(fields['fxRateToReporting']) ?? 1.0;
     if ((originalAmount != null && !originalAmount.isFinite) ||
         (baseAmount != null && !baseAmount.isFinite) ||
         !fxRate.isFinite ||
-        fxRate <= 0) return null;
+        fxRate <= 0)
+      return null;
     return TransactionModel(
       id: id,
       title: _str(fields['title']),
@@ -673,8 +699,10 @@ class TransactionsSync extends SyncCollection<TransactionModel> {
       originalAmount: originalAmount,
       originalCurrency: _str(fields['originalCurrency'], 'RUB').toUpperCase(),
       organizationBaseAmount: baseAmount,
-      organizationBaseCurrency:
-          _str(fields['organizationBaseCurrency'], 'RUB').toUpperCase(),
+      organizationBaseCurrency: _str(
+        fields['organizationBaseCurrency'],
+        'RUB',
+      ).toUpperCase(),
       fxRateToReporting: fxRate,
       fxRateAt: _date(fields['fxRateAt']),
       fxSource: _str(fields['fxSource'], 'sync/legacy'),
@@ -696,7 +724,8 @@ class TransactionsSync extends SyncCollection<TransactionModel> {
       return false;
     }
     if (incoming.ownerEmployeeId != null &&
-        !_employeeExists(incoming.ownerEmployeeId!)) return false;
+        !_employeeExists(incoming.ownerEmployeeId!))
+      return false;
     await b.put(incoming.id, incoming);
     return true;
   }
@@ -707,7 +736,8 @@ class TransactionsSync extends SyncCollection<TransactionModel> {
     final existing = b?.get(id);
     if (b == null || existing == null) return;
     if (existing.interOrgTransferId != null ||
-        existing.source == TransactionSource.interorg) return;
+        existing.source == TransactionSource.interorg)
+      return;
     await b.delete(id);
   }
 }
@@ -724,22 +754,22 @@ class TasksSync extends SyncCollection<TaskModel> {
 
   @override
   Map<String, dynamic> encode(TaskModel value) => {
-        'id': value.id,
-        'title': value.title,
-        'description': value.description,
-        'status': value.status.name,
-        'priority': value.priority.name,
-        'createdAt': value.createdAt.toIso8601String(),
-        'dueDate': value.dueDate?.toIso8601String(),
-        'assignee': value.assignee,
-        'tags': value.tags,
-        'order': value.order,
-        'organizationId': value.effectiveOrganizationId,
-        'responsibleEmployeeId': value.effectiveResponsibleEmployeeId,
-        'subtasks': [
-          for (final s in value.subtasks) {'title': s.title, 'done': s.done},
-        ],
-      };
+    'id': value.id,
+    'title': value.title,
+    'description': value.description,
+    'status': value.status.name,
+    'priority': value.priority.name,
+    'createdAt': value.createdAt.toIso8601String(),
+    'dueDate': value.dueDate?.toIso8601String(),
+    'assignee': value.assignee,
+    'tags': value.tags,
+    'order': value.order,
+    'organizationId': value.effectiveOrganizationId,
+    'responsibleEmployeeId': value.effectiveResponsibleEmployeeId,
+    'subtasks': [
+      for (final s in value.subtasks) {'title': s.title, 'done': s.done},
+    ],
+  };
 
   @override
   TaskModel? decode(Map<String, dynamic> fields) {
@@ -758,18 +788,23 @@ class TasksSync extends SyncCollection<TaskModel> {
     }
 
     final assignee = _strOrNull(fields['assignee']);
-    final organizationId = _strOrNull(fields['organizationId']) ??
+    final organizationId =
+        _strOrNull(fields['organizationId']) ??
         ownershipTag(TaskModel.organizationTagPrefix) ??
         OrganizationModel.rootId;
-    final responsibleEmployeeId = _strOrNull(fields['responsibleEmployeeId']) ??
+    final responsibleEmployeeId =
+        _strOrNull(fields['responsibleEmployeeId']) ??
         ownershipTag(TaskModel.employeeTagPrefix) ??
         assignee;
     return TaskModel(
       id: id,
       title: _str(fields['title']),
       description: _strOrNull(fields['description']),
-      status:
-          _enumByName(TaskStatus.values, fields['status'], TaskStatus.backlog),
+      status: _enumByName(
+        TaskStatus.values,
+        fields['status'],
+        TaskStatus.backlog,
+      ),
       priority: _enumByName(
         TaskPriority.values,
         fields['priority'],
@@ -828,27 +863,27 @@ class InterOrgTransfersSync extends SyncCollection<InterOrgTransferModel> {
 
   @override
   Map<String, dynamic> encode(InterOrgTransferModel value) => {
-        'id': value.id,
-        'fromOrganizationId': value.fromOrganizationId,
-        'toOrganizationId': value.toOrganizationId,
-        'fromAccountId': value.fromAccountId,
-        'toAccountId': value.toAccountId,
-        'amount': value.amount,
-        'currency': value.currency,
-        'amountInFromOrgBase': value.amountInFromOrgBase,
-        'amountInToOrgBase': value.amountInToOrgBase,
-        'type': value.type.name,
-        'note': value.note,
-        'date': value.date.toIso8601String(),
-        'createdBy': value.createdBy,
-        'createdAt': value.createdAt.toIso8601String(),
-        'linkedDebitTransactionId': value.linkedDebitTransactionId,
-        'linkedCreditTransactionId': value.linkedCreditTransactionId,
-        'cancelled': value.cancelled,
-        'cancelledAt': value.cancelledAt?.toIso8601String(),
-        'cancelledBy': value.cancelledBy,
-        'ownerEmployeeId': value.ownerEmployeeId,
-      };
+    'id': value.id,
+    'fromOrganizationId': value.fromOrganizationId,
+    'toOrganizationId': value.toOrganizationId,
+    'fromAccountId': value.fromAccountId,
+    'toAccountId': value.toAccountId,
+    'amount': value.amount,
+    'currency': value.currency,
+    'amountInFromOrgBase': value.amountInFromOrgBase,
+    'amountInToOrgBase': value.amountInToOrgBase,
+    'type': value.type.name,
+    'note': value.note,
+    'date': value.date.toIso8601String(),
+    'createdBy': value.createdBy,
+    'createdAt': value.createdAt.toIso8601String(),
+    'linkedDebitTransactionId': value.linkedDebitTransactionId,
+    'linkedCreditTransactionId': value.linkedCreditTransactionId,
+    'cancelled': value.cancelled,
+    'cancelledAt': value.cancelledAt?.toIso8601String(),
+    'cancelledBy': value.cancelledBy,
+    'ownerEmployeeId': value.ownerEmployeeId,
+  };
 
   @override
   InterOrgTransferModel? decode(Map<String, dynamic> fields) {
@@ -876,7 +911,8 @@ class InterOrgTransfersSync extends SyncCollection<InterOrgTransferModel> {
         debit == null ||
         credit == null ||
         debit != '${id}_debit' ||
-        credit != '${id}_credit') return null;
+        credit != '${id}_credit')
+      return null;
     return InterOrgTransferModel(
       id: id,
       fromOrganizationId: fromOrg,
@@ -905,10 +941,7 @@ class InterOrgTransfersSync extends SyncCollection<InterOrgTransferModel> {
     );
   }
 
-  bool _sameImmutableCore(
-    InterOrgTransferModel a,
-    InterOrgTransferModel b,
-  ) =>
+  bool _sameImmutableCore(InterOrgTransferModel a, InterOrgTransferModel b) =>
       a.fromOrganizationId == b.fromOrganizationId &&
       a.toOrganizationId == b.toOrganizationId &&
       a.fromAccountId == b.fromAccountId &&
@@ -932,7 +965,8 @@ class InterOrgTransfersSync extends SyncCollection<InterOrgTransferModel> {
     final incoming = decode(fields);
     if (b == null || incoming == null) return false;
     if (!_organizationExistsActive(incoming.fromOrganizationId) ||
-        !_organizationExistsActive(incoming.toOrganizationId)) return false;
+        !_organizationExistsActive(incoming.toOrganizationId))
+      return false;
     final from = _account(incoming.fromAccountId);
     final to = _account(incoming.toAccountId);
     if (from == null ||
@@ -940,9 +974,11 @@ class InterOrgTransfersSync extends SyncCollection<InterOrgTransferModel> {
         from.archived ||
         to.archived ||
         from.effectiveOrganizationId != incoming.fromOrganizationId ||
-        to.effectiveOrganizationId != incoming.toOrganizationId) return false;
+        to.effectiveOrganizationId != incoming.toOrganizationId)
+      return false;
     if (incoming.ownerEmployeeId != null &&
-        !_employeeExists(incoming.ownerEmployeeId!)) return false;
+        !_employeeExists(incoming.ownerEmployeeId!))
+      return false;
 
     final existing = b.get(incoming.id);
     if (existing != null) {
@@ -950,11 +986,13 @@ class InterOrgTransfersSync extends SyncCollection<InterOrgTransferModel> {
       if (existing.cancelled) {
         if (!incoming.cancelled ||
             incoming.cancelledAt != existing.cancelledAt ||
-            incoming.cancelledBy != existing.cancelledBy) return false;
+            incoming.cancelledBy != existing.cancelledBy)
+          return false;
       } else if (incoming.cancelled) {
         if (incoming.cancelledAt == null ||
             incoming.cancelledBy == null ||
-            incoming.cancelledBy!.trim().isEmpty) return false;
+            incoming.cancelledBy!.trim().isEmpty)
+          return false;
       } else if (incoming.cancelledAt != null || incoming.cancelledBy != null) {
         return false;
       }
@@ -962,7 +1000,8 @@ class InterOrgTransfersSync extends SyncCollection<InterOrgTransferModel> {
       if (incoming.cancelled) {
         if (incoming.cancelledAt == null ||
             incoming.cancelledBy == null ||
-            incoming.cancelledBy!.trim().isEmpty) return false;
+            incoming.cancelledBy!.trim().isEmpty)
+          return false;
       } else if (incoming.cancelledAt != null || incoming.cancelledBy != null) {
         return false;
       }
@@ -990,15 +1029,15 @@ class TransactionAuditsSync extends SyncCollection<TransactionAuditModel> {
 
   @override
   Map<String, dynamic> encode(TransactionAuditModel value) => {
-        'id': value.id,
-        'transactionId': value.transactionId,
-        'changedBy': value.changedBy,
-        'changedAt': value.changedAt.toIso8601String(),
-        'beforeJson': value.beforeJson,
-        'afterJson': value.afterJson,
-        'reason': value.reason,
-        'organizationId': value.organizationId,
-      };
+    'id': value.id,
+    'transactionId': value.transactionId,
+    'changedBy': value.changedBy,
+    'changedAt': value.changedAt.toIso8601String(),
+    'beforeJson': value.beforeJson,
+    'afterJson': value.afterJson,
+    'reason': value.reason,
+    'organizationId': value.organizationId,
+  };
 
   @override
   TransactionAuditModel? decode(Map<String, dynamic> fields) {
@@ -1025,7 +1064,8 @@ class TransactionAuditsSync extends SyncCollection<TransactionAuditModel> {
     final incoming = decode(fields);
     if (b == null ||
         incoming == null ||
-        !_organizationExistsActive(incoming.organizationId)) return false;
+        !_organizationExistsActive(incoming.organizationId))
+      return false;
     final existing = b.get(incoming.id);
     if (existing != null) {
       if (jsonEncode(encode(existing)) != jsonEncode(encode(incoming))) {
@@ -1193,18 +1233,18 @@ class ArticlesSync extends SyncCollection<ArticleModel> {
 
   @override
   Map<String, dynamic> encode(ArticleModel value) => {
-        'id': value.id,
-        'title': value.title,
-        'body': value.body,
-        'section': value.section.name,
-        'tags': value.tags,
-        'createdAt': value.createdAt.toIso8601String(),
-        'updatedAt': value.updatedAt.toIso8601String(),
-        'builtIn': value.builtIn,
-        'pinned': value.pinned,
-        'parentId': value.parentId,
-        'isFolder': value.isFolder,
-      };
+    'id': value.id,
+    'title': value.title,
+    'body': value.body,
+    'section': value.section.name,
+    'tags': value.tags,
+    'createdAt': value.createdAt.toIso8601String(),
+    'updatedAt': value.updatedAt.toIso8601String(),
+    'builtIn': value.builtIn,
+    'pinned': value.pinned,
+    'parentId': value.parentId,
+    'isFolder': value.isFolder,
+  };
 
   @override
   ArticleModel? decode(Map<String, dynamic> fields) {
