@@ -1,0 +1,76 @@
+name: Diagnose live sync 400 once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/diagnose-live-sync-400-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    environment:
+      name: employee-portal
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Prepare SSH
+        env:
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          USER: ${{ secrets.WESI_SERVER_USER }}
+          KEY: ${{ secrets.WESI_SERVER_SSH_KEY }}
+          KNOWN: ${{ secrets.WESI_SERVER_KNOWN_HOSTS }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_deploy && chmod 600 ~/.ssh/id_deploy
+          if [ -n "${KNOWN:-}" ]; then printf '%s\n' "$KNOWN" > ~/.ssh/known_hosts; else ssh-keyscan -H "$HOST" > ~/.ssh/known_hosts 2>/dev/null; fi
+          chmod 600 ~/.ssh/known_hosts
+      - name: Capture recent sync errors
+        env:
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          USER: ${{ secrets.WESI_SERVER_USER }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          SSH="ssh -i $HOME/.ssh/id_deploy -o BatchMode=yes"
+          $SSH "$USER@$HOST" 'bash -s' > /tmp/sync400.txt <<'REMOTE'
+          set +e
+          echo '=== journalctl pocketbase ==='
+          if command -v journalctl >/dev/null 2>&1; then
+            journalctl --since '45 minutes ago' --no-pager 2>/dev/null | grep -Ei '(/api/wesi/sync/|status[=: ]+400| 400 |BadRequest|Something went wrong)' | tail -n 250
+          fi
+          echo '=== pocketbase files ==='
+          for f in /opt/pocketbase/*.log /opt/pocketbase/logs/* /var/log/pocketbase*; do
+            [ -f "$f" ] || continue
+            echo "--- $f ---"
+            tail -n 1500 "$f" 2>/dev/null | grep -Ei '(/api/wesi/sync/|status[=: ]+400| 400 |BadRequest|Something went wrong)' | tail -n 120
+          done
+          REMOTE
+          python3 - <<'PY'
+          import re, pathlib
+          text=pathlib.Path('/tmp/sync400.txt').read_text(encoding='utf-8',errors='replace')
+          text=re.sub(r'Bearer\s+[A-Za-z0-9._\-]+','Bearer <redacted>',text,flags=re.I)
+          text=re.sub(r'X-WesiOS-Session[^\n]*','X-WesiOS-Session: <redacted>',text,flags=re.I)
+          text=re.sub(r'([A-Za-z0-9._%+-]+)@([A-Za-z0-9.-]+\.[A-Za-z]{2,})',r'<redacted>@\2',text)
+          text=re.sub(r'\b(?:\d{1,3}\.){3}\d{1,3}\b','<redacted-ip>',text)
+          text=re.sub(r'\b[A-Za-z0-9_\-+/=]{40,}\b','<redacted-long-value>',text)
+          pathlib.Path('.github/live-sync-400-diagnostic.txt').write_text(text[-50000:],encoding='utf-8')
+          PY
+      - name: Publish diagnostic
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'WesiOS Sync Diagnostics'
+          git config user.email 'actions@users.noreply.github.com'
+          git switch -C diag/live-sync-400
+          git add .github/live-sync-400-diagnostic.txt
+          git commit -m 'diag(sync): capture latest production 400 route'
+          git push --force origin HEAD:diag/live-sync-400
