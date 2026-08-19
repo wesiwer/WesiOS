@@ -1,0 +1,52 @@
+name: Capture current auth deploy run once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/capture-current-auth-deploy-run-once.yml'
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Capture latest auth deploy
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          RUN_ID=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow deploy-current-auth-once.yml --limit 1 --json databaseId --jq '.[0].databaseId // 0')
+          [ "$RUN_ID" != 0 ] || exit 2
+          for attempt in $(seq 1 90); do
+            STATUS=$(gh run view "$RUN_ID" --repo "$GITHUB_REPOSITORY" --json status --jq .status)
+            [ "$STATUS" = completed ] && break
+            sleep 2
+          done
+          gh run view "$RUN_ID" --repo "$GITHUB_REPOSITORY" --json databaseId,status,conclusion,jobs > /tmp/run.json
+          gh run view "$RUN_ID" --repo "$GITHUB_REPOSITORY" --log-failed > /tmp/log.txt 2>&1 || true
+          python3 - <<'PY'
+          import json,re
+          run=json.load(open('/tmp/run.json',encoding='utf-8'))
+          log=open('/tmp/log.txt',encoding='utf-8',errors='replace').read()
+          log=re.sub(r'([A-Za-z0-9._%+-]+)@([A-Za-z0-9.-]+\.[A-Za-z]{2,})',r'<redacted>@\2',log)
+          log=re.sub(r'\b(?:\d{1,3}\.){3}\d{1,3}\b','<redacted-ip>',log)
+          log=re.sub(r'\b[A-Za-z0-9_\-+/=]{40,}\b','<redacted-long-value>',log)
+          open('.github/current-auth-deploy-run.json','w',encoding='utf-8').write(json.dumps(run,ensure_ascii=False,indent=2))
+          open('.github/current-auth-deploy-failed.log','w',encoding='utf-8').write(log[-60000:])
+          PY
+          git config user.name 'WesiOS Auth Diagnostics'
+          git config user.email 'actions@users.noreply.github.com'
+          git switch -C diag/current-auth-deploy-run
+          git add .github/current-auth-deploy-run.json .github/current-auth-deploy-failed.log
+          git commit -m "diag(auth): capture current auth deploy $RUN_ID"
+          git push --force origin HEAD:diag/current-auth-deploy-run
