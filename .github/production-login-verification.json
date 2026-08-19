@@ -1,0 +1,30 @@
+{
+  "authHttp": "200",
+  "auth": {
+    "version": "2026-08-09.owner-email-v11",
+    "jsonReadable": true
+  },
+  "securityHttp": "200",
+  "security": {
+    "version": "2026-08-09.security-mail-v9",
+    "jsonReadable": true
+  },
+  "mailHttp": "200",
+  "mail": {
+    "ready": true,
+    "senderConfigured": true,
+    "smtpEnabled": false,
+    "smtpHostConfigured": true,
+    "smtpReady": false,
+    "sendmailSelected": true,
+    "mailClientMode": "sendmail",
+    "httpsProviderConfigured": false,
+    "httpsProvider": "",
+    "reason": "ok"
+  },
+  "invalidLoginHttp": "401",
+  "invalidLoginResponse": {
+    "message": "Неверный логин или пароль.",
+    "status": 401
+  }
+}
