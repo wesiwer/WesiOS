@@ -203,6 +203,14 @@ jobs:
               chmod 0644 "$tmp"
               cmp -s "$src" "$tmp"
               mv -f "$tmp" "$dst"
+            elif [ -e "$dst" ] && [ -w "$dst" ]; then
+              # Some production installs intentionally expose existing hook
+              # files as writable while keeping the hook directory read-only.
+              # We cannot rename a sibling temp file in that layout, so fall
+              # back to a verified in-place replacement instead of failing the
+              # whole sync deployment before a hot-reload can happen.
+              cat "$src" > "$dst"
+              cmp -s "$src" "$dst"
             elif command -v sudo >/dev/null 2>&1 && sudo -n true >/dev/null 2>&1; then
               tmp="$dir/.deploy-$(basename "$dst").$$.$RANDOM.tmp"
               sudo -n cp "$src" "$tmp"
@@ -210,7 +218,7 @@ jobs:
               sudo -n cmp -s "$src" "$tmp"
               sudo -n mv -f "$tmp" "$dst"
             else
-              echo "Нет прав на атомарную установку $dst" >&2
+              echo "Нет прав на установку $dst" >&2
               exit 3
             fi
           }
