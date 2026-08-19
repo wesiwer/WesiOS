@@ -1,4 +1,5 @@
 name: Capture sync revision hotfix once
+# trigger: explicit capture
 
 on:
   push:
