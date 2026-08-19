@@ -1,5 +1,5 @@
 name: Probe live save after revision repair once
-# trigger: post-repair retry
+# trigger: verify global bridge
 
 on:
   push:
