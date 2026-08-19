@@ -1,0 +1,134 @@
+{
+  "deploy": {
+    "conclusion": "success",
+    "databaseId": 32227582595,
+    "jobs": [
+      {
+        "completedAt": "2026-08-19T07:23:34Z",
+        "conclusion": "success",
+        "databaseId": 95990399219,
+        "name": "repair",
+        "startedAt": "2026-08-19T07:23:17Z",
+        "status": "completed",
+        "steps": [
+          {
+            "completedAt": "2026-08-19T07:23:18Z",
+            "conclusion": "success",
+            "name": "Set up job",
+            "number": 1,
+            "startedAt": "2026-08-19T07:23:17Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-08-19T07:23:20Z",
+            "conclusion": "success",
+            "name": "Run actions/checkout@v4",
+            "number": 2,
+            "startedAt": "2026-08-19T07:23:18Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-08-19T07:23:20Z",
+            "conclusion": "success",
+            "name": "Validate revision hooks",
+            "number": 3,
+            "startedAt": "2026-08-19T07:23:20Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-08-19T07:23:32Z",
+            "conclusion": "success",
+            "name": "Install exact main revision hooks",
+            "number": 4,
+            "startedAt": "2026-08-19T07:23:20Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-08-19T07:23:32Z",
+            "conclusion": "success",
+            "name": "Post Run actions/checkout@v4",
+            "number": 8,
+            "startedAt": "2026-08-19T07:23:32Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-08-19T07:23:32Z",
+            "conclusion": "success",
+            "name": "Complete job",
+            "number": 9,
+            "startedAt": "2026-08-19T07:23:32Z",
+            "status": "completed"
+          }
+        ],
+        "url": "https://github.com/wesiwer/WesiOS/actions/runs/32227582595/job/95990399219"
+      }
+    ],
+    "status": "completed"
+  },
+  "probe": {
+    "conclusion": "success",
+    "databaseId": 32227635725,
+    "jobs": [
+      {
+        "completedAt": "2026-08-19T07:24:18Z",
+        "conclusion": "success",
+        "databaseId": 95990554478,
+        "name": "probe",
+        "startedAt": "2026-08-19T07:23:57Z",
+        "status": "completed",
+        "steps": [
+          {
+            "completedAt": "2026-08-19T07:23:59Z",
+            "conclusion": "success",
+            "name": "Set up job",
+            "number": 1,
+            "startedAt": "2026-08-19T07:23:58Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-08-19T07:24:01Z",
+            "conclusion": "success",
+            "name": "Run actions/checkout@v4",
+            "number": 2,
+            "startedAt": "2026-08-19T07:23:59Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-08-19T07:24:13Z",
+            "conclusion": "success",
+            "name": "Probe live wesios_records save",
+            "number": 3,
+            "startedAt": "2026-08-19T07:24:01Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-08-19T07:24:15Z",
+            "conclusion": "success",
+            "name": "Publish safe result",
+            "number": 4,
+            "startedAt": "2026-08-19T07:24:13Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-08-19T07:24:15Z",
+            "conclusion": "success",
+            "name": "Post Run actions/checkout@v4",
+            "number": 8,
+            "startedAt": "2026-08-19T07:24:15Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-08-19T07:24:15Z",
+            "conclusion": "success",
+            "name": "Complete job",
+            "number": 9,
+            "startedAt": "2026-08-19T07:24:15Z",
+            "status": "completed"
+          }
+        ],
+        "url": "https://github.com/wesiwer/WesiOS/actions/runs/32227635725/job/95990554478"
+      }
+    ],
+    "status": "completed"
+  }
+}
