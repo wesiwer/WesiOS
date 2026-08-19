@@ -1,5 +1,5 @@
 name: Capture PocketBase sync errors once
-# trigger: simplified internal log capture
+# trigger: post-revision-hotfix control capture
 
 on:
   push:
