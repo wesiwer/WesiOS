@@ -1,0 +1,89 @@
+{
+  "controller": "recover-wesios-login-mail-once",
+  "runId": 32201046649,
+  "status": "completed",
+  "conclusion": "success",
+  "jobs": [
+    {
+      "name": "activate",
+      "status": "completed",
+      "conclusion": "success",
+      "databaseId": 95914824513,
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1
+        },
+        {
+          "name": "Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2
+        },
+        {
+          "name": "Validate source hook",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3
+        },
+        {
+          "name": "Prepare SSH",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4
+        },
+        {
+          "name": "Fail closed until mail DNS and transport are valid",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 5
+        },
+        {
+          "name": "Select PocketBase sendmail through temporary localhost-only hook",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 6
+        },
+        {
+          "name": "Verify WesiOS mail readiness",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 7
+        },
+        {
+          "name": "Verify real owner delivery through PocketBase sendmail",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 8
+        },
+        {
+          "name": "Post Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 16
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 17
+        }
+      ]
+    }
+  ],
+  "mailReadyHttp": "200",
+  "mailReady": {
+    "ready": true,
+    "senderConfigured": true,
+    "smtpEnabled": false,
+    "smtpHostConfigured": true,
+    "smtpReady": false,
+    "sendmailSelected": true,
+    "mailClientMode": "sendmail",
+    "httpsProviderConfigured": false,
+    "httpsProvider": "",
+    "reason": "ok"
+  }
+}
