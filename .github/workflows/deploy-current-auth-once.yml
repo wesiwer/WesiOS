@@ -32,18 +32,8 @@ jobs:
           node --check server/pb_hooks/wesi_auth_bootstrap.pb.js
           node --check server/pb_hooks/wesi_security.pb.js
           node --check server/pb_hooks/wesi_mail_health.pb.js
-          # Версия маркера намеренно не фиксируется точным номером.
-          #
-          # Здесь стояли owner-email-v9 и security-mail-v8. Код ушёл на v11 и
-          # v9 коммитами 674733d и 367e336, а проверки остались, и деплой с
-          # 9 августа падал на первом же grep — то есть заголовки
-          # безопасности не доезжали до сервера вообще. Обнаружилось только
-          # тогда, когда push в main наконец снова тронул эти файлы.
-          #
-          # Смысл проверки — убедиться, что выкладывается брендированная
-          # версия хука, а не старая копия. Номер версии этому не служит: он
-          # растёт при каждой правке письма и превращает ворота в мину
-          # замедленного действия.
+          # Проверяем семейство актуальных брендированных версий, а не
+          # захардкоженный номер, который устаревает после следующей правки.
           grep -qE '2026-08-09\.owner-email-v[0-9]+' server/pb_hooks/wesi_auth_bootstrap.pb.js
           grep -qE '2026-08-09\.security-mail-v[0-9]+' server/pb_hooks/wesi_security.pb.js
           grep -q '2026-08-09.mail-design-v2' server/pb_hooks/wesi_auth_bootstrap.pb.js
@@ -126,37 +116,41 @@ jobs:
           test "$SETUP_MATCHES" -eq 1
           test "$START_V2_MATCHES" -eq 1
           test "$VERIFY_MATCHES" -eq 1
-          # PocketBase watches pb_hooks and reloads changed JavaScript files.
-          # The deploy user intentionally has no service-restart privilege.
           rm -rf "$REMOTE"
           curl -fsS --max-time 5 http://127.0.0.1:8090/api/health >/dev/null
           REMOTE
       - name: Verify exact production auth version
         run: |
           set -euo pipefail
+          EXPECTED=$(grep -oE '2026-08-09\.owner-email-v[0-9]+' server/pb_hooks/wesi_auth_bootstrap.pb.js | head -n1)
+          test -n "$EXPECTED"
           BODY=''
           for attempt in $(seq 1 20); do
             BODY=$(curl -fsS --max-time 20 https://api.wesi-inc.ru/api/wesi/auth/version || true)
-            if grep -q '"version":"2026-08-09.owner-email-v9"' <<<"$BODY" &&
+            if grep -Fq "\"version\":\"$EXPECTED\"" <<<"$BODY" &&
                grep -q '"jsonReadable":true' <<<"$BODY"; then
               break
             fi
             sleep 1
           done
           echo "$BODY"
-          grep -q '"version":"2026-08-09.owner-email-v9"' <<<"$BODY"
+          grep -Fq "\"version\":\"$EXPECTED\"" <<<"$BODY"
           grep -q '"jsonReadable":true' <<<"$BODY"
       - name: Verify exact production security version
         run: |
           set -euo pipefail
+          EXPECTED=$(grep -oE '2026-08-09\.security-mail-v[0-9]+' server/pb_hooks/wesi_security.pb.js | head -n1)
+          test -n "$EXPECTED"
           BODY=$(curl -fsS --max-time 20 https://api.wesi-inc.ru/api/wesi/security/version)
           echo "$BODY"
-          grep -q '"version":"2026-08-09.security-mail-v8"' <<<"$BODY"
+          grep -Fq "\"version\":\"$EXPECTED\"" <<<"$BODY"
           grep -q '"jsonReadable":true' <<<"$BODY"
       - name: Verify production mail
         run: |
           set -euo pipefail
-          curl -fsS --max-time 20 https://api.wesi-inc.ru/api/wesi/auth/mail-ready | grep -q '"ready":true'
+          BODY=$(curl -fsS --max-time 20 https://api.wesi-inc.ru/api/wesi/auth/mail-ready)
+          echo "$BODY"
+          grep -q '"ready":true' <<<"$BODY"
           curl -fsS --max-time 20 https://api.wesi-inc.ru/portal/app_icon.png -o wesi-mail-logo.png
           test "$(wc -c < wesi-mail-logo.png)" -gt 1000
           test "$(od -An -tx1 -N8 wesi-mail-logo.png | tr -d ' \n')" = '89504e470d0a1a0a'
