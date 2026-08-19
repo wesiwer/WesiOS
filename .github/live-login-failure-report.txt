@@ -1,0 +1,36 @@
+=== UTC NOW ===
+2026-08-19T06:45:35+00:00
+=== SERVICES ===
+active
+active
+active
+active
+=== NGINX AUTH ACCESS RECENT ===
+=== NGINX ERROR RECENT ===
+=== POCKETBASE RECENT ===
+-- No entries --
+=== AUTH/MAIL GLOBAL RECENT ===
+Aug 19 06:44:14 stupid-jade.ptr.network sshd[638544]: Disconnected from user wesios-deploy <redacted-ip> port 14416
+=== POSTFIX QUEUE ===
+-Queue ID-  --Size-- ----Arrival Time---- -Sender/Recipient-------
+65EA96050B      352 Wed Aug 19 06:45:35  wesios-deploy
+                                         root
+
+6342660509      352 Wed Aug 19 06:45:35  wesios-deploy
+                                         root
+
+618D86023C      352 Wed Aug 19 06:45:35  wesios-deploy
+                                         root
+
+5EEA66023A      352 Wed Aug 19 06:45:35  wesios-deploy
+                                         root
+
+-- 1 Kbytes in 4 Requests.
+=== MAIL LOG ===
+-- No entries --
+=== MAIL READY LOCAL ===
+{"httpsProvider":"","httpsProviderConfigured":false,"mailClientMode":"sendmail","ready":true,"reason":"ok","senderConfigured":true,"sendmailSelected":true,"smtpEnabled":false,"smtpHostConfigured":true,"smtpReady":false}
+
+=== AUTH VERSION LOCAL ===
+{"jsonReadable":true,"version":"2026-08-09.owner-email-v11"}
+
