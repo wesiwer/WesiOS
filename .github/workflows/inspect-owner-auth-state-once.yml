@@ -1,4 +1,5 @@
 name: Inspect owner auth state once
+# trigger: inspect post-v12 owner OTP 2026-08-19T07:05Z
 
 on:
   push:
@@ -205,5 +206,5 @@ jobs:
           git config user.email 'actions@users.noreply.github.com'
           git switch -C diag/owner-auth-state
           git add .github/owner-auth-state.json
-          git commit -m 'diag(auth): inspect owner auth state'
+          git commit -m 'diag(auth): inspect owner auth state post-v12'
           git push --force origin HEAD:diag/owner-auth-state
