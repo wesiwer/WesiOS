@@ -1,4 +1,5 @@
 name: Deploy sync revision stamp fix once
+# trigger: production deploy after invalid updated sort
 
 on:
   push:
