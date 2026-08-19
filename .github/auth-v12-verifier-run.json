@@ -1,0 +1,74 @@
+{
+  "conclusion": "failure",
+  "databaseId": 32225497468,
+  "jobs": [
+    {
+      "completedAt": "2026-08-19T06:56:00Z",
+      "conclusion": "failure",
+      "databaseId": 95984266332,
+      "name": "verify",
+      "startedAt": "2026-08-19T06:55:51Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-08-19T06:55:53Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-08-19T06:55:52Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-08-19T06:55:55Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v4",
+          "number": 2,
+          "startedAt": "2026-08-19T06:55:53Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-08-19T06:55:58Z",
+          "conclusion": "failure",
+          "name": "Verify external auth and mail endpoints",
+          "number": 3,
+          "startedAt": "2026-08-19T06:55:55Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-08-19T06:55:58Z",
+          "conclusion": "skipped",
+          "name": "Verify exact hook on server",
+          "number": 4,
+          "startedAt": "2026-08-19T06:55:58Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-08-19T06:55:58Z",
+          "conclusion": "skipped",
+          "name": "Publish verification report",
+          "number": 5,
+          "startedAt": "2026-08-19T06:55:58Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-08-19T06:55:58Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v4",
+          "number": 10,
+          "startedAt": "2026-08-19T06:55:58Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-08-19T06:55:58Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 11,
+          "startedAt": "2026-08-19T06:55:58Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/wesiwer/WesiOS/actions/runs/32225497468/job/95984266332"
+    }
+  ],
+  "status": "completed"
+}

@@ -1,0 +1,22 @@
+verify	Verify external auth and mail endpoints	﻿2026-08-19T06:55:55.9460107Z ##[group]Run set -euo pipefail
+verify	Verify external auth and mail endpoints	2026-08-19T06:55:55.9460690Z ^[[36;1mset -euo pipefail^[[0m
+verify	Verify external auth and mail endpoints	2026-08-19T06:55:55.9461305Z ^[[36;1mAUTH=$(curl -fsS --max-time 20 https://api.wesi-inc.ru/api/wesi/auth/version)^[[0m
+verify	Verify external auth and mail endpoints	2026-08-19T06:55:55.9462119Z ^[[36;1mMAIL=$(curl -fsS --max-time 20 https://api.wesi-inc.ru/api/wesi/auth/mail-ready)^[[0m
+verify	Verify external auth and mail endpoints	2026-08-19T06:55:55.9462780Z ^[[36;1mecho "$AUTH" > /tmp/auth.json^[[0m
+verify	Verify external auth and mail endpoints	2026-08-19T06:55:55.9463225Z ^[[36;1mecho "$MAIL" > /tmp/mail.json^[[0m
+verify	Verify external auth and mail endpoints	2026-08-19T06:55:55.9463656Z ^[[36;1mpython3 - <<'PY'^[[0m
+verify	Verify external auth and mail endpoints	2026-08-19T06:55:55.9464039Z ^[[36;1mimport json^[[0m
+verify	Verify external auth and mail endpoints	2026-08-19T06:55:55.9464484Z ^[[36;1ma=json.load(open('/tmp/auth.json',encoding='utf-8'))^[[0m
+verify	Verify external auth and mail endpoints	2026-08-19T06:55:55.9465069Z ^[[36;1mm=json.load(open('/tmp/mail.json',encoding='utf-8'))^[[0m
+verify	Verify external auth and mail endpoints	2026-08-19T06:55:55.9465940Z ^[[36;1massert a.get('version') == '2026-08-09.owner-email-v12', a^[[0m
+verify	Verify external auth and mail endpoints	2026-08-19T06:55:55.9466527Z ^[[36;1massert a.get('jsonReadable') is True, a^[[0m
+verify	Verify external auth and mail endpoints	2026-08-19T06:55:55.9467010Z ^[[36;1massert m.get('ready') is True, m^[[0m
+verify	Verify external auth and mail endpoints	2026-08-19T06:55:55.9467534Z ^[[36;1massert m.get('sendmailSelected') is True, m^[[0m
+verify	Verify external auth and mail endpoints	2026-08-19T06:55:55.9468023Z ^[[36;1mprint('EXTERNAL_AUTH_V12_READY')^[[0m
+verify	Verify external auth and mail endpoints	2026-08-19T06:55:55.9468440Z ^[[36;1mPY^[[0m
+verify	Verify external auth and mail endpoints	2026-08-19T06:55:55.9513061Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+verify	Verify external auth and mail endpoints	2026-08-19T06:55:55.9513636Z ##[endgroup]
+verify	Verify external auth and mail endpoints	2026-08-19T06:55:58.3857277Z Traceback (most recent call last):
+verify	Verify external auth and mail endpoints	2026-08-19T06:55:58.3857934Z   File "<stdin>", line 4, in <module>
+verify	Verify external auth and mail endpoints	2026-08-19T06:55:58.3858776Z AssertionError: {'jsonReadable': True, 'version': '2026-08-09.owner-email-v11'}
+verify	Verify external auth and mail endpoints	2026-08-19T06:55:58.4000129Z ##[error]Process completed with exit code 1.
