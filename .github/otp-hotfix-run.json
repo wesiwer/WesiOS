@@ -1,0 +1,66 @@
+{
+  "conclusion": "success",
+  "databaseId": 32225317147,
+  "jobs": [
+    {
+      "completedAt": "2026-08-19T06:53:27Z",
+      "conclusion": "success",
+      "databaseId": 95983739168,
+      "name": "hotfix",
+      "startedAt": "2026-08-19T06:53:18Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-08-19T06:53:19Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-08-19T06:53:19Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-08-19T06:53:22Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v4",
+          "number": 2,
+          "startedAt": "2026-08-19T06:53:19Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-08-19T06:53:23Z",
+          "conclusion": "success",
+          "name": "Patch start-v2 OTP finalization",
+          "number": 3,
+          "startedAt": "2026-08-19T06:53:22Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-08-19T06:53:25Z",
+          "conclusion": "success",
+          "name": "Commit hotfix to main",
+          "number": 4,
+          "startedAt": "2026-08-19T06:53:23Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-08-19T06:53:25Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v4",
+          "number": 8,
+          "startedAt": "2026-08-19T06:53:25Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-08-19T06:53:25Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 9,
+          "startedAt": "2026-08-19T06:53:25Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/wesiwer/WesiOS/actions/runs/32225317147/job/95983739168"
+    }
+  ],
+  "status": "completed"
+}
