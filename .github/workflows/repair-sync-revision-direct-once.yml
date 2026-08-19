@@ -1,5 +1,5 @@
 name: Repair production revision hook direct once
-# trigger: production repair 2026-08-19
+# trigger: deploy global callback bridge 2026-08-19
 
 on:
   push:
@@ -26,6 +26,7 @@ jobs:
           node --check server/pb_hooks/wesi_sync_revision.pb.js
           node --check server/pb_hooks/wesi_sync_revision.js
           grep -Fq 'function touchRevision(e)' server/pb_hooks/wesi_sync_revision.pb.js
+          grep -Fq 'globalThis.touchRevision = touchRevision' server/pb_hooks/wesi_sync_revision.pb.js
       - name: Install exact main revision hooks
         env:
           HOST: ${{ secrets.WESI_SERVER_HOST }}
@@ -53,7 +54,7 @@ jobs:
           cmp -s "$REMOTE/wesi_sync_revision.js" "$DIR/wesi_sync_revision.js"
           cmp -s "$REMOTE/wesi_sync_revision.pb.js" "$DIR/wesi_sync_revision.pb.js"
           grep -Fq 'function touchRevision(e)' "$DIR/wesi_sync_revision.pb.js"
-          grep -Fq 'revision.touch(e.app, e.record.getString("owner"))' "$DIR/wesi_sync_revision.pb.js"
+          grep -Fq 'globalThis.touchRevision = touchRevision' "$DIR/wesi_sync_revision.pb.js"
           rm -rf "$REMOTE"
-          echo REVISION_HOOK_REPAIRED
+          echo REVISION_HOOK_BRIDGE_DEPLOYED
           REMOTE_SCRIPT
