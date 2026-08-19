@@ -1,0 +1,74 @@
+{
+  "conclusion": "success",
+  "databaseId": 32226346178,
+  "jobs": [
+    {
+      "completedAt": "2026-08-19T07:07:23Z",
+      "conclusion": "success",
+      "databaseId": 95986691605,
+      "name": "inspect",
+      "startedAt": "2026-08-19T07:07:03Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-08-19T07:07:05Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-08-19T07:07:04Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-08-19T07:07:07Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v4",
+          "number": 2,
+          "startedAt": "2026-08-19T07:07:05Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-08-19T07:07:09Z",
+          "conclusion": "success",
+          "name": "Prepare SSH",
+          "number": 3,
+          "startedAt": "2026-08-19T07:07:07Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-08-19T07:07:19Z",
+          "conclusion": "success",
+          "name": "Inspect owner and OTP records through localhost-only route",
+          "number": 4,
+          "startedAt": "2026-08-19T07:07:09Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-08-19T07:07:21Z",
+          "conclusion": "success",
+          "name": "Publish sanitized owner auth state",
+          "number": 5,
+          "startedAt": "2026-08-19T07:07:19Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-08-19T07:07:21Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v4",
+          "number": 10,
+          "startedAt": "2026-08-19T07:07:21Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-08-19T07:07:21Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 11,
+          "startedAt": "2026-08-19T07:07:21Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/wesiwer/WesiOS/actions/runs/32226346178/job/95986691605"
+    }
+  ],
+  "status": "completed"
+}
