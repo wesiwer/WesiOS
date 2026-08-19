@@ -1,0 +1,40 @@
+name: Patch organization fix workflow rebase once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/patch-org-workflow-rebase-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Make organization fix push rebase-safe
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('.github/workflows/fix-organization-sync-recovery-once.yml')
+          s=p.read_text(encoding='utf-8')
+          old="""          git commit -m 'fix(sync): recover organization tree from stale local cache'\n          git push origin HEAD:main\n"""
+          new="""          git commit -m 'fix(sync): recover organization tree from stale local cache'\n          git fetch origin main\n          git rebase origin/main\n          git push origin HEAD:main\n"""
+          if old not in s:
+              raise SystemExit('target push block not found')
+          p.write_text(s.replace(old,new,1),encoding='utf-8')
+          PY
+          git diff --check
+          git config user.name 'WesiOS Sync Fix'
+          git config user.email 'actions@users.noreply.github.com'
+          git add .github/workflows/fix-organization-sync-recovery-once.yml
+          git commit -m 'ops(sync): make organization fix push rebase-safe'
+          git push origin HEAD:main
