@@ -1,0 +1,345 @@
+name: Fix organization sync recovery once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/fix-organization-sync-recovery-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch-test-push:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Patch organization sync recovery
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('lib/core/sync/sync_codec.dart')
+          text = path.read_text(encoding='utf-8')
+
+          helper_start = text.index('bool _organizationSnapshotValid(')
+          helper_end = text.index('\nbool _employeeExists', helper_start)
+          helper = r'''bool _organizationConnectedToRoot(
+            Map<String, OrganizationModel> byId,
+            OrganizationModel node,
+          ) {
+            if (node.id == OrganizationModel.rootId) {
+              return node.isRoot && node.parentId == null && !node.archived;
+            }
+            if (node.isRoot || node.parentId == null || node.parentId!.isEmpty) {
+              return false;
+            }
+
+            final seen = <String>{node.id};
+            var current = node;
+            while (current.id != OrganizationModel.rootId) {
+              final parentId = current.parentId;
+              if (parentId == null || parentId.isEmpty || !seen.add(parentId)) {
+                return false;
+              }
+              final parent = byId[parentId];
+              if (parent == null) return false;
+              if (!current.archived && parent.archived) return false;
+              current = parent;
+            }
+
+            return current.isRoot &&
+                current.parentId == null &&
+                !current.archived;
+          }
+          '''
+          text = text[:helper_start] + helper + text[helper_end:]
+
+          class_start = text.index('class OrganizationsSync extends SyncCollection<OrganizationModel>')
+          apply_start = text.index('  @override\n  Future<bool> applyFields(', class_start)
+          remove_start = text.index('  @override\n  Future<void> removeById', apply_start)
+          replacement = r'''  @override
+            Map<String, OrganizationModel> local() {
+              final b = box();
+              if (b == null) return const {};
+              final byId = <String, OrganizationModel>{
+                for (final row in b.values) row.id: row,
+              };
+
+              // A stale/orphan local row must not poison the entire collection or be
+              // uploaded back to the server. Keep it in Hive so no local data is
+              // destroyed; as soon as its complete parent chain exists again, it
+              // automatically re-enters the sync projection.
+              return <String, OrganizationModel>{
+                for (final row in byId.values)
+                  if (_organizationConnectedToRoot(byId, row)) row.id: row,
+              };
+            }
+
+            @override
+            Future<bool> applyFields(Map<String, dynamic> fields) async {
+              final b = box();
+              final incoming = decode(fields);
+              if (b == null || incoming == null) return false;
+
+              final byId = <String, OrganizationModel>{
+                for (final row in b.values)
+                  if (row.id != incoming.id) row.id: row,
+                incoming.id: incoming,
+              };
+
+              // Validate only the incoming node and its ancestry. Requiring every
+              // unrelated cached row to be valid here prevents a correct remote
+              // root from repairing an older orphaned local snapshot.
+              if (!_organizationConnectedToRoot(byId, incoming)) return false;
+
+              // Keep every persisted intermediate state valid when an organization
+              // is archived: active children must be archived first. The sync
+              // engine retries deferred rows, so a remote parent+children archive
+              // converges without accepting an invalid intermediate tree.
+              if (incoming.archived &&
+                  byId.values.any(
+                    (row) => row.parentId == incoming.id && !row.archived,
+                  )) {
+                return false;
+              }
+
+              await b.put(incoming.id, incoming);
+              return true;
+            }
+
+          '''
+          text = text[:apply_start] + replacement + text[remove_start:]
+          path.write_text(text, encoding='utf-8')
+          PY
+
+          mkdir -p test/core/sync
+          cat > test/core/sync/organization_sync_recovery_test.dart <<'DART'
+          import 'dart:io';
+
+          import 'package:flutter_test/flutter_test.dart';
+          import 'package:hive/hive.dart';
+          import 'package:wesios/core/sync/sync_codec.dart';
+          import 'package:wesios/features/organizations/models/organization_model.dart';
+          import 'package:wesios/features/organizations/services/organization_service.dart';
+
+          void main() {
+            late Directory tempDir;
+            late OrganizationsSync sync;
+
+            Map<String, dynamic> payload({
+              required String id,
+              required String name,
+              String? parentId,
+              bool isRoot = false,
+              bool archived = false,
+            }) =>
+                <String, dynamic>{
+                  'id': id,
+                  'name': name,
+                  'parentId': parentId,
+                  'isRoot': isRoot,
+                  'baseCurrency': 'RUB',
+                  'status': archived ? 'archived' : 'active',
+                  'createdAt': '2026-08-17T13:19:24.672',
+                  'updatedAt': '2026-08-17T13:19:24.672',
+                  'createdBy': 'sync-test',
+                  'code': null,
+                  'description': null,
+                  'colorValue': null,
+                  'sortOrder': 0,
+                };
+
+            setUpAll(() async {
+              tempDir = await Directory.systemTemp.createTemp('wesios_org_sync_');
+              Hive.init(tempDir.path);
+              if (!Hive.isAdapterRegistered(80)) {
+                Hive.registerAdapter(OrganizationStatusAdapter());
+              }
+              if (!Hive.isAdapterRegistered(81)) {
+                Hive.registerAdapter(OrganizationModelAdapter());
+              }
+            });
+
+            setUp(() async {
+              sync = OrganizationsSync();
+              final box = await sync.ensureBox();
+              await box.clear();
+            });
+
+            tearDownAll(() async {
+              await Hive.close();
+              if (await tempDir.exists()) await tempDir.delete(recursive: true);
+            });
+
+            test('orphan cache cannot block valid remote tree recovery', () async {
+              final box = Hive.box<OrganizationModel>(OrganizationService.boxName);
+              await box.put(
+                'orphan',
+                OrganizationModel(
+                  id: 'orphan',
+                  name: 'Orphan cache row',
+                  parentId: 'missing-parent',
+                  isRoot: false,
+                  baseCurrency: 'RUB',
+                  createdAt: DateTime.utc(2026, 8, 1),
+                  updatedAt: DateTime.utc(2026, 8, 1),
+                  createdBy: 'old-cache',
+                ),
+              );
+
+              expect(
+                await sync.applyFields(payload(
+                  id: OrganizationModel.rootId,
+                  name: 'Wesi Inc',
+                  isRoot: true,
+                )),
+                isTrue,
+              );
+              expect(
+                await sync.applyFields(payload(
+                  id: OrganizationModel.wesiBeatsId,
+                  name: 'Wesi Beats',
+                  parentId: OrganizationModel.rootId,
+                )),
+                isTrue,
+              );
+              expect(
+                await sync.applyFields(payload(
+                  id: 'org_it',
+                  name: "Wesi Inc IT Studio's",
+                  parentId: OrganizationModel.rootId,
+                )),
+                isTrue,
+              );
+
+              expect(sync.local().keys, containsAll(<String>[
+                OrganizationModel.rootId,
+                OrganizationModel.wesiBeatsId,
+                'org_it',
+              ]));
+              expect(sync.local().containsKey('orphan'), isFalse);
+              expect(box.containsKey('orphan'), isTrue,
+                  reason: 'invalid local data is quarantined, not deleted');
+            });
+
+            test('child is deferred until its parent chain exists', () async {
+              expect(
+                await sync.applyFields(payload(
+                  id: 'child',
+                  name: 'Child',
+                  parentId: OrganizationModel.rootId,
+                )),
+                isFalse,
+              );
+              expect(
+                await sync.applyFields(payload(
+                  id: OrganizationModel.rootId,
+                  name: 'Wesi Inc',
+                  isRoot: true,
+                )),
+                isTrue,
+              );
+              expect(
+                await sync.applyFields(payload(
+                  id: 'child',
+                  name: 'Child',
+                  parentId: OrganizationModel.rootId,
+                )),
+                isTrue,
+              );
+            });
+
+            test('cycle remains rejected', () async {
+              expect(await sync.applyFields(payload(
+                id: OrganizationModel.rootId,
+                name: 'Wesi Inc',
+                isRoot: true,
+              )), isTrue);
+              expect(await sync.applyFields(payload(
+                id: 'a',
+                name: 'A',
+                parentId: OrganizationModel.rootId,
+              )), isTrue);
+              expect(await sync.applyFields(payload(
+                id: 'b',
+                name: 'B',
+                parentId: 'a',
+              )), isTrue);
+              expect(await sync.applyFields(payload(
+                id: 'a',
+                name: 'A',
+                parentId: 'b',
+              )), isFalse);
+            });
+
+            test('archived parent waits for active children', () async {
+              expect(await sync.applyFields(payload(
+                id: OrganizationModel.rootId,
+                name: 'Wesi Inc',
+                isRoot: true,
+              )), isTrue);
+              expect(await sync.applyFields(payload(
+                id: 'parent',
+                name: 'Parent',
+                parentId: OrganizationModel.rootId,
+              )), isTrue);
+              expect(await sync.applyFields(payload(
+                id: 'child',
+                name: 'Child',
+                parentId: 'parent',
+              )), isTrue);
+
+              expect(await sync.applyFields(payload(
+                id: 'parent',
+                name: 'Parent',
+                parentId: OrganizationModel.rootId,
+                archived: true,
+              )), isFalse);
+              expect(await sync.applyFields(payload(
+                id: 'child',
+                name: 'Child',
+                parentId: 'parent',
+                archived: true,
+              )), isTrue);
+              expect(await sync.applyFields(payload(
+                id: 'parent',
+                name: 'Parent',
+                parentId: OrganizationModel.rootId,
+                archived: true,
+              )), isTrue);
+            });
+          }
+          DART
+
+          dart format lib/core/sync/sync_codec.dart test/core/sync/organization_sync_recovery_test.dart
+
+      - name: Resolve dependencies
+        run: flutter pub get
+
+      - name: Run organization sync regression tests
+        run: flutter test test/core/sync/organization_sync_recovery_test.dart
+
+      - name: Analyze changed sync code
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings lib/core/sync/sync_codec.dart test/core/sync/organization_sync_recovery_test.dart
+
+      - name: Commit verified fix to main
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'WesiOS Sync Fix'
+          git config user.email 'actions@users.noreply.github.com'
+          git add lib/core/sync/sync_codec.dart test/core/sync/organization_sync_recovery_test.dart
+          git commit -m 'fix(sync): recover organization tree from stale local cache'
+          git push origin HEAD:main
