@@ -1,0 +1,209 @@
+name: Inspect owner auth state once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/inspect-owner-auth-state-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    environment:
+      name: employee-portal
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Prepare SSH
+        env:
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          USER: ${{ secrets.WESI_SERVER_USER }}
+          KEY: ${{ secrets.WESI_SERVER_SSH_KEY }}
+          KNOWN: ${{ secrets.WESI_SERVER_KNOWN_HOSTS }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${HOST:-}" && test -n "${USER:-}" && test -n "${KEY:-}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          if [ -n "${KNOWN:-}" ]; then
+            printf '%s\n' "$KNOWN" > ~/.ssh/known_hosts
+          else
+            ssh-keyscan -H "$HOST" > ~/.ssh/known_hosts 2>/dev/null
+          fi
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Inspect owner and OTP records through localhost-only route
+        env:
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          USER: ${{ secrets.WESI_SERVER_USER }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          SSH="ssh -i $HOME/.ssh/id_deploy -o BatchMode=yes"
+          TOKEN=$(openssl rand -hex 24)
+          REMOTE="/tmp/wesi-auth-state-$GITHUB_RUN_ID"
+          PATCHED="$RUNNER_TEMP/wesi_auth_state.pb.js"
+          cp server/pb_hooks/wesi_mail_health.pb.js "$PATCHED"
+          cat >> "$PATCHED" <<JS
+
+          routerAdd("GET", "/api/wesi/internal/auth-state-$TOKEN", (e) => {
+            let ownerMarker = null;
+            try {
+              const rows = e.app.findRecordsByFilter(
+                "wesios_records",
+                "coll='system' && rid='portal-owner' && deleted=false",
+                "-stamp",
+                5,
+                0,
+              );
+              if (rows.length > 0) ownerMarker = rows[0];
+            } catch (_) {}
+
+            const ownerId = ownerMarker ? String(ownerMarker.getString("owner") || "") : "";
+            let userExists = false;
+            let internalAuthEmail = false;
+            let userNamePresent = false;
+            if (ownerId) {
+              try {
+                const user = e.app.findRecordById("users", ownerId);
+                userExists = Boolean(user);
+                internalAuthEmail = String(user.getString("email") || "").endsWith("@wesi.local");
+                userNamePresent = Boolean(String(user.getString("name") || "").trim());
+              } catch (_) {}
+            }
+
+            const readEmailPresent = (record) => {
+              if (!record) return false;
+              try {
+                const model = new DynamicModel({"email": ""});
+                record.unmarshalJSONField("payload", model);
+                const email = String(model.email || "").trim().toLowerCase();
+                return /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email) && !email.endsWith("@wesi.local");
+              } catch (_) { return false; }
+            };
+
+            let ownerMarkerEmailPresent = readEmailPresent(ownerMarker);
+            let employeeOwnerFound = false;
+            let employeeOwnerEmailPresent = false;
+            if (ownerId) {
+              try {
+                const employee = e.app.findFirstRecordByFilter(
+                  "wesios_records",
+                  "owner={:p_owner} && coll='employees' && rid='owner' && deleted=false",
+                  {"p_owner": ownerId},
+                );
+                employeeOwnerFound = Boolean(employee);
+                employeeOwnerEmailPresent = readEmailPresent(employee);
+              } catch (_) {}
+            }
+
+            const otp = [];
+            if (ownerId) {
+              try {
+                const records = e.app.findRecordsByFilter(
+                  "wesios_records",
+                  "owner='__wesios_security__' && coll='security'",
+                  "-stamp",
+                  500,
+                  0,
+                );
+                for (const item of records) {
+                  if (otp.length >= 20) break;
+                  try {
+                    const model = new DynamicModel({
+                      "kind": "", "userId": "", "employeeId": "", "purpose": "",
+                      "createdAt": "", "sentAt": "", "expiresAt": "", "delivery": "",
+                      "usedAt": "", "ownerEmailSetup": false,
+                    });
+                    item.unmarshalJSONField("payload", model);
+                    if (String(model.userId || "") !== ownerId) continue;
+                    otp.push({
+                      "kind": String(model.kind || ""),
+                      "employeeOwner": String(model.employeeId || "") === "owner",
+                      "purpose": String(model.purpose || ""),
+                      "createdAt": String(model.createdAt || ""),
+                      "sentAt": String(model.sentAt || ""),
+                      "expiresAt": String(model.expiresAt || ""),
+                      "delivery": String(model.delivery || ""),
+                      "used": Boolean(String(model.usedAt || "")),
+                      "ownerEmailSetup": model.ownerEmailSetup === true,
+                      "deleted": item.get("deleted") === true,
+                      "stamp": String(item.get("stamp") || ""),
+                    });
+                  } catch (_) {}
+                }
+              } catch (_) {}
+            }
+
+            return e.json(200, {
+              "ownerMarkerFound": Boolean(ownerMarker),
+              "ownerIdPresent": Boolean(ownerId),
+              "userExists": userExists,
+              "internalAuthEmail": internalAuthEmail,
+              "userNamePresent": userNamePresent,
+              "ownerMarkerEmailPresent": ownerMarkerEmailPresent,
+              "employeeOwnerFound": employeeOwnerFound,
+              "employeeOwnerEmailPresent": employeeOwnerEmailPresent,
+              "recentOwnerSecurityRecords": otp,
+              "checkedAt": new Date().toISOString(),
+            });
+          });
+          JS
+          node --check "$PATCHED"
+
+          $SSH "$USER@$HOST" "rm -rf '$REMOTE' && mkdir -p '$REMOTE'"
+          scp -i "$HOME/.ssh/id_deploy" -o BatchMode=yes \
+            "$PATCHED" server/pb_hooks/wesi_mail_health.pb.js \
+            "$USER@$HOST:$REMOTE/"
+
+          $SSH "$USER@$HOST" "TOKEN='$TOKEN' REMOTE='$REMOTE' bash -s" > /tmp/owner-auth-state.json <<'REMOTE_SCRIPT'
+          set -euo pipefail
+          HOOK=/opt/pocketbase/pb_hooks/wesi_mail_health.pb.js
+          ORIGINAL="$REMOTE/wesi_mail_health.pb.js"
+          PATCHED="$REMOTE/wesi_auth_state.pb.js"
+          test -s "$ORIGINAL" && test -s "$PATCHED"
+
+          restore() {
+            if [ -w "$HOOK" ]; then cat "$ORIGINAL" > "$HOOK" || true; chmod 0644 "$HOOK" || true;
+            elif command -v sudo >/dev/null 2>&1 && sudo -n true >/dev/null 2>&1; then sudo -n install -m 0644 "$ORIGINAL" "$HOOK" || true; fi
+            rm -rf "$REMOTE" || true
+          }
+          trap restore EXIT
+
+          if [ -w "$HOOK" ]; then cat "$PATCHED" > "$HOOK"; chmod 0644 "$HOOK";
+          elif command -v sudo >/dev/null 2>&1 && sudo -n true >/dev/null 2>&1; then sudo -n install -m 0644 "$PATCHED" "$HOOK";
+          else echo 'Cannot patch health hook' >&2; exit 20; fi
+
+          CODE=''
+          for attempt in $(seq 1 20); do
+            CODE=$(curl -sS -o "$REMOTE/state.json" -w '%{http_code}' --max-time 10 \
+              "http://127.0.0.1:8090/api/wesi/internal/auth-state-$TOKEN" || true)
+            [ "$CODE" = 200 ] && break
+            sleep 1
+          done
+          [ "$CODE" = 200 ] || { echo "State route HTTP $CODE" >&2; cat "$REMOTE/state.json" >&2 2>/dev/null || true; exit 21; }
+          cat "$REMOTE/state.json"
+          restore
+          trap - EXIT
+          REMOTE_SCRIPT
+
+      - name: Publish sanitized owner auth state
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m json.tool /tmp/owner-auth-state.json > .github/owner-auth-state.json
+          git config user.name 'WesiOS Auth Diagnostics'
+          git config user.email 'actions@users.noreply.github.com'
+          git switch -C diag/owner-auth-state
+          git add .github/owner-auth-state.json
+          git commit -m 'diag(auth): inspect owner auth state'
+          git push --force origin HEAD:diag/owner-auth-state
