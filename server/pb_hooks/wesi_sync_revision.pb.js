@@ -20,48 +20,50 @@ routerAdd("POST", "/api/wesi/sync/profile_private", (e) => {
   );
 }, $apis.requireAuth("users"));
 
-function touchRevision(e) {
-  const revision = require(`${__hooks}/wesi_sync_revision.js`);
-  if (revision.isMarker(e.record)) return;
+// PocketBase serializes every handler and executes it in an isolated JS
+// context. Custom functions/variables declared outside the callback are not
+// visible from inside it. For that reason each callback resolves the shared
+// CommonJS revision module inside its own handler scope.
+onRecordAfterCreateSuccess((e) => {
   try {
-    revision.touch(e.app, e.record.getString("owner"));
+    const revision = require(`${__hooks}/wesi_sync_revision.js`);
+    if (!revision.isMarker(e.record)) {
+      revision.touch(e.app, e.record.getString("owner"));
+    }
   } catch (error) {
-    // The business write is already committed because these are AfterSuccess
-    // hooks. Revision maintenance is secondary and must never turn that
-    // successful mutation into a new application error. Logging itself is
-    // therefore best-effort too: PocketBase JSVM logging surfaces can differ
-    // between versions/builds.
+    // The business record is already committed. Revision maintenance must
+    // never turn that successful mutation into an application error.
     try {
-      if (typeof console !== "undefined" && console && typeof console.log === "function") {
-        console.log("WesiOS sync revision touch failed: " + String(error));
-      }
+      console.log("WesiOS sync revision touch failed after create: " + String(error));
     } catch (_) {}
   }
-}
-
-// PocketBase can keep already-registered callbacks alive while a hook file is
-// hot-reloaded. An older callback may therefore outlive the lexical scope that
-// originally contained touchRevision and fail with `touchRevision is not
-// defined`, turning a successfully committed business write into an HTTP 500.
-// Publish the current implementation on the shared VM global object so those
-// stale callbacks resolve to the same fail-safe implementation until the next
-// full PocketBase restart. Fresh callbacks below continue to use the function
-// normally. This assignment is intentionally idempotent.
-try {
-  globalThis.touchRevision = touchRevision;
-} catch (_) {}
-
-onRecordAfterCreateSuccess((e) => {
-  touchRevision(e);
   e.next();
 }, "wesios_records");
 
 onRecordAfterUpdateSuccess((e) => {
-  touchRevision(e);
+  try {
+    const revision = require(`${__hooks}/wesi_sync_revision.js`);
+    if (!revision.isMarker(e.record)) {
+      revision.touch(e.app, e.record.getString("owner"));
+    }
+  } catch (error) {
+    try {
+      console.log("WesiOS sync revision touch failed after update: " + String(error));
+    } catch (_) {}
+  }
   e.next();
 }, "wesios_records");
 
 onRecordAfterDeleteSuccess((e) => {
-  touchRevision(e);
+  try {
+    const revision = require(`${__hooks}/wesi_sync_revision.js`);
+    if (!revision.isMarker(e.record)) {
+      revision.touch(e.app, e.record.getString("owner"));
+    }
+  } catch (error) {
+    try {
+      console.log("WesiOS sync revision touch failed after delete: " + String(error));
+    } catch (_) {}
+  }
   e.next();
 }, "wesios_records");
