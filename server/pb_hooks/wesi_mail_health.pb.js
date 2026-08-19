@@ -1,5 +1,6 @@
 /// Non-secret readiness check for WesiOS OTP delivery.
 /// Never exposes SMTP credentials, API keys or sender values.
+/// Deployment retrigger marker: auth-v12 production rollout 2026-08-19.
 routerAdd("GET", "/api/wesi/auth/mail-ready", (e) => {
   const settings = e.app.settings();
   const senderConfigured = Boolean(
