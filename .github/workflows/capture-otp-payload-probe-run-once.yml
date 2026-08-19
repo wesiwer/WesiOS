@@ -1,5 +1,5 @@
 name: Capture OTP payload probe run once
-# trigger: corrected probe recapture
+# trigger: post-handler-fix recapture
 
 on:
   push:
