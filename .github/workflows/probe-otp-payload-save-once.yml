@@ -1,5 +1,5 @@
 name: Probe OTP payload persistence once
-# trigger: retry with escaped PocketBase security helper
+# trigger: verify after handler-scoped revision fix
 
 on:
   push:
