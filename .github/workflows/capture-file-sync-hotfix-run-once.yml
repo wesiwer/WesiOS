@@ -1,4 +1,5 @@
 name: Capture file sync hotfix run once
+# trigger: explicit recapture
 
 on:
   push:
