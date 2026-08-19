@@ -1,4 +1,5 @@
 name: Repair production revision hook direct once
+# trigger: production repair 2026-08-19
 
 on:
   push:
