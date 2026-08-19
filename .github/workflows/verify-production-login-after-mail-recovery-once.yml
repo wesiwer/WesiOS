@@ -1,4 +1,5 @@
 name: Verify production login after mail recovery once
+# trigger: fixed verification 2026-08-19
 
 on:
   push:
@@ -24,70 +25,24 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p .github
-
-          AUTH_CODE=$(curl -sS -o /tmp/auth.json -w '%{http_code}' --max-time 20 \
-            https://api.wesi-inc.ru/api/wesi/auth/version || true)
-          SEC_CODE=$(curl -sS -o /tmp/sec.json -w '%{http_code}' --max-time 20 \
-            https://api.wesi-inc.ru/api/wesi/security/version || true)
-          MAIL_CODE=$(curl -sS -o /tmp/mail.json -w '%{http_code}' --max-time 20 \
-            https://api.wesi-inc.ru/api/wesi/auth/mail-ready || true)
-          START_CODE=$(curl -sS -o /tmp/start.json -w '%{http_code}' --max-time 20 \
-            -H 'Content-Type: application/json' \
-            -d '{"login":"definitely-invalid-wesios-user","password":"invalid","purpose":"app"}' \
-            https://api.wesi-inc.ru/api/wesi/auth/start-v2 || true)
-
-          python3 - <<'PY' > .github/production-login-verification.json
-          import json
-          def load(path):
-              try:
-                  with open(path, encoding='utf-8') as f:
-                      return json.load(f)
-              except Exception:
-                  return {}
-          def code(path):
-              return open(path, encoding='utf-8').read().strip()
-          auth=load('/tmp/auth.json')
-          sec=load('/tmp/sec.json')
-          mail=load('/tmp/mail.json')
-          start=load('/tmp/start.json')
-          safe_start={k:start.get(k) for k in ('code','message','status') if k in start}
-          safe_mail={k:mail.get(k) for k in (
-              'ready','senderConfigured','smtpEnabled','smtpHostConfigured','smtpReady',
-              'sendmailSelected','mailClientMode','httpsProviderConfigured','httpsProvider','reason'
-          ) if k in mail}
-          out={
-              'authHttp': code('/tmp/auth-code.txt'),
-              'auth': {k:auth.get(k) for k in ('version','jsonReadable') if k in auth},
-              'securityHttp': code('/tmp/sec-code.txt'),
-              'security': {k:sec.get(k) for k in ('version','jsonReadable') if k in sec},
-              'mailHttp': code('/tmp/mail-code.txt'),
-              'mail': safe_mail,
-              'invalidLoginHttp': code('/tmp/start-code.txt'),
-              'invalidLoginResponse': safe_start,
-          }
-          print(json.dumps(out, ensure_ascii=False, indent=2))
-          PY
-        env:
-          PLACEHOLDER: unused
-
-      - name: Persist HTTP codes and validate
-        shell: bash
-        run: |
-          set -euo pipefail
-          # Re-run compactly because shell variables don't cross steps.
           A=$(curl -sS -o /tmp/a.json -w '%{http_code}' --max-time 20 https://api.wesi-inc.ru/api/wesi/auth/version || true)
           S=$(curl -sS -o /tmp/s.json -w '%{http_code}' --max-time 20 https://api.wesi-inc.ru/api/wesi/security/version || true)
           M=$(curl -sS -o /tmp/m.json -w '%{http_code}' --max-time 20 https://api.wesi-inc.ru/api/wesi/auth/mail-ready || true)
-          L=$(curl -sS -o /tmp/l.json -w '%{http_code}' --max-time 20 -H 'Content-Type: application/json' -d '{"login":"definitely-invalid-wesios-user","password":"invalid","purpose":"app"}' https://api.wesi-inc.ru/api/wesi/auth/start-v2 || true)
+          L=$(curl -sS -o /tmp/l.json -w '%{http_code}' --max-time 20 \
+            -H 'Content-Type: application/json' \
+            -d '{"login":"definitely-invalid-wesios-user","password":"invalid","purpose":"app"}' \
+            https://api.wesi-inc.ru/api/wesi/auth/start-v2 || true)
           printf '%s' "$A" > /tmp/auth-code.txt
           printf '%s' "$S" > /tmp/sec-code.txt
           printf '%s' "$M" > /tmp/mail-code.txt
           printf '%s' "$L" > /tmp/start-code.txt
+
           python3 - <<'PY'
           import json
           a=json.load(open('/tmp/a.json',encoding='utf-8'))
           s=json.load(open('/tmp/s.json',encoding='utf-8'))
           m=json.load(open('/tmp/m.json',encoding='utf-8'))
+          l=json.load(open('/tmp/l.json',encoding='utf-8'))
           assert open('/tmp/auth-code.txt').read() == '200'
           assert a.get('version') == '2026-08-09.owner-email-v11', a
           assert a.get('jsonReadable') is True, a
@@ -97,7 +52,7 @@ jobs:
           assert open('/tmp/mail-code.txt').read() == '200'
           assert m.get('ready') is True, m
           assert m.get('sendmailSelected') is True, m
-          assert open('/tmp/start-code.txt').read() == '401', (open('/tmp/start-code.txt').read(), open('/tmp/l.json').read())
+          assert open('/tmp/start-code.txt').read() == '401', (open('/tmp/start-code.txt').read(), l)
           print('PRODUCTION_LOGIN_CHAIN_READY')
           PY
 
@@ -109,10 +64,14 @@ jobs:
           a,s,m,l=map(load,('/tmp/a.json','/tmp/s.json','/tmp/m.json','/tmp/l.json'))
           def c(p): return open(p,encoding='utf-8').read().strip()
           print(json.dumps({
-            'authHttp':c('/tmp/auth-code.txt'),'auth':{'version':a.get('version'),'jsonReadable':a.get('jsonReadable')},
-            'securityHttp':c('/tmp/sec-code.txt'),'security':{'version':s.get('version'),'jsonReadable':s.get('jsonReadable')},
-            'mailHttp':c('/tmp/mail-code.txt'),'mail':{k:m.get(k) for k in ('ready','senderConfigured','smtpEnabled','smtpHostConfigured','smtpReady','sendmailSelected','mailClientMode','httpsProviderConfigured','httpsProvider','reason') if k in m},
-            'invalidLoginHttp':c('/tmp/start-code.txt'),'invalidLoginResponse':{k:l.get(k) for k in ('code','message','status') if k in l}
+            'authHttp':c('/tmp/auth-code.txt'),
+            'auth':{'version':a.get('version'),'jsonReadable':a.get('jsonReadable')},
+            'securityHttp':c('/tmp/sec-code.txt'),
+            'security':{'version':s.get('version'),'jsonReadable':s.get('jsonReadable')},
+            'mailHttp':c('/tmp/mail-code.txt'),
+            'mail':{k:m.get(k) for k in ('ready','senderConfigured','smtpEnabled','smtpHostConfigured','smtpReady','sendmailSelected','mailClientMode','httpsProviderConfigured','httpsProvider','reason') if k in m},
+            'invalidLoginHttp':c('/tmp/start-code.txt'),
+            'invalidLoginResponse':{k:l.get(k) for k in ('code','message','status') if k in l}
           },ensure_ascii=False,indent=2))
           PY
 
