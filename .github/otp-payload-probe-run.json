@@ -1,0 +1,74 @@
+{
+  "conclusion": "success",
+  "databaseId": 32227820199,
+  "jobs": [
+    {
+      "completedAt": "2026-08-19T07:26:37Z",
+      "conclusion": "success",
+      "databaseId": 95991101010,
+      "name": "probe",
+      "startedAt": "2026-08-19T07:26:19Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-08-19T07:26:21Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-08-19T07:26:20Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-08-19T07:26:23Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v4",
+          "number": 2,
+          "startedAt": "2026-08-19T07:26:21Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-08-19T07:26:25Z",
+          "conclusion": "success",
+          "name": "Prepare SSH",
+          "number": 3,
+          "startedAt": "2026-08-19T07:26:23Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-08-19T07:26:34Z",
+          "conclusion": "success",
+          "name": "Probe field-by-field persistence through localhost-only route",
+          "number": 4,
+          "startedAt": "2026-08-19T07:26:25Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-08-19T07:26:35Z",
+          "conclusion": "success",
+          "name": "Publish probe",
+          "number": 5,
+          "startedAt": "2026-08-19T07:26:34Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-08-19T07:26:36Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v4",
+          "number": 10,
+          "startedAt": "2026-08-19T07:26:35Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-08-19T07:26:36Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 11,
+          "startedAt": "2026-08-19T07:26:36Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/wesiwer/WesiOS/actions/runs/32227820199/job/95991101010"
+    }
+  ],
+  "status": "completed"
+}
