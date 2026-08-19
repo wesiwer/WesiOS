@@ -1,0 +1,60 @@
+name: Capture revision fix runs once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/capture-revision-fix-runs-once.yml'
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Capture deploy and probe runs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          DEPLOY=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow repair-sync-revision-direct-once.yml --limit 1 --json databaseId --jq '.[0].databaseId // 0')
+          PROBE=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow probe-live-save-after-revision-repair-once.yml --limit 1 --json databaseId --jq '.[0].databaseId // 0')
+          [ "$DEPLOY" != 0 ] && [ "$PROBE" != 0 ]
+          for RUN_ID in "$DEPLOY" "$PROBE"; do
+            for attempt in $(seq 1 120); do
+              S=$(gh run view "$RUN_ID" --repo "$GITHUB_REPOSITORY" --json status --jq .status)
+              [ "$S" = completed ] && break
+              sleep 2
+            done
+          done
+          gh run view "$DEPLOY" --repo "$GITHUB_REPOSITORY" --json databaseId,status,conclusion,jobs > /tmp/deploy.json
+          gh run view "$PROBE" --repo "$GITHUB_REPOSITORY" --json databaseId,status,conclusion,jobs > /tmp/probe.json
+          gh run view "$DEPLOY" --repo "$GITHUB_REPOSITORY" --log-failed > /tmp/deploy.log 2>&1 || true
+          gh run view "$PROBE" --repo "$GITHUB_REPOSITORY" --log-failed > /tmp/probe.log 2>&1 || true
+          python3 - <<'PY'
+          import json,re,pathlib
+          def clean(s):
+              s=re.sub(r'([A-Za-z0-9._%+-]+)@([A-Za-z0-9.-]+\.[A-Za-z]{2,})',r'<redacted>@\2',s)
+              s=re.sub(r'\b(?:\d{1,3}\.){3}\d{1,3}\b','<redacted-ip>',s)
+              s=re.sub(r'\b[A-Za-z0-9_\-+/=]{40,}\b','<redacted-long-value>',s)
+              return s
+          d=json.load(open('/tmp/deploy.json',encoding='utf-8'))
+          p=json.load(open('/tmp/probe.json',encoding='utf-8'))
+          pathlib.Path('.github/revision-fix-runs.json').write_text(json.dumps({'deploy':d,'probe':p},ensure_ascii=False,indent=2),encoding='utf-8')
+          pathlib.Path('.github/revision-fix-deploy-failed.log').write_text(clean(pathlib.Path('/tmp/deploy.log').read_text(encoding='utf-8',errors='replace'))[-50000:],encoding='utf-8')
+          pathlib.Path('.github/revision-fix-probe-failed.log').write_text(clean(pathlib.Path('/tmp/probe.log').read_text(encoding='utf-8',errors='replace'))[-50000:],encoding='utf-8')
+          PY
+          git config user.name 'WesiOS Sync Diagnostics'
+          git config user.email 'actions@users.noreply.github.com'
+          git switch -C diag/revision-fix-runs
+          git add .github/revision-fix-runs.json .github/revision-fix-deploy-failed.log .github/revision-fix-probe-failed.log
+          git commit -m 'diag(sync): capture revision fix runs'
+          git push --force origin HEAD:diag/revision-fix-runs
