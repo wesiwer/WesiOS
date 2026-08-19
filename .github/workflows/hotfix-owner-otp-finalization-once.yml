@@ -1,5 +1,5 @@
 name: Hotfix owner OTP finalization once
-# trigger: retry 2026-08-19T06:51Z
+# trigger: valid yaml retry 2026-08-19T06:53Z
 
 on:
   push:
@@ -30,40 +30,39 @@ jobs:
           old='  sendCode(email, displayName, purpose, challengeId, challenge, payload);'
           if s.count(old) < 1:
               raise SystemExit('start-v2 sendCode call not found')
-          new=r'''  // Finalize the OTP inline. Older production attempts could leave a
-  // challenge persisted with createdAt set but sentAt/hash/delivery empty if
-  // execution failed at the helper boundary. Build the complete OTP state
-  // before delivery and make every delivery failure explicitly terminal.
-  {
-    const code = $security.randomStringWithAlphabet(6, "0123456789");
-    const salt = $security.randomStringWithAlphabet(32, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789");
-    const sentAt = new Date();
-    payload.kind = "otp";
-    payload.email = email;
-    payload.hash = $security.sha256(challengeId + ":" + salt + ":" + code);
-    payload.salt = salt;
-    payload.attempts = 0;
-    payload.sentAt = sentAt.toISOString();
-    payload.expiresAt = new Date(sentAt.getTime() + 10 * 60 * 1000).toISOString();
-    challenge.set("payload", payload);
-    challenge.set("stamp", payload.sentAt);
-    e.app.save(challenge);
-
-    const subject = purpose === "portal" ? "Код входа на портал WesiOS" : "Код входа в WesiOS";
-    const mail = wesiBuildOtpMail(code, purpose);
-    try {
-      payload.delivery = wesiDeliverMail(e.app, email, displayName, subject, mail.html, mail.text);
-      challenge.set("payload", payload);
-      challenge.set("stamp", new Date().toISOString());
-      e.app.save(challenge);
-    } catch (error) {
-      challenge.set("deleted", true);
-      challenge.set("stamp", new Date().toISOString());
-      e.app.save(challenge);
-      console.log("WesiOS start-v2 OTP delivery failed:", error);
-      throw new InternalServerError("Не удалось отправить код на почту. Повторите позже");
-    }
-  }'''
+          new='\n'.join([
+              '  // Finalize OTP inline so no half-created challenge can survive a helper-boundary failure.',
+              '  {',
+              '    const code = $security.randomStringWithAlphabet(6, "0123456789");',
+              '    const salt = $security.randomStringWithAlphabet(32, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789");',
+              '    const sentAt = new Date();',
+              '    payload.kind = "otp";',
+              '    payload.email = email;',
+              '    payload.hash = $security.sha256(challengeId + ":" + salt + ":" + code);',
+              '    payload.salt = salt;',
+              '    payload.attempts = 0;',
+              '    payload.sentAt = sentAt.toISOString();',
+              '    payload.expiresAt = new Date(sentAt.getTime() + 10 * 60 * 1000).toISOString();',
+              '    challenge.set("payload", payload);',
+              '    challenge.set("stamp", payload.sentAt);',
+              '    e.app.save(challenge);',
+              '',
+              '    const subject = purpose === "portal" ? "Код входа на портал WesiOS" : "Код входа в WesiOS";',
+              '    const mail = wesiBuildOtpMail(code, purpose);',
+              '    try {',
+              '      payload.delivery = wesiDeliverMail(e.app, email, displayName, subject, mail.html, mail.text);',
+              '      challenge.set("payload", payload);',
+              '      challenge.set("stamp", new Date().toISOString());',
+              '      e.app.save(challenge);',
+              '    } catch (error) {',
+              '      challenge.set("deleted", true);',
+              '      challenge.set("stamp", new Date().toISOString());',
+              '      e.app.save(challenge);',
+              '      console.log("WesiOS start-v2 OTP delivery failed:", error);',
+              '      throw new InternalServerError("Не удалось отправить код на почту. Повторите позже");',
+              '    }',
+              '  }',
+          ])
           s=s.replace(old,new,1)
           marker='"version": "2026-08-09.owner-email-v11"'
           if marker not in s:
