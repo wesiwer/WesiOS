@@ -1,5 +1,5 @@
 name: Capture PocketBase sync errors once
-# trigger: capture internal PocketBase logs after authenticated sync HTTP 400
+# trigger: simplified internal log capture
 
 on:
   push:
@@ -30,15 +30,18 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p ~/.ssh && chmod 700 ~/.ssh
-          printf '%s\n' "$KEY" > ~/.ssh/id_deploy && chmod 600 ~/.ssh/id_deploy
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
           if [ -n "${KNOWN:-}" ]; then
             printf '%s\n' "$KNOWN" > ~/.ssh/known_hosts
           else
             ssh-keyscan -H "$HOST" > ~/.ssh/known_hosts 2>/dev/null
           fi
           chmod 600 ~/.ssh/known_hosts
-      - name: Capture PocketBase journal and internal logs
+
+      - name: Capture PocketBase internal logs
         env:
           HOST: ${{ secrets.WESI_SERVER_HOST }}
           USER: ${{ secrets.WESI_SERVER_USER }}
@@ -52,57 +55,57 @@ jobs:
           set +e
           echo '=== pocketbase version ==='
           /opt/pocketbase/pocketbase --version 2>&1
-          echo '=== journalctl pocketbase: last 30 minutes ==='
-          journalctl -u pocketbase --since '30 minutes ago' --no-pager -o short-iso 2>&1
-          echo '=== sudo journalctl attempt ==='
-          sudo -n journalctl -u pocketbase --since '30 minutes ago' --no-pager -o short-iso 2>&1
+          echo '=== sudo journalctl ==='
+          sudo -n journalctl -u pocketbase --since '45 minutes ago' --no-pager -o short-iso 2>&1
           echo '=== internal sqlite logs ==='
           python3 - "$PB_DATA" <<'PYREMOTE'
           import json, os, sqlite3, sys
-          root=sys.argv[1]
-          candidates=[]
-          for name in ('auxiliary.db','logs.db','data.db'):
-              p=os.path.join(root,name)
-              if os.path.isfile(p): candidates.append(p)
-          for db in candidates:
-              print('DB',db,'readable=',os.access(db,os.R_OK))
-              if not os.access(db,os.R_OK):
+          root = sys.argv[1]
+          for name in ('auxiliary.db', 'logs.db', 'data.db'):
+              db = os.path.join(root, name)
+              if not os.path.isfile(db):
+                  continue
+              print('DB', name, 'readable', os.access(db, os.R_OK))
+              if not os.access(db, os.R_OK):
                   continue
               try:
-                  con=sqlite3.connect('file:'+db+'?mode=ro',uri=True)
-                  tables=[r[0] for r in con.execute("select name from sqlite_master where type='table' order by name")]
-                  logtables=[t for t in tables if 'log' in t.lower() or t in ('_logs','logs')]
-                  print('LOG_TABLES',logtables)
+                  con = sqlite3.connect('file:' + db + '?mode=ro', uri=True)
+                  tables = [r[0] for r in con.execute("select name from sqlite_master where type='table' order by name")]
+                  logtables = [t for t in tables if 'log' in t.lower()]
+                  print('LOG_TABLES', logtables)
                   for table in logtables:
-                      cols=[r[1] for r in con.execute('pragma table_info("'+table.replace('"','""')+'")')]
-                      print('TABLE',table,'COLS',cols)
+                      safe = table.replace('"', '""')
+                      cols = [r[1] for r in con.execute('pragma table_info("' + safe + '")')]
+                      print('TABLE', table, 'COLS', cols)
                       try:
-                          rows=con.execute('select * from "'+table.replace('"','""')+'" order by rowid desc limit 250').fetchall()
+                          rows = con.execute('select * from "' + safe + '" order by rowid desc limit 400').fetchall()
                       except Exception as exc:
-                          print('READ_ERROR',table,repr(exc)); continue
+                          print('READ_ERROR', table, repr(exc))
+                          continue
                       for row in rows:
-                          obj={cols[i]:row[i] for i in range(min(len(cols),len(row)))}
-                          text=json.dumps(obj,ensure_ascii=False,default=str)
-                          low=text.lower()
+                          obj = {cols[i]: row[i] for i in range(min(len(cols), len(row)))}
+                          text = json.dumps(obj, ensure_ascii=False, default=str)
+                          low = text.lower()
                           if '/api/wesi/sync/' in low or 'wesi_sync' in low or 'error' in low or 'exception' in low:
                               print(text)
                   con.close()
               except Exception as exc:
-                  print('DB_ERROR',db,repr(exc))
+                  print('DB_ERROR', name, repr(exc))
           PYREMOTE
           echo '=== process ==='
           ps aux | grep '[p]ocketbase' 2>&1
           REMOTE
+
           python3 - <<'PY'
-          import pathlib,re
-          p=pathlib.Path('/tmp/pocketbase.log')
-          s=p.read_text(encoding='utf-8',errors='replace') if p.exists() else ''
-          s=re.sub(r'\b(?:\d{1,3}\.){3}\d{1,3}\b','<redacted-ip>',s)
-          s=re.sub(r'(?i)(authorization|x-wesios-session|sessionid|token|password)([\\\"\' :=]+)[^\\s,}\\\"\']+',r'\1\2<redacted>',s)
-          s=re.sub(r'(?i)(bearer[ ]+)[A-Za-z0-9._~+/=-]+',r'\1<redacted>',s)
-          s=re.sub(r'\b[A-Za-z0-9_\-+/=]{48,}\b','<redacted-long-value>',s)
-          pathlib.Path('.github/latest-pocketbase-sync-errors.log').write_text(s[-100000:],encoding='utf-8')
+          import pathlib, re
+          p = pathlib.Path('/tmp/pocketbase.log')
+          s = p.read_text(encoding='utf-8', errors='replace') if p.exists() else ''
+          s = re.sub(r'\b(?:\d{1,3}\.){3}\d{1,3}\b', '<redacted-ip>', s)
+          s = re.sub(r'Bearer\s+[A-Za-z0-9._~+/=-]+', 'Bearer <redacted>', s, flags=re.I)
+          s = re.sub(r'\b[A-Za-z0-9_+/=-]{56,}\b', '<redacted-long-value>', s)
+          pathlib.Path('.github/latest-pocketbase-sync-errors.log').write_text(s[-120000:], encoding='utf-8')
           PY
+
       - name: Publish diagnostics
         shell: bash
         run: |
@@ -111,5 +114,5 @@ jobs:
           git config user.email 'actions@users.noreply.github.com'
           git switch -C diag/pocketbase-sync-errors
           git add .github/latest-pocketbase-sync-errors.log
-          git commit -m 'diag(sync): capture PocketBase internal errors' || true
+          git commit -m 'diag(sync): capture PocketBase internal logs' || true
           git push --force origin HEAD:diag/pocketbase-sync-errors
