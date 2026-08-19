@@ -1,0 +1,14 @@
+=== REFERENCES ===
+pb_hooks/wesi_sync_revision.pb.js:23:function touchRevision(e) {
+pb_hooks/wesi_sync_revision.pb.js:43:  touchRevision(e);
+pb_hooks/wesi_sync_revision.pb.js:48:  touchRevision(e);
+pb_hooks/wesi_sync_revision.pb.js:53:  touchRevision(e);
+=== REVISION HOOK DEFINITIONS ===
+23:function touchRevision(e) {
+42:onRecordAfterCreateSuccess((e) => {
+47:onRecordAfterUpdateSuccess((e) => {
+52:onRecordAfterDeleteSuccess((e) => {
+=== JS FILES WITH RECORD AFTER HOOKS ===
+pb_hooks/wesi_security.pb.js
+pb_hooks/wesi_sync_revision.pb.js
+pb_hooks/wesi_telegram.pb.js
