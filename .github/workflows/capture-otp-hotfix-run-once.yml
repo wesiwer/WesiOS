@@ -1,4 +1,5 @@
 name: Capture OTP hotfix run once
+# trigger: recapture latest valid-yaml attempt
 
 on:
   push:
