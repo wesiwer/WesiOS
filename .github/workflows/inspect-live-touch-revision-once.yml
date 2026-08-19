@@ -1,0 +1,56 @@
+name: Inspect live touchRevision references once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/inspect-live-touch-revision-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    environment:
+      name: employee-portal
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Inspect live hook references
+        env:
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          USER: ${{ secrets.WESI_SERVER_USER }}
+          KEY: ${{ secrets.WESI_SERVER_SSH_KEY }}
+          KNOWN: ${{ secrets.WESI_SERVER_KNOWN_HOSTS }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_deploy && chmod 600 ~/.ssh/id_deploy
+          if [ -n "${KNOWN:-}" ]; then printf '%s\n' "$KNOWN" > ~/.ssh/known_hosts; else ssh-keyscan -H "$HOST" > ~/.ssh/known_hosts 2>/dev/null; fi
+          chmod 600 ~/.ssh/known_hosts
+          ssh -i "$HOME/.ssh/id_deploy" -o BatchMode=yes "$USER@$HOST" 'bash -s' > /tmp/touch-revision.txt <<'REMOTE'
+          set -euo pipefail
+          cd /opt/pocketbase
+          echo '=== REFERENCES ==='
+          grep -RIn --include='*.js' --include='*.pb.js' 'touchRevision' pb_hooks 2>/dev/null || true
+          echo '=== REVISION HOOK DEFINITIONS ==='
+          grep -nE 'function touchRevision|onRecordAfter(Create|Update|Delete)Success' pb_hooks/wesi_sync_revision.pb.js 2>/dev/null || true
+          echo '=== JS FILES WITH RECORD AFTER HOOKS ==='
+          grep -RIl --include='*.js' --include='*.pb.js' 'onRecordAfter.*Success' pb_hooks 2>/dev/null | sort || true
+          REMOTE
+          sed -E 's#/opt/pocketbase/##g' /tmp/touch-revision.txt > .github/live-touch-revision.txt
+      - name: Publish result
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'WesiOS Sync Diagnostics'
+          git config user.email 'actions@users.noreply.github.com'
+          git switch -C diag/live-touch-revision
+          git add .github/live-touch-revision.txt
+          git commit -m 'diag(sync): inspect live touchRevision references'
+          git push --force origin HEAD:diag/live-touch-revision
