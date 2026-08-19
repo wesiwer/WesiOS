@@ -1,4 +1,5 @@
 name: Verify auth v12 production once
+# trigger: post-deploy retry
 
 on:
   push:
