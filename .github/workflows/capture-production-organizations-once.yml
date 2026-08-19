@@ -1,0 +1,72 @@
+name: Capture production organizations once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/capture-production-organizations-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    environment:
+      name: employee-portal
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Prepare SSH
+        env:
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          KEY: ${{ secrets.WESI_SERVER_SSH_KEY }}
+          KNOWN: ${{ secrets.WESI_SERVER_KNOWN_HOSTS }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_deploy && chmod 600 ~/.ssh/id_deploy
+          if [ -n "${KNOWN:-}" ]; then printf '%s\n' "$KNOWN" > ~/.ssh/known_hosts; else ssh-keyscan -H "$HOST" > ~/.ssh/known_hosts 2>/dev/null; fi
+          chmod 600 ~/.ssh/known_hosts
+      - name: Read organization sync rows
+        env:
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          USER: ${{ secrets.WESI_SERVER_USER }}
+          CONFIGURED_DATA_DIR: ${{ vars.WESI_PB_DATA_DIR }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          PB_DATA="${CONFIGURED_DATA_DIR:-/opt/pocketbase/pb_data}"
+          ssh -i "$HOME/.ssh/id_deploy" -o BatchMode=yes "$USER@$HOST" "PB_DATA='$PB_DATA' python3 -" > /tmp/orgs.json <<'PYREMOTE'
+          import json, os, sqlite3
+          db=os.path.join(os.environ['PB_DATA'],'data.db')
+          con=sqlite3.connect('file:'+db+'?mode=ro',uri=True)
+          con.row_factory=sqlite3.Row
+          tables=[r['name'] for r in con.execute("select name from sqlite_master where type='table'")]
+          target='wesios_records'
+          if target not in tables:
+              print(json.dumps({'error':'wesios_records table missing','tables':tables},ensure_ascii=False)); raise SystemExit
+          cols=[r['name'] for r in con.execute('pragma table_info(wesios_records)')]
+          rows=[]
+          for r in con.execute("select rid,payload,stamp,deleted from wesios_records where coll='organizations' order by owner,rid"):
+              raw=r['payload']
+              try: payload=json.loads(raw) if isinstance(raw,str) else raw
+              except Exception: payload={'_raw':str(raw)}
+              rows.append({'rid':r['rid'],'payload':payload,'stamp':r['stamp'],'deleted':bool(r['deleted'])})
+          print(json.dumps({'columns':cols,'rows':rows},ensure_ascii=False,indent=2,default=str))
+          PYREMOTE
+          cp /tmp/orgs.json .github/production-organizations.json
+      - name: Publish diagnostics
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'WesiOS Sync Diagnostics'
+          git config user.email 'actions@users.noreply.github.com'
+          git switch -C diag/production-organizations
+          git add .github/production-organizations.json
+          git commit -m 'diag(sync): capture production organizations' || true
+          git push --force origin HEAD:diag/production-organizations
