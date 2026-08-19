@@ -1,4 +1,5 @@
 name: Capture PocketBase sync errors once
+# trigger: explicit capture after sync HTTP 400
 
 on:
   push:
