@@ -1,4 +1,5 @@
 name: Patch organization fix workflow rebase once
+# trigger: make verified organization fix push rebase-safe
 
 on:
   push:
