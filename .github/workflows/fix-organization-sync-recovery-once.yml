@@ -1,4 +1,5 @@
 name: Fix organization sync recovery once
+# trigger: stale-local organization tree recovery
 
 on:
   push:
