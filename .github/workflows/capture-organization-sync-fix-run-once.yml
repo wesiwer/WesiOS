@@ -1,4 +1,5 @@
 name: Capture organization sync fix run once
+# trigger: capture latest organization sync recovery validation
 
 on:
   push:
