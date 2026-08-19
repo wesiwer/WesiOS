@@ -1,0 +1,119 @@
+name: Probe OTP payload persistence once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/probe-otp-payload-save-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    environment:
+      name: employee-portal
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Prepare SSH
+        env:
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          USER: ${{ secrets.WESI_SERVER_USER }}
+          KEY: ${{ secrets.WESI_SERVER_SSH_KEY }}
+          KNOWN: ${{ secrets.WESI_SERVER_KNOWN_HOSTS }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          if [ -n "${KNOWN:-}" ]; then printf '%s\n' "$KNOWN" > ~/.ssh/known_hosts; else ssh-keyscan -H "$HOST" > ~/.ssh/known_hosts 2>/dev/null; fi
+          chmod 600 ~/.ssh/known_hosts
+      - name: Probe field-by-field persistence through localhost-only route
+        env:
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          USER: ${{ secrets.WESI_SERVER_USER }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          SSH="ssh -i $HOME/.ssh/id_deploy -o BatchMode=yes"
+          TOKEN=$(openssl rand -hex 24)
+          REMOTE="/tmp/wesi-otp-probe-$GITHUB_RUN_ID"
+          PATCHED="$RUNNER_TEMP/wesi_otp_probe.pb.js"
+          cp server/pb_hooks/wesi_mail_health.pb.js "$PATCHED"
+          cat >> "$PATCHED" <<JS
+
+          routerAdd("GET", "/api/wesi/internal/otp-probe-$TOKEN", (e) => {
+            const result = {steps: [], sha256Type: "", sha256StringLength: 0, sha256JsonType: ""};
+            const collection = e.app.findCollectionByNameOrId("wesios_records");
+            const record = new Record(collection);
+            record.set("owner", "__wesios_probe__");
+            record.set("org", "wesi-inc");
+            record.set("coll", "security-probe");
+            record.set("rid", "probe:" + Date.now());
+            record.set("deleted", true);
+            const payload = {kind:"otp-probe",createdAt:new Date().toISOString(),expiresAt:new Date(Date.now()+60000).toISOString()};
+            const save = (name) => {
+              try {
+                record.set("payload", payload);
+                record.set("stamp", new Date().toISOString());
+                e.app.save(record);
+                result.steps.push({name:name, ok:true});
+                return true;
+              } catch (error) {
+                result.steps.push({name:name, ok:false, error:String((error && error.message) || error || "unknown").substring(0,300)});
+                return false;
+              }
+            };
+            save("base");
+            payload.sentAt = new Date().toISOString(); save("sentAt");
+            payload.salt = "abcdefghijklmnopqrstuvwxyz012345"; save("salt");
+            payload.attempts = 0; save("attempts");
+            const rawHash = $security.sha256("wesios-probe");
+            result.sha256Type = typeof rawHash;
+            result.sha256StringLength = String(rawHash).length;
+            try { result.sha256JsonType = typeof JSON.parse(JSON.stringify({v:rawHash})).v; } catch (_) { result.sha256JsonType = "json-error"; }
+            payload.hash = rawHash; save("hashRaw");
+            payload.hash = String(rawHash); save("hashString");
+            try { e.app.delete(record); } catch (_) {}
+            return e.json(200, result);
+          });
+          JS
+          node --check "$PATCHED"
+          $SSH "$USER@$HOST" "rm -rf '$REMOTE' && mkdir -p '$REMOTE'"
+          scp -i "$HOME/.ssh/id_deploy" -o BatchMode=yes "$PATCHED" server/pb_hooks/wesi_mail_health.pb.js "$USER@$HOST:$REMOTE/"
+          $SSH "$USER@$HOST" "TOKEN='$TOKEN' REMOTE='$REMOTE' bash -s" > /tmp/otp-probe.json <<'REMOTE'
+          set -euo pipefail
+          HOOK=/opt/pocketbase/pb_hooks/wesi_mail_health.pb.js
+          ORIGINAL="$REMOTE/wesi_mail_health.pb.js"
+          PATCHED="$REMOTE/wesi_otp_probe.pb.js"
+          restore(){ if [ -w "$HOOK" ]; then cat "$ORIGINAL" > "$HOOK" || true; chmod 0644 "$HOOK" || true; fi; rm -rf "$REMOTE" || true; }
+          trap restore EXIT
+          cat "$PATCHED" > "$HOOK"; chmod 0644 "$HOOK"
+          CODE=''
+          for attempt in $(seq 1 20); do
+            CODE=$(curl -sS -o "$REMOTE/result.json" -w '%{http_code}' --max-time 10 "http://127.0.0.1:8090/api/wesi/internal/otp-probe-$TOKEN" || true)
+            [ "$CODE" = 200 ] && break
+            sleep 1
+          done
+          [ "$CODE" = 200 ] || exit 21
+          cat "$REMOTE/result.json"
+          restore
+          trap - EXIT
+          REMOTE
+      - name: Publish probe
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m json.tool /tmp/otp-probe.json > .github/otp-payload-probe.json
+          git config user.name 'WesiOS Auth Diagnostics'
+          git config user.email 'actions@users.noreply.github.com'
+          git switch -C diag/otp-payload-probe
+          git add .github/otp-payload-probe.json
+          git commit -m 'diag(auth): probe OTP payload persistence'
+          git push --force origin HEAD:diag/otp-payload-probe
