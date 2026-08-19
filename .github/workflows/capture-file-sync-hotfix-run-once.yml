@@ -1,5 +1,5 @@
 name: Capture file sync hotfix run once
-# trigger: explicit recapture
+# trigger: capture corrected executable-loop verification
 
 on:
   push:
