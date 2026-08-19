@@ -1,0 +1,24 @@
+patch-test-push	Commit verified fix to main	﻿2026-08-19T22:01:35.1700947Z ##[group]Run set -euo pipefail
+patch-test-push	Commit verified fix to main	2026-08-19T22:01:35.1701237Z ^[[36;1mset -euo pipefail^[[0m
+patch-test-push	Commit verified fix to main	2026-08-19T22:01:35.1701449Z ^[[36;1mgit config user.name 'WesiOS Sync Fix'^[[0m
+patch-test-push	Commit verified fix to main	2026-08-19T22:01:35.1701776Z ^[[36;1mgit config user.email 'actions@users.noreply.github.com'^[[0m
+patch-test-push	Commit verified fix to main	2026-08-19T22:01:35.1702160Z ^[[36;1mgit add lib/core/sync/sync_codec.dart test/core/sync/organization_sync_recovery_test.dart^[[0m
+patch-test-push	Commit verified fix to main	2026-08-19T22:01:35.1702572Z ^[[36;1mgit commit -m 'fix(sync): recover organization tree from stale local cache'^[[0m
+patch-test-push	Commit verified fix to main	2026-08-19T22:01:35.1703261Z ^[[36;1mgit push origin HEAD:main^[[0m
+patch-test-push	Commit verified fix to main	2026-08-19T22:01:35.1724652Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+patch-test-push	Commit verified fix to main	2026-08-19T22:01:35.1724934Z env:
+patch-test-push	Commit verified fix to main	2026-08-19T22:01:35.1725210Z   FLUTTER_ROOT: /opt/hostedtoolcache/flutter/stable-3.47.0-x64/flutter
+patch-test-push	Commit verified fix to main	2026-08-19T22:01:35.1725513Z   PUB_CACHE: /home/runner/.pub-cache
+patch-test-push	Commit verified fix to main	2026-08-19T22:01:35.1725712Z ##[endgroup]
+patch-test-push	Commit verified fix to main	2026-08-19T22:01:35.2209749Z [main bd108f2d] fix(sync): recover organization tree from stale local cache
+patch-test-push	Commit verified fix to main	2026-08-19T22:01:35.2210321Z  2 files changed, 456 insertions(+), 185 deletions(-)
+patch-test-push	Commit verified fix to main	2026-08-19T22:01:35.2210732Z  create mode 100644 test/core/sync/organization_sync_recovery_test.dart
+patch-test-push	Commit verified fix to main	2026-08-19T22:01:35.6015121Z To https://github.com/wesiwer/WesiOS
+patch-test-push	Commit verified fix to main	2026-08-19T22:01:35.6015557Z  ! [rejected]          HEAD -> main (fetch first)
+patch-test-push	Commit verified fix to main	2026-08-19T22:01:35.6015863Z error: failed to push some refs to 'https://github.com/wesiwer/WesiOS'
+patch-test-push	Commit verified fix to main	2026-08-19T22:01:35.6021224Z hint: Updates were rejected because the remote contains work that you do not
+patch-test-push	Commit verified fix to main	2026-08-19T22:01:35.6021859Z hint: have locally. This is usually caused by another repository pushing to
+patch-test-push	Commit verified fix to main	2026-08-19T22:01:35.6022783Z hint: the same ref. If you want to integrate the remote changes, use
+patch-test-push	Commit verified fix to main	2026-08-19T22:01:35.6023337Z hint: 'git pull' before pushing again.
+patch-test-push	Commit verified fix to main	2026-08-19T22:01:35.6023672Z hint: See the 'Note about fast-forwards' in 'git push --help' for details.
+patch-test-push	Commit verified fix to main	2026-08-19T22:01:35.6035159Z ##[error]Process completed with exit code 1.
