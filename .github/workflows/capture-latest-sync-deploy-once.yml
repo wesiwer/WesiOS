@@ -1,0 +1,51 @@
+name: Capture latest sync deploy once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/capture-latest-sync-deploy-once.yml'
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Capture latest sync deployment
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          RUN_ID=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow deploy-sync-hooks.yml --limit 1 --json databaseId --jq '.[0].databaseId // 0')
+          [ "$RUN_ID" != 0 ] || exit 2
+          for attempt in $(seq 1 120); do
+            STATUS=$(gh run view "$RUN_ID" --repo "$GITHUB_REPOSITORY" --json status --jq .status)
+            [ "$STATUS" = completed ] && break
+            sleep 2
+          done
+          gh run view "$RUN_ID" --repo "$GITHUB_REPOSITORY" --json databaseId,status,conclusion,headSha,event,jobs > /tmp/run.json
+          gh run view "$RUN_ID" --repo "$GITHUB_REPOSITORY" --log-failed > /tmp/failed.log 2>&1 || true
+          python3 - <<'PY'
+          import json,re,pathlib
+          run=json.load(open('/tmp/run.json',encoding='utf-8'))
+          log=pathlib.Path('/tmp/failed.log').read_text(encoding='utf-8',errors='replace')
+          log=re.sub(r'\b(?:\d{1,3}\.){3}\d{1,3}\b','<redacted-ip>',log)
+          log=re.sub(r'\b[A-Za-z0-9_\-+/=]{40,}\b','<redacted-long-value>',log)
+          pathlib.Path('.github/latest-sync-deploy.json').write_text(json.dumps(run,ensure_ascii=False,indent=2),encoding='utf-8')
+          pathlib.Path('.github/latest-sync-deploy-failed.log').write_text(log[-40000:],encoding='utf-8')
+          PY
+          git config user.name 'WesiOS Sync Diagnostics'
+          git config user.email 'actions@users.noreply.github.com'
+          git switch -C diag/latest-sync-deploy
+          git add .github/latest-sync-deploy.json .github/latest-sync-deploy-failed.log
+          git commit -m "diag(sync): capture deploy $RUN_ID"
+          git push --force origin HEAD:diag/latest-sync-deploy
