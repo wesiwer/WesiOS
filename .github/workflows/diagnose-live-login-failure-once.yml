@@ -1,0 +1,112 @@
+name: Diagnose live WesiOS login failure once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/diagnose-live-login-failure-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    environment:
+      name: employee-portal
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Prepare SSH
+        env:
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          KEY: ${{ secrets.WESI_SERVER_SSH_KEY }}
+          KNOWN: ${{ secrets.WESI_SERVER_KNOWN_HOSTS }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${HOST:-}" && test -n "${KEY:-}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          if [ -n "${KNOWN:-}" ]; then
+            printf '%s\n' "$KNOWN" > ~/.ssh/known_hosts
+          else
+            ssh-keyscan -H "$HOST" > ~/.ssh/known_hosts 2>/dev/null
+          fi
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Capture recent auth and mail diagnostics
+        env:
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          USER: ${{ secrets.WESI_SERVER_USER }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${HOST:-}" && test -n "${USER:-}"
+          SSH="ssh -i $HOME/.ssh/id_deploy -o BatchMode=yes"
+          $SSH "$USER@$HOST" 'bash -s' > /tmp/live-login-raw.txt <<'REMOTE'
+          set +e
+          echo '=== UTC NOW ==='
+          date -u --iso-8601=seconds
+          echo '=== SERVICES ==='
+          systemctl is-active pocketbase 2>/dev/null || true
+          systemctl is-active postfix 2>/dev/null || true
+          systemctl is-active opendkim 2>/dev/null || true
+
+          JCMD='journalctl'
+          if ! journalctl -n 1 --no-pager >/dev/null 2>&1 && command -v sudo >/dev/null 2>&1 && sudo -n true >/dev/null 2>&1; then
+            JCMD='sudo -n journalctl'
+          fi
+
+          echo '=== POCKETBASE RECENT ==='
+          eval "$JCMD --since '45 minutes ago' --no-pager -u pocketbase" 2>/dev/null | tail -n 500 || true
+          echo '=== AUTH/MAIL GLOBAL RECENT ==='
+          eval "$JCMD --since '45 minutes ago' --no-pager" 2>/dev/null | grep -Ei 'WesiOS|pocketbase|postfix|opendkim|smtp|sendmail|mail|auth/start|start-v2|security email|delivery failed|error|panic' | tail -n 800 || true
+
+          echo '=== POSTFIX QUEUE ==='
+          if command -v postqueue >/dev/null 2>&1; then
+            postqueue -p 2>&1 | tail -n 300
+          elif command -v mailq >/dev/null 2>&1; then
+            mailq 2>&1 | tail -n 300
+          fi
+
+          echo '=== MAIL LOG ==='
+          for f in /var/log/mail.log /var/log/maillog; do
+            if [ -r "$f" ]; then tail -n 500 "$f"; fi
+            if [ ! -r "$f" ] && command -v sudo >/dev/null 2>&1 && sudo -n true >/dev/null 2>&1; then sudo -n tail -n 500 "$f" 2>/dev/null || true; fi
+          done
+          eval "$JCMD --since '45 minutes ago' --no-pager -u postfix" 2>/dev/null | tail -n 500 || true
+
+          echo '=== MAIL READY LOCAL ==='
+          curl -sS --max-time 10 http://127.0.0.1:8090/api/wesi/auth/mail-ready || true
+          echo
+          echo '=== AUTH VERSION LOCAL ==='
+          curl -sS --max-time 10 http://127.0.0.1:8090/api/wesi/auth/version || true
+          echo
+          REMOTE
+
+      - name: Sanitize and publish report
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .github
+          python3 - <<'PY'
+          import re
+          raw=open('/tmp/live-login-raw.txt',encoding='utf-8',errors='replace').read()
+          raw=re.sub(r'([A-Za-z0-9._%+-]{1,})@([A-Za-z0-9.-]+\.[A-Za-z]{2,})', r'<redacted>@\2', raw)
+          raw=re.sub(r'\b(?:\d{1,3}\.){3}\d{1,3}\b', '<redacted-ip>', raw)
+          raw=re.sub(r'(?i)(authorization|bearer|token|password|api[_ -]?key|secret)([=: ]+)([^\s,;]+)', r'\1\2<redacted>', raw)
+          raw=re.sub(r'\b[A-Za-z0-9_\-+/=]{40,}\b','<redacted-long-value>',raw)
+          open('.github/live-login-failure-report.txt','w',encoding='utf-8').write(raw[-60000:])
+          PY
+          git config user.name 'WesiOS Login Diagnostics'
+          git config user.email 'actions@users.noreply.github.com'
+          git switch -C diag/live-login-failure
+          git add .github/live-login-failure-report.txt
+          git commit -m 'diag(auth): capture live login failure'
+          git push --force origin HEAD:diag/live-login-failure
