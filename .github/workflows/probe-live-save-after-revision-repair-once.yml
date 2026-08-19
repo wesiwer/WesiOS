@@ -1,0 +1,98 @@
+name: Probe live save after revision repair once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/probe-live-save-after-revision-repair-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    environment:
+      name: employee-portal
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Probe live wesios_records save
+        env:
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          USER: ${{ secrets.WESI_SERVER_USER }}
+          KEY: ${{ secrets.WESI_SERVER_SSH_KEY }}
+          KNOWN: ${{ secrets.WESI_SERVER_KNOWN_HOSTS }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_deploy && chmod 600 ~/.ssh/id_deploy
+          if [ -n "${KNOWN:-}" ]; then printf '%s\n' "$KNOWN" > ~/.ssh/known_hosts; else ssh-keyscan -H "$HOST" > ~/.ssh/known_hosts 2>/dev/null; fi
+          chmod 600 ~/.ssh/known_hosts
+          SSH="ssh -i $HOME/.ssh/id_deploy -o BatchMode=yes"
+          TOKEN=$(openssl rand -hex 24)
+          REMOTE="/tmp/wesi-live-save-$GITHUB_RUN_ID"
+          PATCHED="$RUNNER_TEMP/wesi_live_save.pb.js"
+          cp server/pb_hooks/wesi_mail_health.pb.js "$PATCHED"
+          cat >> "$PATCHED" <<JS
+
+          routerAdd("GET", "/api/wesi/internal/live-save-$TOKEN", (e) => {
+            const result = {ok:false, stage:"create", reason:""};
+            let record = null;
+            try {
+              const collection = e.app.findCollectionByNameOrId("wesios_records");
+              record = new Record(collection);
+              record.set("owner", "__wesios_probe__");
+              record.set("org", "wesi-inc");
+              record.set("coll", "security-probe");
+              record.set("rid", "live-save:" + Date.now());
+              record.set("payload", {kind:"live-save-probe", createdAt:new Date().toISOString()});
+              record.set("stamp", new Date().toISOString());
+              record.set("deleted", true);
+              e.app.save(record);
+              result.ok = true;
+              result.stage = "saved";
+            } catch (error) {
+              result.reason = String((error && error.message) || error || "unknown").substring(0,500);
+            }
+            if (record) { try { e.app.delete(record); } catch (_) {} }
+            return e.json(200, result);
+          });
+          JS
+          node --check "$PATCHED"
+          $SSH "$USER@$HOST" "rm -rf '$REMOTE' && mkdir -p '$REMOTE'"
+          scp -i "$HOME/.ssh/id_deploy" -o BatchMode=yes "$PATCHED" server/pb_hooks/wesi_mail_health.pb.js "$USER@$HOST:$REMOTE/"
+          $SSH "$USER@$HOST" "TOKEN='$TOKEN' REMOTE='$REMOTE' bash -s" > /tmp/live-save.json <<'REMOTE_SCRIPT'
+          set -euo pipefail
+          HOOK=/opt/pocketbase/pb_hooks/wesi_mail_health.pb.js
+          ORIGINAL="$REMOTE/wesi_mail_health.pb.js"
+          PATCHED="$REMOTE/wesi_live_save.pb.js"
+          restore(){ if [ -w "$HOOK" ]; then cat "$ORIGINAL" > "$HOOK" || true; chmod 0644 "$HOOK" || true; elif command -v sudo >/dev/null 2>&1 && sudo -n true >/dev/null 2>&1; then sudo -n install -m 0644 "$ORIGINAL" "$HOOK" || true; fi; rm -rf "$REMOTE" || true; }
+          trap restore EXIT
+          if [ -w "$HOOK" ]; then cat "$PATCHED" > "$HOOK"; chmod 0644 "$HOOK"; else sudo -n install -m 0644 "$PATCHED" "$HOOK"; fi
+          CODE=''
+          for attempt in $(seq 1 20); do
+            CODE=$(curl -sS -o "$REMOTE/result.json" -w '%{http_code}' --max-time 10 "http://127.0.0.1:8090/api/wesi/internal/live-save-$TOKEN" || true)
+            [ "$CODE" = 200 ] && break
+            sleep 1
+          done
+          [ "$CODE" = 200 ] || exit 40
+          cat "$REMOTE/result.json"
+          restore
+          trap - EXIT
+          REMOTE_SCRIPT
+      - name: Publish safe result
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m json.tool /tmp/live-save.json > .github/live-save-after-revision-repair.json
+          git config user.name 'WesiOS Sync Diagnostics'
+          git config user.email 'actions@users.noreply.github.com'
+          git switch -C diag/live-save-after-revision-repair
+          git add .github/live-save-after-revision-repair.json
+          git commit -m 'diag(sync): probe live save after revision repair'
+          git push --force origin HEAD:diag/live-save-after-revision-repair
