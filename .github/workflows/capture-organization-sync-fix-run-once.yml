@@ -1,0 +1,47 @@
+name: Capture organization sync fix run once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/capture-organization-sync-fix-run-once.yml'
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Capture latest organization fix workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          RUN_ID=0
+          for i in $(seq 1 60); do
+            RUN_ID=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow fix-organization-sync-recovery-once.yml --limit 1 --json databaseId --jq '.[0].databaseId // 0')
+            [ "$RUN_ID" != 0 ] && break
+            sleep 2
+          done
+          [ "$RUN_ID" != 0 ] || exit 2
+          for i in $(seq 1 240); do
+            STATUS=$(gh run view "$RUN_ID" --repo "$GITHUB_REPOSITORY" --json status --jq .status)
+            [ "$STATUS" = completed ] && break
+            sleep 2
+          done
+          gh run view "$RUN_ID" --repo "$GITHUB_REPOSITORY" --json databaseId,status,conclusion,headSha,event,jobs > .github/organization-sync-fix-run.json
+          gh run view "$RUN_ID" --repo "$GITHUB_REPOSITORY" --log-failed > .github/organization-sync-fix-failed.log 2>&1 || true
+          git config user.name 'WesiOS Sync Diagnostics'
+          git config user.email 'actions@users.noreply.github.com'
+          git switch -C diag/organization-sync-fix-run
+          git add .github/organization-sync-fix-run.json .github/organization-sync-fix-failed.log
+          git commit -m "diag(sync): capture organization fix $RUN_ID" || true
+          git push --force origin HEAD:diag/organization-sync-fix-run
