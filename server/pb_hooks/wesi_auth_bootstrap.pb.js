@@ -15,7 +15,7 @@ routerAdd("GET", "/api/wesi/auth/version", (e) => {
     }
   } catch (_) {}
   return e.json(jsonReadable ? 200 : 503, {
-    "version": "2026-08-09.owner-email-v11",
+    "version": "2026-08-09.owner-email-v12",
     "jsonReadable": jsonReadable,
   });
 });
@@ -333,7 +333,37 @@ routerAdd("POST", "/api/wesi/auth/start-v2", (e) => {
     });
   }
 
-  sendCode(email, displayName, purpose, challengeId, challenge, payload);
+  // Finalize OTP inline so no half-created challenge can survive a helper-boundary failure.
+  {
+    const code = $security.randomStringWithAlphabet(6, "0123456789");
+    const salt = $security.randomStringWithAlphabet(32, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789");
+    const sentAt = new Date();
+    payload.kind = "otp";
+    payload.email = email;
+    payload.hash = $security.sha256(challengeId + ":" + salt + ":" + code);
+    payload.salt = salt;
+    payload.attempts = 0;
+    payload.sentAt = sentAt.toISOString();
+    payload.expiresAt = new Date(sentAt.getTime() + 10 * 60 * 1000).toISOString();
+    challenge.set("payload", payload);
+    challenge.set("stamp", payload.sentAt);
+    e.app.save(challenge);
+
+    const subject = purpose === "portal" ? "Код входа на портал WesiOS" : "Код входа в WesiOS";
+    const mail = wesiBuildOtpMail(code, purpose);
+    try {
+      payload.delivery = wesiDeliverMail(e.app, email, displayName, subject, mail.html, mail.text);
+      challenge.set("payload", payload);
+      challenge.set("stamp", new Date().toISOString());
+      e.app.save(challenge);
+    } catch (error) {
+      challenge.set("deleted", true);
+      challenge.set("stamp", new Date().toISOString());
+      e.app.save(challenge);
+      console.log("WesiOS start-v2 OTP delivery failed:", error);
+      throw new InternalServerError("Не удалось отправить код на почту. Повторите позже");
+    }
+  }
 
   // Only the newest successfully delivered OTP remains usable for this
   // account and purpose. This prevents an older email from being paired with
