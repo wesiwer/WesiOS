@@ -20,10 +20,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          echo 'dispatch retry 6'
+          echo 'dispatch 0.22.29+104 organization-sync recovery'
           gh workflow run release-app.yml \
             --repo "$GITHUB_REPOSITORY" \
             --ref main \
-            -f notes='WesiOS 0.22.28+103 retry: Android vibration and speech_to_text migrated off removed Flutter v1 embedding; file_picker, SSH, intl and Quill compatibility fixes retained.' \
+            -f notes='WesiOS 0.22.29+104: fixes organization sync recovery from stale/orphan local Hive rows; revision-v2 production fix retained; validated with dedicated Flutter regression tests and analyzer.' \
             -f deploy_to_server=true
-          echo 'Release workflow dispatched after remaining Android v1 embedding plugin fixes.'
+          echo 'Release workflow dispatched for WesiOS 0.22.29+104.'
