@@ -1,5 +1,5 @@
 name: Repair production revision hook direct once
-# trigger: deploy global callback bridge 2026-08-19
+# trigger: deploy handler-scoped revision fix 2026-08-19
 
 on:
   push:
@@ -25,8 +25,8 @@ jobs:
           set -euo pipefail
           node --check server/pb_hooks/wesi_sync_revision.pb.js
           node --check server/pb_hooks/wesi_sync_revision.js
-          grep -Fq 'function touchRevision(e)' server/pb_hooks/wesi_sync_revision.pb.js
-          grep -Fq 'globalThis.touchRevision = touchRevision' server/pb_hooks/wesi_sync_revision.pb.js
+          test "$(grep -Fc 'const revision = require(`${__hooks}/wesi_sync_revision.js`);' server/pb_hooks/wesi_sync_revision.pb.js)" -eq 3
+          ! grep -Fq 'function touchRevision(e)' server/pb_hooks/wesi_sync_revision.pb.js
       - name: Install exact main revision hooks
         env:
           HOST: ${{ secrets.WESI_SERVER_HOST }}
@@ -53,8 +53,8 @@ jobs:
           sleep 3
           cmp -s "$REMOTE/wesi_sync_revision.js" "$DIR/wesi_sync_revision.js"
           cmp -s "$REMOTE/wesi_sync_revision.pb.js" "$DIR/wesi_sync_revision.pb.js"
-          grep -Fq 'function touchRevision(e)' "$DIR/wesi_sync_revision.pb.js"
-          grep -Fq 'globalThis.touchRevision = touchRevision' "$DIR/wesi_sync_revision.pb.js"
+          test "$(grep -Fc 'const revision = require(`${__hooks}/wesi_sync_revision.js`);' "$DIR/wesi_sync_revision.pb.js")" -eq 3
+          ! grep -Fq 'function touchRevision(e)' "$DIR/wesi_sync_revision.pb.js"
           rm -rf "$REMOTE"
-          echo REVISION_HOOK_BRIDGE_DEPLOYED
+          echo REVISION_HANDLER_SCOPE_FIX_DEPLOYED
           REMOTE_SCRIPT
