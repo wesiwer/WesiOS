@@ -39,6 +39,18 @@ function touchRevision(e) {
   }
 }
 
+// PocketBase can keep already-registered callbacks alive while a hook file is
+// hot-reloaded. An older callback may therefore outlive the lexical scope that
+// originally contained touchRevision and fail with `touchRevision is not
+// defined`, turning a successfully committed business write into an HTTP 500.
+// Publish the current implementation on the shared VM global object so those
+// stale callbacks resolve to the same fail-safe implementation until the next
+// full PocketBase restart. Fresh callbacks below continue to use the function
+// normally. This assignment is intentionally idempotent.
+try {
+  globalThis.touchRevision = touchRevision;
+} catch (_) {}
+
 onRecordAfterCreateSuccess((e) => {
   touchRevision(e);
   e.next();
