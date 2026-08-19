@@ -1,4 +1,5 @@
 name: Capture current auth deploy run once
+# trigger: capture direct v12 rollout
 
 on:
   push:
