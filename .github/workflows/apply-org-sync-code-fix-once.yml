@@ -1,4 +1,5 @@
 name: Apply organization sync code fix once
+# trigger: apply validated organization recovery patch
 
 on:
   push:
