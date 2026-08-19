@@ -1,0 +1,106 @@
+name: Deploy file sync scope fix once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/deploy-file-sync-scope-fix-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    environment:
+      name: employee-portal
+      url: https://api.wesi-inc.ru
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Validate handler-safe file routes
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check server/pb_hooks/wesi_sync_files.pb.js
+          ! grep -Fq 'for (const coll of' server/pb_hooks/wesi_sync_files.pb.js
+          for coll in file_grants file_requests file_handovers; do
+            grep -Fq "routerAdd(\"GET\", \"/api/wesi/sync/$coll\"" server/pb_hooks/wesi_sync_files.pb.js
+            grep -Fq "routerAdd(\"POST\", \"/api/wesi/sync/$coll\"" server/pb_hooks/wesi_sync_files.pb.js
+            grep -Fq "runtime.read(e, \"$coll\")" server/pb_hooks/wesi_sync_files.pb.js
+            grep -Fq "runtime.write(e, \"$coll\")" server/pb_hooks/wesi_sync_files.pb.js
+          done
+      - name: Deploy exact file hook to production
+        env:
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          USER: ${{ secrets.WESI_SERVER_USER }}
+          KEY: ${{ secrets.WESI_SERVER_SSH_KEY }}
+          KNOWN: ${{ secrets.WESI_SERVER_KNOWN_HOSTS }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_deploy && chmod 600 ~/.ssh/id_deploy
+          if [ -n "${KNOWN:-}" ]; then printf '%s\n' "$KNOWN" > ~/.ssh/known_hosts; else ssh-keyscan -H "$HOST" > ~/.ssh/known_hosts 2>/dev/null; fi
+          chmod 600 ~/.ssh/known_hosts
+          SSH="ssh -i $HOME/.ssh/id_deploy -o BatchMode=yes"
+          REMOTE="/tmp/wesi-file-sync-$GITHUB_RUN_ID"
+          $SSH "$USER@$HOST" "rm -rf '$REMOTE' && mkdir -p '$REMOTE'"
+          scp -i "$HOME/.ssh/id_deploy" -o BatchMode=yes server/pb_hooks/wesi_sync_files.pb.js "$USER@$HOST:$REMOTE/wesi_sync_files.pb.js"
+          $SSH "$USER@$HOST" "REMOTE='$REMOTE' bash -s" > /tmp/deploy-file-sync.txt <<'REMOTE_SCRIPT'
+          set -euo pipefail
+          DST=/opt/pocketbase/pb_hooks/wesi_sync_files.pb.js
+          SRC="$REMOTE/wesi_sync_files.pb.js"
+          if [ -w "$DST" ]; then
+            cat "$SRC" > "$DST"
+          elif command -v sudo >/dev/null 2>&1 && sudo -n true >/dev/null 2>&1; then
+            sudo -n install -m 0644 "$SRC" "$DST"
+          else
+            echo 'TARGET_NOT_WRITABLE' >&2
+            exit 30
+          fi
+          sleep 4
+          if cmp -s "$SRC" "$DST" 2>/dev/null; then :; elif command -v sudo >/dev/null 2>&1 && sudo -n cmp -s "$SRC" "$DST"; then :; else echo 'LIVE_FILE_MISMATCH' >&2; exit 31; fi
+          grep -Fq 'runtime.read(e, "file_grants")' "$DST"
+          grep -Fq 'runtime.read(e, "file_requests")' "$DST"
+          grep -Fq 'runtime.read(e, "file_handovers")' "$DST"
+          if grep -Fq 'for (const coll of' "$DST"; then echo 'LEGACY_LOOP_STILL_PRESENT' >&2; exit 32; fi
+          echo 'LIVE_FILE_MATCH_MAIN=true'
+          echo 'LEGACY_LOOP_PRESENT=false'
+          rm -rf "$REMOTE"
+          REMOTE_SCRIPT
+      - name: Verify protected routes are loaded
+        shell: bash
+        run: |
+          set -euo pipefail
+          for coll in file_grants file_requests file_handovers; do
+            code=$(curl -sS -o /tmp/response.txt -w '%{http_code}' --max-time 20 "https://api.wesi-inc.ru/api/wesi/sync/$coll" || true)
+            case "$code" in
+              401|403) echo "$coll=$code" ;;
+              *) echo "Unexpected $coll HTTP $code"; cat /tmp/response.txt; exit 40 ;;
+            esac
+          done
+      - name: Publish deployment report
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY' > .github/file-sync-scope-deploy.json
+          import json,pathlib,datetime
+          text=pathlib.Path('/tmp/deploy-file-sync.txt').read_text(encoding='utf-8',errors='replace') if pathlib.Path('/tmp/deploy-file-sync.txt').exists() else ''
+          print(json.dumps({
+            'checkedAt': datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            'headSha': '${{ github.sha }}',
+            'liveFileMatchMain': 'LIVE_FILE_MATCH_MAIN=true' in text,
+            'legacyLoopPresent': not ('LEGACY_LOOP_PRESENT=false' in text),
+          },ensure_ascii=False,indent=2))
+          PY
+          git config user.name 'WesiOS Sync Hotfix'
+          git config user.email 'actions@users.noreply.github.com'
+          git switch -C diag/file-sync-scope-deploy
+          git add .github/file-sync-scope-deploy.json
+          git commit -m 'diag(sync): verify file route scope deploy'
+          git push --force origin HEAD:diag/file-sync-scope-deploy
