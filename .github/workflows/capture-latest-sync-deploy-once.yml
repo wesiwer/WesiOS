@@ -1,4 +1,5 @@
 name: Capture latest sync deploy once
+# trigger: recapture after deploy permission fallback
 
 on:
   push:
