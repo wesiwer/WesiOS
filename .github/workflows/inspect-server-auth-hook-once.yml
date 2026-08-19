@@ -1,4 +1,5 @@
 name: Inspect server auth hook once
+# trigger: verify live v12 after direct deploy
 
 on:
   push:
