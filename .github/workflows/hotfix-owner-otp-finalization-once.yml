@@ -1,4 +1,5 @@
 name: Hotfix owner OTP finalization once
+# trigger: retry 2026-08-19T06:51Z
 
 on:
   push:
