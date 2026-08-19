@@ -1,4 +1,5 @@
 name: Probe OTP payload persistence once
+# trigger: retry with escaped PocketBase security helper
 
 on:
   push:
@@ -74,7 +75,7 @@ jobs:
             payload.sentAt = new Date().toISOString(); save("sentAt");
             payload.salt = "abcdefghijklmnopqrstuvwxyz012345"; save("salt");
             payload.attempts = 0; save("attempts");
-            const rawHash = $security.sha256("wesios-probe");
+            const rawHash = \$security.sha256("wesios-probe");
             result.sha256Type = typeof rawHash;
             result.sha256StringLength = String(rawHash).length;
             try { result.sha256JsonType = typeof JSON.parse(JSON.stringify({v:rawHash})).v; } catch (_) { result.sha256JsonType = "json-error"; }
