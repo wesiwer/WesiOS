@@ -13,7 +13,6 @@ function row({
   rid,
   nonce,
   stamp = "2026-08-18T03:00:00.000Z",
-  updated = "2026-08-18 03:00:00.000Z",
 }) {
   return {
     id,
@@ -25,7 +24,6 @@ function row({
       if (name === "coll") return coll || "";
       if (name === "rid") return rid || "";
       if (name === "stamp") return stamp;
-      if (name === "updated") return updated;
       return "";
     },
   };
@@ -41,6 +39,7 @@ function appWith(markers = {}, legacy = {}) {
         return rows.slice(offset, offset + maxRecords);
       }
       if (params?.marker === revision.markerCollection) {
+        assert.equal(sort, "-stamp,-id");
         const rows = legacy[owner] || [];
         return rows.slice(offset, offset + maxRecords);
       }
@@ -122,31 +121,56 @@ test("marker stays above an allowed future business stamp for legacy revision", 
   assert.ok(Date.parse(next) > Date.parse(previousMarker));
 });
 
-test("pre-marker installations fall back to latest business state until first write", () => {
+test("pre-marker installations fall back to latest business stamp until first write", () => {
   const app = appWith({}, {
-    company: [row({id: "business-row", coll: "tasks", rid: "t1", updated: "2026-08-18 04:00:00.000Z"})],
+    company: [row({
+      id: "business-row",
+      coll: "tasks",
+      rid: "t1",
+      stamp: "2026-08-18T04:00:00.000Z",
+    })],
   });
   assert.equal(
     revision.readOwner(app, "company"),
-    "legacy:business-row|2026-08-18 04:00:00.000Z",
+    "legacy:business-row|2026-08-18T04:00:00.000Z",
   );
 });
 
-test("latest business row remains a fallback when marker nonce is unchanged", () => {
+test("latest business stamp remains a fallback when marker nonce is unchanged", () => {
   const marker = {
     company: [row({id: "m1", coll: revision.markerCollection, rid: revision.markerRid, nonce: "stable-marker"})],
   };
   const before = appWith(marker, {
-    company: [row({id: "a", coll: "tasks", rid: "a", updated: "2026-08-18 04:00:00.000Z"})],
+    company: [row({
+      id: "a",
+      coll: "tasks",
+      rid: "a",
+      stamp: "2026-08-18T04:00:00.000Z",
+    })],
   });
   const after = appWith(marker, {
-    company: [row({id: "b", coll: "tasks", rid: "b", updated: "2026-08-18 04:00:01.000Z"})],
+    company: [row({
+      id: "b",
+      coll: "tasks",
+      rid: "b",
+      stamp: "2026-08-18T04:00:01.000Z",
+    })],
   });
 
   assert.notEqual(
     revision.readOwner(before, "company"),
     revision.readOwner(after, "company"),
   );
+});
+
+test("revision fallback never queries optional PocketBase updated field", () => {
+  const source = fs.readFileSync(
+    path.resolve("server/pb_hooks/wesi_sync_revision.js"),
+    "utf8",
+  );
+  assert.doesNotMatch(source, /["']-updated,-id["']/);
+  assert.doesNotMatch(source, /getString\(["']updated["']\)/);
+  assert.match(source, /latestBusinessByStamp\(app, owner\)/);
 });
 
 test("record hook covers create, update and delete while excluding marker recursion", () => {
