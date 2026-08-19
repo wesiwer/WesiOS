@@ -1,0 +1,31 @@
+{
+    "sha256JsonType": "string",
+    "sha256StringLength": 64,
+    "sha256Type": "string",
+    "steps": [
+        {
+            "name": "base",
+            "ok": true
+        },
+        {
+            "name": "sentAt",
+            "ok": true
+        },
+        {
+            "name": "salt",
+            "ok": true
+        },
+        {
+            "name": "attempts",
+            "ok": true
+        },
+        {
+            "name": "hashRaw",
+            "ok": true
+        },
+        {
+            "name": "hashString",
+            "ok": true
+        }
+    ]
+}
