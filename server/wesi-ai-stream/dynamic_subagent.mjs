@@ -284,6 +284,8 @@ export function buildDynamicSubagentEvent(spec, phase, detail = {}) {
   // («Нирвана: проверка», «Передано Нирвана»), и без явной метки человек не
   // может на глаз отличить временного специалиста от второй персоны.
   const label = cleanText(detail.label, 160);
+  const isResult = phase === 'result';
+  const files = cleanPathList(detail.files, 40);
   return {
     type: 'agent',
     phase,
@@ -292,9 +294,15 @@ export function buildDynamicSubagentEvent(spec, phase, detail = {}) {
     agentId: spec.agentId,
     parentRequestId: spec.parentRequestId,
     label: label ? `${label} (субагент)` : label,
-    detail: cleanText(detail.detail, 500),
-    // Поручение едет вместе с событием. Без него ход мыслей показывает, что
-    // специалист появился, но не за чем — а именно это и хочет видеть человек.
-    task: cleanText(spec.task, 400),
+    // На первом уровне результат всё равно показывается кратко (UI ограничит
+    // строки), но второй уровень должен иметь настоящий структурированный
+    // результат, а не прежние 500 символов одной сводки.
+    detail: cleanText(detail.detail, isResult ? MAX_SUBAGENT_OUTPUT_CHARS : 1200),
+    // Поручение едет вместе с событием. Оно пригодится и для глубокого уровня,
+    // поэтому не режем его до старых 400 символов.
+    task: cleanText(spec.task, 5000),
+    ...(Number(detail.additions) > 0 ? {additions: Number(detail.additions)} : {}),
+    ...(Number(detail.deletions) > 0 ? {deletions: Number(detail.deletions)} : {}),
+    ...(files.length ? {files} : {}),
   };
 }
