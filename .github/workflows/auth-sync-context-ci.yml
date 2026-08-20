@@ -1,0 +1,19 @@
+name: Auth Sync Context CI
+
+on:
+  pull_request:
+    paths:
+      - 'server/pb_hooks/wesi_sync_context.pb.js'
+      - 'server/pb_hooks/wesi_sync_context_contract_test.mjs'
+      - '.github/workflows/auth-sync-context-ci.yml'
+
+jobs:
+  auth-sync-context:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check sync authorization hook syntax
+        run: node --check server/pb_hooks/wesi_sync_context.pb.js
+      - name: Test authenticated legacy and sync-v3 context
+        run: node --test server/pb_hooks/wesi_sync_context_contract_test.mjs
