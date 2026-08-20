@@ -1,0 +1,3 @@
+trigger=2026-08-20
+version=0.22.31+106
+purpose=build-windows-android-and-publish-production-release
