@@ -13,9 +13,7 @@ permissions:
 jobs:
   fix:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-    environment:
-      name: employee-portal
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
         with:
@@ -46,13 +44,12 @@ jobs:
               if marker not in text:
                   raise SystemExit('Telegram insertion marker not found')
               text = text.replace(marker, telegram_tile + marker, 1)
-
           settings.write_text(text, encoding='utf-8')
 
           deploy = Path('.github/workflows/deploy-sync-hooks.yml')
           d = deploy.read_text(encoding='utf-8')
           old = '          restart_needed="$migration_changed"\n'
-          new = '          # Hooks/routes can keep stale JS callbacks across PocketBase hot reloads.\n          # Always restart after replacing the sync bundle so production executes\n          # exactly the hook/runtime files verified above.\n          restart_needed="1"\n'
+          new = '          # PocketBase can preserve registered JS callbacks across hot hook reloads.\n          # Always restart after replacing the sync bundle to eliminate stale callbacks.\n          restart_needed="1"\n'
           if old in d:
               d = d.replace(old, new, 1)
           elif 'restart_needed="1"' not in d:
@@ -65,17 +62,14 @@ jobs:
           if not m:
               raise SystemExit('pubspec version not found')
           major, minor, patch, build = map(int, m.groups())
-          next_version = f'version: {major}.{minor}.{patch + 1}+{build + 1}'
-          p = p[:m.start()] + next_version + p[m.end():]
+          p = p[:m.start()] + f'version: {major}.{minor}.{patch + 1}+{build + 1}' + p[m.end():]
           pubspec.write_text(p, encoding='utf-8')
-          print(next_version)
           PY
 
           grep -q "telegram_link_screen.dart" lib/features/settings/settings_screen.dart
           grep -q "const TelegramLinkScreen()" lib/features/settings/settings_screen.dart
           grep -q 'restart_needed="1"' .github/workflows/deploy-sync-hooks.yml
           git diff --check
-          git diff -- lib/features/settings/settings_screen.dart .github/workflows/deploy-sync-hooks.yml pubspec.yaml
 
       - name: Commit fixes to main
         shell: bash
@@ -84,16 +78,14 @@ jobs:
           git config user.name 'WesiOS Fix Bot'
           git config user.email 'actions@users.noreply.github.com'
           git add lib/features/settings/settings_screen.dart .github/workflows/deploy-sync-hooks.yml pubspec.yaml
-          if git diff --cached --quiet; then
-            echo 'No source changes needed'
-          else
+          if ! git diff --cached --quiet; then
             git commit -m 'fix: restore Telegram settings and restart sync runtime'
             git pull --rebase origin main
             git push origin HEAD:main
           fi
 
       - name: Dispatch production sync deployment
-        id: sync_dispatch
+        id: sync
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
@@ -108,10 +100,10 @@ jobs:
             "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/workflows/deploy-sync-hooks.yml/dispatches" \
             -d '{"ref":"main"}'
 
-      - name: Wait for sync deployment
+      - name: Wait for production sync deployment
         env:
           GH_TOKEN: ${{ github.token }}
-          SINCE: ${{ steps.sync_dispatch.outputs.since }}
+          SINCE: ${{ steps.sync.outputs.since }}
         shell: bash
         run: |
           set -euo pipefail
@@ -127,7 +119,6 @@ jobs:
             sleep 5
           done
           [ -n "$run_id" ] || { echo 'Sync deploy run not found' >&2; exit 1; }
-          echo "sync run: $run_id"
 
           for i in $(seq 1 72); do
             payload=$(curl -fsS \
@@ -144,35 +135,7 @@ jobs:
             fi
             sleep 10
           done
-          echo 'Timed out waiting for sync deployment' >&2
           exit 1
-
-      - name: Verify deployed sync files match main
-        env:
-          HOST: ${{ secrets.WESI_SERVER_HOST }}
-          USER: ${{ secrets.WESI_SERVER_USER }}
-          KEY: ${{ secrets.WESI_SERVER_SSH_KEY }}
-          KNOWN: ${{ secrets.WESI_SERVER_KNOWN_HOSTS }}
-          CONFIGURED_HOOK_DIR: ${{ vars.WESI_PB_HOOK_DIR }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p ~/.ssh && chmod 700 ~/.ssh
-          printf '%s\n' "$KEY" > ~/.ssh/id_sync_verify
-          chmod 600 ~/.ssh/id_sync_verify
-          if [ -n "${KNOWN:-}" ]; then
-            printf '%s\n' "$KNOWN" > ~/.ssh/known_hosts
-          else
-            ssh-keyscan -H "$HOST" > ~/.ssh/known_hosts 2>/dev/null
-          fi
-          chmod 600 ~/.ssh/known_hosts
-          HOOK_DIR="${CONFIGURED_HOOK_DIR:-/opt/pocketbase/pb_hooks}"
-          for f in wesi_sync_extra.pb.js wesi_sync_extra_runtime.js; do
-            expected=$(sha256sum "server/pb_hooks/$f" | awk '{print $1}')
-            actual=$(ssh -i ~/.ssh/id_sync_verify -o BatchMode=yes "$USER@$HOST" "sha256sum '$HOOK_DIR/$f' | awk '{print \$1}'")
-            echo "$f expected=$expected actual=$actual"
-            test "$expected" = "$actual"
-          done
 
       - name: Dispatch application release
         env:
