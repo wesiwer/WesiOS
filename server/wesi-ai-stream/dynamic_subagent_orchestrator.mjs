@@ -30,15 +30,52 @@ function stripOuterCodeFence(value) {
   return match ? match[1].trim() : text;
 }
 
-function parseObject(value) {
-  const text = stripOuterCodeFence(stripLeadingReasoningBlocks(value));
-  if (!text.startsWith('{') || !text.endsWith('}')) return null;
+function parseJsonObjectText(text) {
   try {
     const parsed = JSON.parse(text);
     return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null;
   } catch {
     return null;
   }
+}
+
+function extractBalancedJsonObject(value) {
+  const text = String(value || '');
+  for (let start = text.indexOf('{'); start >= 0; start = text.indexOf('{', start + 1)) {
+    let depth = 0;
+    let quoted = false;
+    let escaped = false;
+    for (let index = start; index < text.length; index += 1) {
+      const char = text[index];
+      if (quoted) {
+        if (escaped) {
+          escaped = false;
+        } else if (char === '\\') {
+          escaped = true;
+        } else if (char === '"') {
+          quoted = false;
+        }
+        continue;
+      }
+      if (char === '"') {
+        quoted = true;
+        continue;
+      }
+      if (char === '{') depth += 1;
+      if (char !== '}') continue;
+      depth -= 1;
+      if (depth !== 0) continue;
+      const parsed = parseJsonObjectText(text.slice(start, index + 1));
+      if (parsed) return parsed;
+      break;
+    }
+  }
+  return null;
+}
+
+function parseObject(value) {
+  const text = stripOuterCodeFence(stripLeadingReasoningBlocks(value));
+  return parseJsonObjectText(text) || extractBalancedJsonObject(text);
 }
 
 function visibleSnippet(value, max = 360) {
@@ -49,6 +86,26 @@ function visibleSnippet(value, max = 360) {
 
 function reasoningEvent(label, detail) {
   return {type: 'activity', kind: 'reasoning', phase: 'done', label, detail};
+}
+
+const BASELINE_SUBAGENT_ROLES = Object.freeze([
+  'Coding / Flutter Agent',
+  'QA Agent',
+  'Build Agent',
+  'Research Agent',
+  'Documents Agent',
+  'Media Agent',
+  'Review Agent',
+  'Security Reviewer',
+]);
+
+function parseManualSubagentRequest(value) {
+  const text = String(value || '').trim();
+  const match = text.match(/^Позови\s+(?:субагента|сабагента)\s+[«"]([^»"]+)[»"]\s+и\s+поручи\s+ему\s*:\s*([\s\S]+)$/iu);
+  if (!match) return null;
+  const role = match[1].trim().slice(0, 120);
+  const task = match[2].trim().slice(0, 5000);
+  return role && task ? {role, task} : null;
 }
 
 export function parseDynamicSubagentToolRequest(value) {
@@ -70,6 +127,7 @@ function plannerInput(prepared, policy) {
         `Ты Lead Coordinator. Реши, нужны ли для текущей задачи временные специалисты. Допустимо от 0 до ${maxAgents} субагентов. ` +
         'Создавай их только когда декомпозиция реально улучшает точность/проверку. Запрещены рекурсивные агенты, скрытые рассуждения, destructive actions и финальный ответ пользователю на этом шаге. ' +
         'Каждому специалисту дай узкую роль и независимую задачу. requestedCapabilities могут содержать только разрешённые read-only tools. ' +
+        `Базовый каталог специалистов: ${BASELINE_SUBAGENT_ROLES.join('; ')}. Предпочитай подходящую роль из каталога, а если ни одна не подходит — создай узкую динамическую роль под задачу. ` +
         'writablePaths относятся только к изолированному coordination workspace и НЕ дают доступ к host filesystem. ' +
         'Верни ТОЛЬКО JSON без markdown: {"subagents":[{"role":"...","task":"...","requestedCapabilities":["..."],"readablePaths":["..."],"writablePaths":["..."]}]}.\n' +
         `[WESI_AI_DYNAMIC_ALLOWED_TOOLS]\n${JSON.stringify(toolNames)}`,
@@ -160,7 +218,6 @@ function safeToolResult(name, raw) {
 
 async function runOneSubagent({spec, policy, workspace, invokeModel, invokeTool, emit, signal, budget}) {
   const send = typeof emit === 'function' ? emit : () => {};
-  // Поручение уже названо при призыве — повторять его здесь незачем.
   send(buildDynamicSubagentEvent(spec, 'start', {
     label: `${spec.role} · за работой`,
     detail: 'Работает отдельно, с урезанными правами и своим бюджетом вызовов.',
@@ -191,14 +248,10 @@ async function runOneSubagent({spec, policy, workspace, invokeModel, invokeTool,
     } else {
       seenCalls.add(signature);
       budget.remainingToolTurns -= 1;
-      // agentName подписывает вызов: иначе в ходе мыслей видно «инструмент
-      // запущен», но не видно, что его запустил именно этот специалист.
       send({type: 'tool', phase: 'start', role: 'subagent', agentId: spec.agentId, agentName: spec.role, name: toolRequest.name});
       toolResult = safeToolResult(toolRequest.name, await invokeTool({spec, name: toolRequest.name, arguments: toolRequest.arguments}));
     }
     toolResults.push(toolResult);
-    // Аргументы и ответ едут вместе с событием: иначе шаг субагента нельзя
-    // развернуть и проверить — видно только, что инструмент отработал.
     send({
       type: 'tool', phase: 'result', role: 'subagent',
       agentId: spec.agentId, agentName: spec.role, name: toolRequest.name,
@@ -242,8 +295,19 @@ export async function runDynamicSubagents({prepared, invokeModel, invokeTool, em
 
   const send = typeof emit === 'function' ? emit : () => {};
   const workspace = createConflictSafeWorkspace({workspaceId: `${prepared.requestId}:workspace`, files: policy.workspaceFiles});
+  const manualRequest = parseManualSubagentRequest(prepared.message);
   let planRaw = '';
-  planRaw = await invokeModel({actor: 'lead', phase: 'subagent-plan', input: plannerInput(prepared, policy)});
+  if (manualRequest) {
+    planRaw = JSON.stringify({
+      subagents: [{
+        role: manualRequest.role,
+        task: manualRequest.task,
+        requestedCapabilities: Array.isArray(policy.allowedToolNames) ? policy.allowedToolNames : [],
+      }],
+    });
+  } else {
+    planRaw = await invokeModel({actor: 'lead', phase: 'subagent-plan', input: plannerInput(prepared, policy)});
+  }
   const specs = sanitizePlan(planRaw, prepared, policy, workspace);
   if (!specs.length) return {ok: true, skipped: true, reason: 'planner_selected_none', results: [], workspace: workspaceSnapshot(workspace)};
 
