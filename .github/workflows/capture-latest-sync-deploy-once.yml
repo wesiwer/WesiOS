@@ -1,5 +1,5 @@
 name: Capture latest sync deploy once
-# trigger: recapture after deploy permission fallback
+# trigger: recapture after 0.22.30 organization compatibility merge
 
 on:
   push:
