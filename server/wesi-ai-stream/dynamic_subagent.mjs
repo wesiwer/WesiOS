@@ -50,6 +50,11 @@ const FORBIDDEN_RESULT_KEYS = new Set([
   'secret',
 ]);
 
+// Structured result exists only while the request is executing. Keeping it in
+// a WeakMap lets the visible result event reuse the already validated public
+// fields without mutating the subagent spec or leaking hidden provider data.
+const VISIBLE_RESULT_BY_SPEC = new WeakMap();
+
 function clampInt(value, min, max, fallback) {
   const number = Number(value);
   if (!Number.isFinite(number)) return fallback;
@@ -256,13 +261,29 @@ function cleanWorkspaceEdits(value, spec) {
   return edits;
 }
 
+function structuredVisibleResult(result) {
+  if (!result) return '';
+  const lines = [];
+  if (result.summary) lines.push(`Краткий вывод: ${result.summary}`);
+  if (Array.isArray(result.findings) && result.findings.length) {
+    lines.push('', 'Наблюдения:');
+    for (const item of result.findings) lines.push(`• ${item}`);
+  }
+  if (Array.isArray(result.risks) && result.risks.length) {
+    lines.push('', 'Риски:');
+    for (const item of result.risks) lines.push(`• ${item}`);
+  }
+  if (result.recommendation) lines.push('', `Рекомендация: ${result.recommendation}`);
+  return cleanText(lines.join('\n'), MAX_SUBAGENT_OUTPUT_CHARS);
+}
+
 export function validateDynamicSubagentResult(raw, spec) {
   validateDynamicSubagentSpec(spec);
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('WAI_SUBAGENT_RESULT_INVALID');
   assertNoHiddenFields(raw);
   const summary = cleanText(raw.summary, spec.limits.maxOutputChars);
   if (!summary) throw new Error('WAI_SUBAGENT_RESULT_INVALID');
-  return {
+  const result = {
     protocol: DYNAMIC_SUBAGENT_PROTOCOL,
     agentId: spec.agentId,
     role: spec.role,
@@ -273,6 +294,8 @@ export function validateDynamicSubagentResult(raw, spec) {
     workspaceEdits: cleanWorkspaceEdits(raw.workspaceEdits, spec),
     finalOwner: 'lead',
   };
+  VISIBLE_RESULT_BY_SPEC.set(spec, result);
+  return result;
 }
 
 export function buildDynamicSubagentEvent(spec, phase, detail = {}) {
@@ -286,6 +309,8 @@ export function buildDynamicSubagentEvent(spec, phase, detail = {}) {
   const label = cleanText(detail.label, 160);
   const isResult = phase === 'result';
   const files = cleanPathList(detail.files, 40);
+  const validatedResult = isResult ? VISIBLE_RESULT_BY_SPEC.get(spec) : null;
+  const resultDetail = structuredVisibleResult(validatedResult);
   return {
     type: 'agent',
     phase,
@@ -295,9 +320,9 @@ export function buildDynamicSubagentEvent(spec, phase, detail = {}) {
     parentRequestId: spec.parentRequestId,
     label: label ? `${label} (субагент)` : label,
     // На первом уровне результат всё равно показывается кратко (UI ограничит
-    // строки), но второй уровень должен иметь настоящий структурированный
-    // результат, а не прежние 500 символов одной сводки.
-    detail: cleanText(detail.detail, isResult ? MAX_SUBAGENT_OUTPUT_CHARS : 1200),
+    // строки), но второй уровень получает полный уже валидированный публичный
+    // результат специалиста: summary, findings, risks и recommendation.
+    detail: resultDetail || cleanText(detail.detail, isResult ? MAX_SUBAGENT_OUTPUT_CHARS : 1200),
     // Поручение едет вместе с событием. Оно пригодится и для глубокого уровня,
     // поэтому не режем его до старых 400 символов.
     task: cleanText(spec.task, 5000),
