@@ -134,8 +134,14 @@ class WesiAiActivityEvent {
     final map = Map<String, dynamic>.from(raw);
     final rawKind =
         '${map['kind'] ?? map['type'] ?? 'status'}'.trim().toLowerCase();
+    final phase = '${map['phase'] ?? ''}'.trim().toLowerCase();
     final kind = switch (rawKind) {
       'tool' => WesiAiActivityKind.tool,
+      // Dynamic-subagent tool events travel over the shared `agent` envelope
+      // so the lead can keep ownership of the run. Visually they are still
+      // tool work: the second level must show tool input/code and tool result,
+      // not mislabel the payload as another specialist assignment.
+      'agent' when phase == 'tool' => WesiAiActivityKind.tool,
       'agent' => WesiAiActivityKind.agent,
       'reasoning' ||
       'reasoning_summary' ||
@@ -147,7 +153,6 @@ class WesiAiActivityEvent {
     final sourceName = _clip(
         '${map['sourceName'] ?? map['name'] ?? map['tool'] ?? map['agent'] ?? map['persona'] ?? ''}',
         180);
-    final phase = '${map['phase'] ?? ''}'.trim().toLowerCase();
     final explicitLabel = _clip('${map['label'] ?? map['title'] ?? ''}', 240);
     final label = explicitLabel.isNotEmpty
         ? explicitLabel
