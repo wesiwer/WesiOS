@@ -1,76 +1,116 @@
-name: Diagnose live sync 400 once
+name: Repair Telegram Entry + Sync Runtime Once
 
 on:
   push:
     branches: [main]
     paths:
       - '.github/workflows/diagnose-live-sync-400-once.yml'
+  workflow_dispatch:
 
 permissions:
   contents: write
+  actions: write
 
 jobs:
-  diagnose:
+  repair:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
-    environment:
-      name: employee-portal
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
         with:
           ref: main
           fetch-depth: 0
-      - name: Prepare SSH
-        env:
-          HOST: ${{ secrets.WESI_SERVER_HOST }}
-          USER: ${{ secrets.WESI_SERVER_USER }}
-          KEY: ${{ secrets.WESI_SERVER_SSH_KEY }}
-          KNOWN: ${{ secrets.WESI_SERVER_KNOWN_HOSTS }}
+
+      - name: Patch source and deploy policy
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p ~/.ssh && chmod 700 ~/.ssh
-          printf '%s\n' "$KEY" > ~/.ssh/id_deploy && chmod 600 ~/.ssh/id_deploy
-          if [ -n "${KNOWN:-}" ]; then printf '%s\n' "$KNOWN" > ~/.ssh/known_hosts; else ssh-keyscan -H "$HOST" > ~/.ssh/known_hosts 2>/dev/null; fi
-          chmod 600 ~/.ssh/known_hosts
-      - name: Capture recent sync errors
-        env:
-          HOST: ${{ secrets.WESI_SERVER_HOST }}
-          USER: ${{ secrets.WESI_SERVER_USER }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          SSH="ssh -i $HOME/.ssh/id_deploy -o BatchMode=yes"
-          $SSH "$USER@$HOST" 'bash -s' > /tmp/sync400.txt <<'REMOTE'
-          set +e
-          echo '=== journalctl pocketbase ==='
-          if command -v journalctl >/dev/null 2>&1; then
-            journalctl --since '45 minutes ago' --no-pager 2>/dev/null | grep -Ei '(/api/wesi/sync/|status[=: ]+400| 400 |BadRequest|Something went wrong)' | tail -n 250
-          fi
-          echo '=== pocketbase files ==='
-          for f in /opt/pocketbase/*.log /opt/pocketbase/logs/* /var/log/pocketbase*; do
-            [ -f "$f" ] || continue
-            echo "--- $f ---"
-            tail -n 1500 "$f" 2>/dev/null | grep -Ei '(/api/wesi/sync/|status[=: ]+400| 400 |BadRequest|Something went wrong)' | tail -n 120
-          done
-          REMOTE
           python3 - <<'PY'
-          import re, pathlib
-          text=pathlib.Path('/tmp/sync400.txt').read_text(encoding='utf-8',errors='replace')
-          text=re.sub(r'Bearer\s+[A-Za-z0-9._\-]+','Bearer <redacted>',text,flags=re.I)
-          text=re.sub(r'X-WesiOS-Session[^\n]*','X-WesiOS-Session: <redacted>',text,flags=re.I)
-          text=re.sub(r'([A-Za-z0-9._%+-]+)@([A-Za-z0-9.-]+\.[A-Za-z]{2,})',r'<redacted>@\2',text)
-          text=re.sub(r'\b(?:\d{1,3}\.){3}\d{1,3}\b','<redacted-ip>',text)
-          text=re.sub(r'\b[A-Za-z0-9_\-+/=]{40,}\b','<redacted-long-value>',text)
-          pathlib.Path('.github/live-sync-400-diagnostic.txt').write_text(text[-50000:],encoding='utf-8')
+          from pathlib import Path
+          import re
+
+          settings = Path('lib/features/settings/settings_screen.dart')
+          text = settings.read_text(encoding='utf-8')
+
+          telegram_import = "import '../profile/telegram_link_screen.dart';\n"
+          if telegram_import not in text:
+              anchor = "import '../treasury/services/treasury_service.dart';\n"
+              if anchor not in text:
+                  raise SystemExit('settings import anchor not found')
+              text = text.replace(anchor, anchor + telegram_import, 1)
+
+          telegram_tile = """              _tile(\n                icon: Icons.send_rounded,\n                title: 'Telegram',\n                subtitle: ru\n                    ? 'Привязка бота и настройки уведомлений'\n                    : 'Bot linking and notification settings',\n                onTap: () => Navigator.of(context).push(\n                  MaterialPageRoute(\n                    builder: (_) => const TelegramLinkScreen(),\n                  ),\n                ),\n              ),\n"""
+          if 'const TelegramLinkScreen()' not in text:
+              anchor = "              _plannedTile(\n                icon: Icons.email,\n"
+              if anchor not in text:
+                  raise SystemExit('settings Telegram tile anchor not found')
+              text = text.replace(anchor, telegram_tile + anchor, 1)
+          settings.write_text(text, encoding='utf-8')
+
+          deploy = Path('.github/workflows/deploy-sync-hooks.yml')
+          text = deploy.read_text(encoding='utf-8')
+          old = '          restart_needed="$migration_changed"\n'
+          replacement = '''          # PocketBase can preserve already-registered JS callbacks across a hot hook reload.\n          # A sync bundle replacement therefore always requires a real process restart.\n          restart_needed="1"\n'''
+          if old in text:
+              text = text.replace(old, replacement, 1)
+          elif 'restart_needed="1"' not in text:
+              raise SystemExit('sync restart anchor not found')
+          deploy.write_text(text, encoding='utf-8')
+
+          pubspec = Path('pubspec.yaml')
+          text = pubspec.read_text(encoding='utf-8')
+          m = re.search(r'(?m)^version:\s*(\d+)\.(\d+)\.(\d+)\+(\d+)\s*$', text)
+          if not m:
+              raise SystemExit('pubspec version not found')
+          major, minor, patch, build = map(int, m.groups())
+          if (major, minor, patch, build) == (0, 22, 30, 105):
+              text = text[:m.start()] + 'version: 0.22.31+106' + text[m.end():]
+              pubspec.write_text(text, encoding='utf-8')
           PY
-      - name: Publish diagnostic
+
+          grep -q "telegram_link_screen.dart" lib/features/settings/settings_screen.dart
+          grep -q "const TelegramLinkScreen()" lib/features/settings/settings_screen.dart
+          grep -q 'restart_needed="1"' .github/workflows/deploy-sync-hooks.yml
+          grep -q '^version: 0.22.31+106$' pubspec.yaml
+          git diff --check
+          git diff -- lib/features/settings/settings_screen.dart .github/workflows/deploy-sync-hooks.yml pubspec.yaml
+
+      - name: Commit repair to main
         shell: bash
         run: |
           set -euo pipefail
-          git config user.name 'WesiOS Sync Diagnostics'
+          git config user.name 'WesiOS Repair Bot'
           git config user.email 'actions@users.noreply.github.com'
-          git switch -C diag/live-sync-400
-          git add .github/live-sync-400-diagnostic.txt
-          git commit -m 'diag(sync): capture latest production 400 route'
-          git push --force origin HEAD:diag/live-sync-400
+          git add lib/features/settings/settings_screen.dart .github/workflows/deploy-sync-hooks.yml pubspec.yaml
+          if ! git diff --cached --quiet; then
+            git commit -m 'fix: restore Telegram connection and eliminate stale sync callbacks'
+            git pull --rebase origin main
+            git push origin HEAD:main
+          fi
+
+      - name: Dispatch production sync deployment
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS -X POST \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'Accept: application/vnd.github+json' \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/workflows/deploy-sync-hooks.yml/dispatches" \
+            -d '{"ref":"main"}'
+
+      - name: Dispatch WesiOS 0.22.31 release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          sleep 3
+          curl -fsS -X POST \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'Accept: application/vnd.github+json' \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/workflows/release-app.yml/dispatches" \
+            -d '{"ref":"main","inputs":{"notes":"Исправлено подключение Telegram в настройках. Исправлен повторяющийся сбой синхронизации: sync hooks/runtime теперь применяются с обязательным перезапуском PocketBase.","deploy_to_server":"true"}}'
