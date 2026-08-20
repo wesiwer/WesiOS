@@ -1,12 +1,13 @@
 name: Temporary Wesi AI subagent repair
 
 on:
-  push:
-    branches:
-      - agent/fix-wesi-ai-subagents-20260820
+  pull_request:
+    branches: [main]
+    types: [opened, reopened, synchronize]
 
 permissions:
   contents: write
+  pull-requests: read
 
 jobs:
   patch-test-commit:
@@ -18,7 +19,7 @@ jobs:
           ref: agent/fix-wesi-ai-subagents-20260820
           fetch-depth: 0
 
-      - name: Apply repair
+      - name: Wire subagent UI
         run: python tools/tmp_fix_wesi_ai_subagents.py
 
       - name: Validate Wesi AI streaming runtime
