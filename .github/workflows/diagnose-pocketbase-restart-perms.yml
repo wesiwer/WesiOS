@@ -1,0 +1,61 @@
+name: Diagnose PocketBase Restart Permissions
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/ops/run-sync-rootfix-20260820'
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Prepare SSH
+        env:
+          KEY: ${{ secrets.WESI_SERVER_SSH_KEY }}
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          KNOWN: ${{ secrets.WESI_SERVER_KNOWN_HOSTS }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_diag && chmod 600 ~/.ssh/id_diag
+          if [ -n "${KNOWN:-}" ]; then
+            printf '%s\n' "$KNOWN" > ~/.ssh/known_hosts
+          else
+            ssh-keyscan -H "$HOST" > ~/.ssh/known_hosts 2>/dev/null
+          fi
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Inspect PocketBase service ownership and restart paths
+        env:
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          USER: ${{ secrets.WESI_SERVER_USER }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/id_diag -o BatchMode=yes -o UserKnownHostsFile=~/.ssh/known_hosts "$USER@$HOST" 'bash -s' <<'SH'
+          set -u
+          echo '=== identity ==='
+          id
+          echo '=== service properties ==='
+          systemctl show pocketbase \
+            -p MainPID -p User -p Group -p Restart -p ActiveState -p SubState -p FragmentPath \
+            --no-pager 2>&1 || true
+          echo '=== process ==='
+          pid="$(systemctl show pocketbase -p MainPID --value 2>/dev/null || true)"
+          if [ -n "$pid" ] && [ "$pid" != '0' ]; then
+            ps -o user=,group=,pid=,ppid=,stat=,args= -p "$pid" 2>&1 || true
+            echo "kill0-current-user=$(kill -0 "$pid" 2>/dev/null && echo yes || echo no)"
+          fi
+          echo '=== user service ==='
+          systemctl --user show pocketbase -p MainPID -p ActiveState -p SubState --no-pager 2>&1 || true
+          echo '=== sudo noninteractive capabilities ==='
+          sudo -n -l 2>&1 || true
+          echo '=== service unit ==='
+          systemctl cat pocketbase --no-pager 2>&1 | sed -n '1,160p' || true
+          SH
