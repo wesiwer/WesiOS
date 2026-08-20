@@ -1,0 +1,140 @@
+name: Deploy Auth Sync Context Hotfix
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/ops/run-auth-sync-context-hotfix-20260821'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: employee-portal
+      url: https://api.wesi-inc.ru
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+
+      - name: Validate OTP sync-v3 authorization hotfix
+        run: |
+          set -euo pipefail
+          node --check server/pb_hooks/wesi_sync_context.pb.js
+          node --test server/pb_hooks/wesi_sync_context_contract_test.mjs
+          grep -q 'path.startsWith("/api/wesi/sync-v3/")' server/pb_hooks/wesi_sync_context.pb.js
+
+      - name: Check server secrets
+        env:
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          USER: ${{ secrets.WESI_SERVER_USER }}
+          KEY: ${{ secrets.WESI_SERVER_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          [ -n "${HOST:-}" ] || { echo '::error::Нет WESI_SERVER_HOST'; exit 1; }
+          [ -n "${USER:-}" ] || { echo '::error::Нет WESI_SERVER_USER'; exit 1; }
+          [ -n "${KEY:-}" ] || { echo '::error::Нет WESI_SERVER_SSH_KEY'; exit 1; }
+
+      - name: Prepare SSH
+        env:
+          KEY: ${{ secrets.WESI_SERVER_SSH_KEY }}
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          KNOWN: ${{ secrets.WESI_SERVER_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          if [ -n "${KNOWN:-}" ]; then
+            printf '%s\n' "$KNOWN" > ~/.ssh/known_hosts
+          else
+            ssh-keyscan -H "$HOST" > ~/.ssh/known_hosts 2>/dev/null
+          fi
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Install sync context and restart PocketBase
+        env:
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          USER: ${{ secrets.WESI_SERVER_USER }}
+          CONFIGURED_HOOK_DIR: ${{ vars.WESI_PB_HOOK_DIR }}
+        run: |
+          set -euo pipefail
+          SSH="ssh -i $HOME/.ssh/id_deploy -o BatchMode=yes"
+          REMOTE="/tmp/wesi-auth-sync-context-$GITHUB_RUN_ID.pb.js"
+          HOOK_DIR="${CONFIGURED_HOOK_DIR:-/opt/pocketbase/pb_hooks}"
+          scp -i "$HOME/.ssh/id_deploy" -o BatchMode=yes \
+            server/pb_hooks/wesi_sync_context.pb.js \
+            "$USER@$HOST:$REMOTE"
+          $SSH "$USER@$HOST" "REMOTE='$REMOTE' HOOK_DIR='$HOOK_DIR' bash -s" <<'SH'
+          set -euo pipefail
+          dst="$HOOK_DIR/wesi_sync_context.pb.js"
+          dir="$HOOK_DIR"
+
+          if [ -w "$dir" ]; then
+            tmp="$dir/.deploy-wesi_sync_context.pb.js.$$.$RANDOM.tmp"
+            cat "$REMOTE" > "$tmp"
+            chmod 0644 "$tmp"
+            cmp -s "$REMOTE" "$tmp"
+            mv -f "$tmp" "$dst"
+          elif [ -e "$dst" ] && [ -w "$dst" ]; then
+            cat "$REMOTE" > "$dst"
+            cmp -s "$REMOTE" "$dst"
+          elif command -v sudo >/dev/null 2>&1 && sudo -n true >/dev/null 2>&1; then
+            tmp="$dir/.deploy-wesi_sync_context.pb.js.$$.$RANDOM.tmp"
+            sudo -n cp "$REMOTE" "$tmp"
+            sudo -n chmod 0644 "$tmp"
+            sudo -n cmp -s "$REMOTE" "$tmp"
+            sudo -n mv -f "$tmp" "$dst"
+          else
+            echo "Нет прав на установку $dst" >&2
+            exit 3
+          fi
+
+          if cmp -s "$REMOTE" "$dst" 2>/dev/null; then
+            echo 'Auth sync context file installed'
+          elif command -v sudo >/dev/null 2>&1 && sudo -n cmp -s "$REMOTE" "$dst"; then
+            echo 'Auth sync context file installed'
+          else
+            echo 'Installed auth sync context does not match source' >&2
+            exit 4
+          fi
+
+          if systemctl restart pocketbase 2>/dev/null; then
+            :
+          elif command -v sudo >/dev/null 2>&1 && sudo -n systemctl restart pocketbase; then
+            :
+          else
+            echo 'Не удалось перезапустить pocketbase' >&2
+            exit 5
+          fi
+          sleep 3
+
+          if grep -q '/api/wesi/sync-v3/' "$dst" 2>/dev/null; then
+            echo 'sync-v3 context guard verified on server'
+          elif command -v sudo >/dev/null 2>&1 && sudo -n grep -q '/api/wesi/sync-v3/' "$dst"; then
+            echo 'sync-v3 context guard verified on server'
+          else
+            echo 'sync-v3 context guard missing on server' >&2
+            exit 6
+          fi
+          rm -f "$REMOTE"
+          SH
+
+      - name: Verify protected production routes after restart
+        run: |
+          set -euo pipefail
+          API='https://api.wesi-inc.ru'
+          for path in /api/wesi/sync/revision /api/wesi/sync-v3/revision /api/wesi/sync-v3/profile; do
+            code=$(curl -sS -o response.txt -w '%{http_code}' --max-time 20 "$API$path" || true)
+            case "$code" in
+              401|403) echo "Protected route loaded: $path ($code)" ;;
+              *) echo "::error::$path returned HTTP $code"; cat response.txt; exit 1 ;;
+            esac
+          done
