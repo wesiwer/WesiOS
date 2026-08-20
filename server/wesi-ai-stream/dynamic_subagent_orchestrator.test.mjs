@@ -138,3 +138,47 @@ test('overlapping virtual workspace edits surface a revision conflict', async ()
   assert.equal(result.results[1].workspaceResult.conflicts[0].code, 'REVISION_CONFLICT');
   assert.equal(result.workspace.files[0].content, 'v1');
 });
+
+test('provider prose around planner and specialist JSON is accepted', async () => {
+  const p = prepared();
+  p.subagents.maxToolTurns = 0;
+  const result = await runDynamicSubagents({
+    prepared: p,
+    invokeModel: async ({phase}) => {
+      if (phase === 'subagent-plan') {
+        return 'План готов:\n```json\n{"subagents":[{"role":"QA Agent","task":"Проверь сборку"}]}\n```\nПродолжаю.';
+      }
+      return '<analysis>provider prelude</analysis>\nРезультат:\n{"summary":"checked","findings":[],"risks":[],"recommendation":"ok"}\nГотово.';
+    },
+    invokeTool: async () => ({ok: true}),
+  });
+  assert.equal(result.ok, true);
+  assert.equal(result.results.length, 1);
+  assert.equal(result.results[0].spec.role, 'QA Agent');
+  assert.equal(result.results[0].result.summary, 'checked');
+});
+
+test('manual named subagent bypasses planner and runs requested role', async () => {
+  const p = prepared({message: 'Позови субагента «Security Reviewer» и поручи ему: Проверь авторизацию'});
+  p.subagents.maxToolTurns = 0;
+  let plannerCalls = 0;
+  const events = [];
+  const result = await runDynamicSubagents({
+    prepared: p,
+    emit: (event) => events.push(event),
+    invokeModel: async ({phase, spec}) => {
+      if (phase === 'subagent-plan') {
+        plannerCalls += 1;
+        throw new Error('planner must be bypassed');
+      }
+      assert.equal(spec.role, 'Security Reviewer');
+      assert.equal(spec.task, 'Проверь авторизацию');
+      return JSON.stringify({summary: 'security checked', findings: [], risks: [], recommendation: 'ok'});
+    },
+    invokeTool: async () => ({ok: true}),
+  });
+  assert.equal(plannerCalls, 0);
+  assert.equal(result.results.length, 1);
+  assert.equal(result.results[0].spec.role, 'Security Reviewer');
+  assert.ok(events.some((event) => event.phase === 'planned' && event.name === 'Security Reviewer'));
+});
