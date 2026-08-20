@@ -27,14 +27,100 @@ routerAdd("GET", "/api/wesi/app/bootstrap", (e) => {
       return null;
     }
   };
+  // PocketBase JSON fields may reach JSVM as JSONRaw/JSONMap values instead
+  // of ordinary JavaScript objects. Employee login hits this code immediately
+  // after a valid OTP when /api/wesi/app/bootstrap resolves portal-account.
+  // Decode through PocketBase first so a correct OTP cannot fail on employeeId.
   const valueObject = (record, field) => {
     if (!record) return {};
+
     try {
-      const value = record.get(field);
-      return value && typeof value === "object" ? value : {};
-    } catch (_) {
-      return {};
-    }
+      const model = new DynamicModel({
+        "kind": "",
+        "employeeId": "",
+        "id": "",
+        "login": "",
+        "fullName": "",
+        "name": "",
+        "nickname": "",
+        "position": "",
+        "email": "",
+        "avatarIndex": 0,
+        "createdAt": "",
+        "permissions": {},
+        "snapshot": {},
+      });
+      record.unmarshalJSONField(field, model);
+      const decoded = {
+        "kind": model.kind,
+        "employeeId": model.employeeId,
+        "id": model.id,
+        "login": model.login,
+        "fullName": model.fullName,
+        "name": model.name,
+        "nickname": model.nickname,
+        "position": model.position,
+        "email": model.email,
+        "avatarIndex": model.avatarIndex,
+        "createdAt": model.createdAt,
+        "permissions": model.permissions,
+        "snapshot": model.snapshot,
+      };
+      if (
+        decoded.kind || decoded.employeeId || decoded.id || decoded.login ||
+        decoded.fullName || decoded.name || decoded.email
+      ) {
+        return decoded;
+      }
+    } catch (_) {}
+
+    const parseText = (value) => {
+      try {
+        let parsed = JSON.parse(String(value || ""));
+        if (typeof parsed === "string" && parsed.trim()) {
+          try { parsed = JSON.parse(parsed); } catch (_) {}
+        }
+        return parsed && typeof parsed === "object" ? parsed : {};
+      } catch (_) {
+        return {};
+      }
+    };
+
+    try {
+      const raw = record.get(field);
+      if (!raw) return {};
+      if (typeof raw === "string") return parseText(raw);
+
+      if (typeof raw === "object" && typeof raw.get === "function") {
+        const normalized = {};
+        const keys = [
+          "kind", "employeeId", "id", "login", "fullName", "name",
+          "nickname", "position", "email", "avatarIndex", "createdAt",
+          "permissions", "snapshot",
+        ];
+        let found = false;
+        for (const key of keys) {
+          try {
+            const value = raw.get(key);
+            if (value !== undefined && value !== null) {
+              normalized[key] = value;
+              found = true;
+            }
+          } catch (_) {}
+        }
+        if (found) return normalized;
+      }
+
+      if (typeof raw === "object" && !Array.isArray(raw)) {
+        const hasKnownField =
+          raw.kind !== undefined || raw.employeeId !== undefined ||
+          raw.id !== undefined || raw.login !== undefined ||
+          raw.permissions !== undefined || raw.snapshot !== undefined;
+        if (hasKnownField) return raw;
+      }
+    } catch (_) {}
+
+    return {};
   };
   const employeePermissions = (value) => {
     return value && typeof value === "object"
