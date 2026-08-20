@@ -1,5 +1,5 @@
 name: Dispatch Release Current Main Once
-# trigger: dispatch 0.22.30+105 after organization compatibility merge
+# trigger: final signed dispatch for 0.22.30+105 after production sync hotfix
 
 on:
   push:
