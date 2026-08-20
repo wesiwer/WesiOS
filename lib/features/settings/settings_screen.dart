@@ -9,6 +9,7 @@ import '../../core/services/backup_service.dart';
 import '../../core/services/currency_service.dart';
 import '../tasks/services/task_service.dart';
 import '../treasury/services/treasury_service.dart';
+import '../profile/telegram_link_screen.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/localization/wesi_locale.dart';
 import '../../core/widgets/module_header.dart';
@@ -252,6 +253,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ],
                   );
                 },
+              ),
+              _tile(
+                icon: Icons.send_rounded,
+                title: 'Telegram',
+                subtitle: ru
+                    ? 'Привязка бота и настройки уведомлений'
+                    : 'Bot linking and notification settings',
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const TelegramLinkScreen(),
+                  ),
+                ),
               ),
               _plannedTile(
                 icon: Icons.email,
