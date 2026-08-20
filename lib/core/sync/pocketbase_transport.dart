@@ -10,6 +10,27 @@ class PocketBaseTransport implements SyncTransport {
   static const String collectionName = 'wesios_records';
   static const int pageSize = 500;
 
+  /// Extended sync collections are routed through fresh versioned callbacks.
+  /// PocketBase can retain already-registered JS callbacks across hot hook
+  /// reloads, so reusing the legacy path could keep executing stale code even
+  /// when the hook file on disk is already fixed. These v3 paths were deployed
+  /// and verified independently on production before the client switched over.
+  static const Set<String> _v3Collections = {
+    'sandbox_transactions',
+    'what_if_presets',
+    'profile',
+    'shield_private',
+    'finance_categories',
+    'team_skills',
+    'time_center',
+    'horizon_predictions',
+    'horizon_learning',
+    'horizon_competition',
+    'horizon_contracts',
+    'task_ai_memory',
+    'audio_extras',
+  };
+
   static final HttpClient _http = HttpClient()
     ..connectionTimeout = const Duration(seconds: 12)
     ..idleTimeout = const Duration(seconds: 30);
@@ -59,11 +80,15 @@ class PocketBaseTransport implements SyncTransport {
     );
   }
 
+  String _collectionPath(String collection) => _v3Collections.contains(collection)
+      ? '/api/wesi/sync-v3/$collection'
+      : '/api/wesi/sync/$collection';
+
   @override
   Future<SyncResult<Map<String, SyncRecord>>> fetch(String collection) async {
     if (!isSignedIn) return const SyncResult.fail(SyncFailure.notSignedIn);
 
-    final res = await _send('GET', '/api/wesi/sync/$collection');
+    final res = await _send('GET', _collectionPath(collection));
     if (res.failure != null) return SyncResult.fail(res.failure!);
 
     final items = res.value!['items'];
@@ -118,7 +143,13 @@ class PocketBaseTransport implements SyncTransport {
 
   Future<SyncResult<String>> revision() async {
     if (!isSignedIn) return const SyncResult.fail(SyncFailure.notSignedIn);
-    final res = await _send('GET', '/api/wesi/sync/revision-v2');
+
+    // Prefer the newly registered route. Fallbacks remain only for rolling
+    // compatibility with a server that has not received v3 yet.
+    var res = await _send('GET', '/api/wesi/sync-v3/revision');
+    if (res.failure?.code == 'NOT_WESIOS') {
+      res = await _send('GET', '/api/wesi/sync/revision-v2');
+    }
     if (res.failure != null) {
       if (res.failure!.code == 'NOT_WESIOS') {
         final legacy = await _send('GET', '/api/wesi/sync/revision');
@@ -126,9 +157,9 @@ class PocketBaseTransport implements SyncTransport {
 
         // Rolling-deploy compatibility. The old endpoint derives its token
         // from a single max row and can miss equal-timestamp writes. While a
-        // new client waits for revision-v2 to appear, append a coarse safety
-        // bucket so a full pull happens at least once every five seconds.
-        // This mode disappears automatically as soon as v2 is available.
+        // new client waits for a modern revision route to appear, append a
+        // coarse safety bucket so a full pull happens at least once every five
+        // seconds. This mode disappears automatically when v3/v2 is available.
         final legacyRevision = revisionFromResponse(legacy.value!);
         final safetyBucket = DateTime.now().millisecondsSinceEpoch ~/ 5000;
         return SyncResult.ok('$legacyRevision|compat:$safetyBucket');
@@ -184,7 +215,7 @@ class PocketBaseTransport implements SyncTransport {
     for (final r in records) {
       final res = await _send(
         'POST',
-        '/api/wesi/sync/$collection',
+        _collectionPath(collection),
         body: {
           'rid': r.id,
           'payload': r.fields,
