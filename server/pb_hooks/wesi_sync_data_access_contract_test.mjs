@@ -9,6 +9,7 @@ const access = require(path.resolve("server/pb_hooks/wesi_sync_data_access.js"))
 
 // Keep this contract in the production sync deploy path so a release-side
 // compatibility fix can force one verified redeploy without touching data.
+// Activation pass: 0.22.30+105 final production verification.
 test("legacy all-row sync reads are internally paged instead of truncated at 10k", () => {
   const calls = [];
   const app = {
