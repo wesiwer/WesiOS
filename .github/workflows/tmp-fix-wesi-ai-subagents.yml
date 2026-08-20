@@ -1,0 +1,63 @@
+name: Temporary Wesi AI subagent repair
+
+on:
+  push:
+    branches:
+      - agent/fix-wesi-ai-subagents-20260820
+
+permissions:
+  contents: write
+
+jobs:
+  patch-test-commit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/fix-wesi-ai-subagents-20260820
+          fetch-depth: 0
+
+      - name: Apply repair
+        run: python tools/tmp_fix_wesi_ai_subagents.py
+
+      - name: Validate Wesi AI streaming runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check server/wesi-ai-stream/dynamic_subagent_orchestrator.mjs
+          node --test server/wesi-ai-stream/dynamic_subagent_orchestrator.test.mjs
+          node --test server/wesi-ai-stream/*.test.mjs
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Format Dart changes
+        run: dart format lib/features/ai/ai_assistant_v2_screen.dart lib/features/ai/widgets/wesi_ai_subagents_sheet.dart
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Analyze
+        run: flutter analyze --no-fatal-infos
+
+      - name: Test
+        run: flutter test
+
+      - name: Commit verified repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          git config user.name 'Wesi AI Repair Bot'
+          git config user.email 'actions@github.com'
+          git rm .github/workflows/tmp-fix-wesi-ai-subagents.yml
+          git rm .github/wesi-ai-subagent-repair.trigger
+          git rm tools/tmp_fix_wesi_ai_subagents.py
+          git add server/wesi-ai-stream/dynamic_subagent_orchestrator.mjs server/wesi-ai-stream/dynamic_subagent_orchestrator.test.mjs lib/features/ai/ai_assistant_v2_screen.dart lib/features/ai/widgets/wesi_ai_subagents_sheet.dart
+          git diff --cached --check
+          git commit -m 'fix(wesi-ai): restore visible and reliable subagents'
+          git push origin HEAD:agent/fix-wesi-ai-subagents-20260820
