@@ -59,7 +59,7 @@ jobs:
           fi
           chmod 600 ~/.ssh/known_hosts
 
-      - name: Install sync context and restart PocketBase
+      - name: Install exact sync context hook
         env:
           HOST: ${{ secrets.WESI_SERVER_HOST }}
           USER: ${{ secrets.WESI_SERVER_USER }}
@@ -97,37 +97,21 @@ jobs:
             exit 3
           fi
 
-          if cmp -s "$REMOTE" "$dst" 2>/dev/null; then
-            echo 'Auth sync context file installed'
-          elif command -v sudo >/dev/null 2>&1 && sudo -n cmp -s "$REMOTE" "$dst"; then
-            echo 'Auth sync context file installed'
-          else
-            echo 'Installed auth sync context does not match source' >&2
-            exit 4
-          fi
-
-          if systemctl restart pocketbase 2>/dev/null; then
-            :
-          elif command -v sudo >/dev/null 2>&1 && sudo -n systemctl restart pocketbase; then
-            :
-          else
-            echo 'Не удалось перезапустить pocketbase' >&2
-            exit 5
-          fi
+          # PocketBase JS hooks hot-reload when the hook file changes. Existing
+          # WesiOS auth/sync production deploys intentionally use this mechanism
+          # and do not require a privileged systemctl restart.
           sleep 3
 
-          if grep -q '/api/wesi/sync-v3/' "$dst" 2>/dev/null; then
-            echo 'sync-v3 context guard verified on server'
-          elif command -v sudo >/dev/null 2>&1 && sudo -n grep -q '/api/wesi/sync-v3/' "$dst"; then
-            echo 'sync-v3 context guard verified on server'
-          else
-            echo 'sync-v3 context guard missing on server' >&2
-            exit 6
-          fi
+          cmp -s "$REMOTE" "$dst" || { echo 'Installed auth sync context does not match source' >&2; exit 4; }
+          grep -q '/api/wesi/sync-v3/' "$dst" || { echo 'sync-v3 context guard missing on server' >&2; exit 6; }
+          curl -fsS --max-time 5 http://127.0.0.1:8090/api/health >/dev/null
+          echo 'LIVE_FILE_MATCH_MAIN=true'
+          echo 'SYNC_V3_CONTEXT_GUARD=true'
+          echo 'POCKETBASE_HEALTH=true'
           rm -f "$REMOTE"
           SH
 
-      - name: Verify protected production routes after restart
+      - name: Verify protected production routes stay loaded
         run: |
           set -euo pipefail
           API='https://api.wesi-inc.ru'
