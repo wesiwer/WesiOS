@@ -1,0 +1,206 @@
+name: Fix employee OTP bootstrap on main once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/fix-employee-otp-bootstrap-main-once.yml'
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Patch employee bootstrap JSON decoding
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          git reset --hard origin/main
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('server/pb_hooks/employee_portal.pb.js')
+          text = path.read_text(encoding='utf-8')
+
+          old = '''  const valueObject = (record, field) => {
+            if (!record) return {};
+            try {
+              const value = record.get(field);
+              return value && typeof value === "object" ? value : {};
+            } catch (_) {
+              return {};
+            }
+          };'''
+
+          new = '''  // PocketBase JSON fields may reach JSVM as JSONRaw/JSONMap values instead
+          // of ordinary JavaScript objects. Employee login hits this code immediately
+          // after a valid OTP when /api/wesi/app/bootstrap resolves portal-account.
+          // Decode through PocketBase first so a correct OTP cannot fail on employeeId.
+          const valueObject = (record, field) => {
+            if (!record) return {};
+
+            try {
+              const model = new DynamicModel({
+                "kind": "",
+                "employeeId": "",
+                "id": "",
+                "login": "",
+                "fullName": "",
+                "name": "",
+                "nickname": "",
+                "position": "",
+                "email": "",
+                "avatarIndex": 0,
+                "createdAt": "",
+                "permissions": {},
+                "snapshot": {},
+              });
+              record.unmarshalJSONField(field, model);
+              const decoded = {
+                "kind": model.kind,
+                "employeeId": model.employeeId,
+                "id": model.id,
+                "login": model.login,
+                "fullName": model.fullName,
+                "name": model.name,
+                "nickname": model.nickname,
+                "position": model.position,
+                "email": model.email,
+                "avatarIndex": model.avatarIndex,
+                "createdAt": model.createdAt,
+                "permissions": model.permissions,
+                "snapshot": model.snapshot,
+              };
+              if (
+                decoded.kind || decoded.employeeId || decoded.id || decoded.login ||
+                decoded.fullName || decoded.name || decoded.email ||
+                (decoded.permissions && Object.keys(decoded.permissions).length) ||
+                (decoded.snapshot && Object.keys(decoded.snapshot).length)
+              ) {
+                return decoded;
+              }
+            } catch (_) {}
+
+            const parseText = (value) => {
+              try {
+                let parsed = JSON.parse(String(value || ""));
+                if (typeof parsed === "string" && parsed.trim()) {
+                  try { parsed = JSON.parse(parsed); } catch (_) {}
+                }
+                return parsed && typeof parsed === "object" ? parsed : {};
+              } catch (_) {
+                return {};
+              }
+            };
+
+            try {
+              const raw = record.get(field);
+              if (!raw) return {};
+              if (typeof raw === "string") return parseText(raw);
+
+              if (typeof raw === "object" && typeof raw.get === "function") {
+                const normalized = {};
+                const keys = [
+                  "kind", "employeeId", "id", "login", "fullName", "name",
+                  "nickname", "position", "email", "avatarIndex", "createdAt",
+                  "permissions", "snapshot",
+                ];
+                let found = false;
+                for (const key of keys) {
+                  try {
+                    const value = raw.get(key);
+                    if (value !== undefined && value !== null) {
+                      normalized[key] = value;
+                      found = true;
+                    }
+                  } catch (_) {}
+                }
+                if (found) return normalized;
+              }
+
+              if (typeof raw === "object" && !Array.isArray(raw)) {
+                const hasKnownField =
+                  raw.kind !== undefined || raw.employeeId !== undefined ||
+                  raw.id !== undefined || raw.login !== undefined ||
+                  raw.permissions !== undefined || raw.snapshot !== undefined;
+                if (hasKnownField) return raw;
+              }
+            } catch (_) {}
+
+            return {};
+          };'''
+
+          count = text.count(old)
+          if count != 1:
+              raise SystemExit(f'expected exactly one legacy valueObject block, found {count}')
+
+          path.write_text(text.replace(old, new), encoding='utf-8')
+
+          test = Path('test/employee_portal_json_payload_regression_test.dart')
+          test.write_text(r'''import 'dart:io';
+
+import 'package:flutter_test/flutter_test.dart';
+
+void main() {
+  test('employee bootstrap decodes PocketBase JSON payload after valid OTP', () {
+    final source = File('server/pb_hooks/employee_portal.pb.js').readAsStringSync();
+
+    final unmarshal = source.indexOf('record.unmarshalJSONField(field, model);');
+    final rawRead = source.indexOf('const raw = record.get(field);');
+
+    expect(unmarshal, greaterThanOrEqualTo(0));
+    expect(rawRead, greaterThan(unmarshal), reason: 'PocketBase typed JSON decoding must be attempted before raw fallback');
+    expect(source.contains('"employeeId": model.employeeId'), isTrue);
+    expect(source.contains('"snapshot": model.snapshot'), isTrue);
+    expect(source.contains('typeof raw === "object" && typeof raw.get === "function"'), isTrue);
+    expect(
+      source.contains('return value && typeof value === "object" ? value : {};'),
+      isFalse,
+      reason: 'plain-object assumption breaks portal-account JSONRaw values after OTP',
+    );
+  });
+}
+''', encoding='utf-8')
+          PY
+
+      - name: Validate auth fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check server/pb_hooks/employee_portal.pb.js
+          grep -q 'record.unmarshalJSONField(field, model);' server/pb_hooks/employee_portal.pb.js
+          grep -q '"employeeId": model.employeeId' server/pb_hooks/employee_portal.pb.js
+          grep -q 'typeof raw === "object" && typeof raw.get === "function"' server/pb_hooks/employee_portal.pb.js
+          ! grep -q 'return value && typeof value === "object" ? value : {};' server/pb_hooks/employee_portal.pb.js
+          git diff --check
+
+      - name: Commit fix to main
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm .github/workflows/fix-employee-otp-bootstrap-main-once.yml
+          git config user.name 'WesiOS Auth Fix'
+          git config user.email 'actions@users.noreply.github.com'
+          git add server/pb_hooks/employee_portal.pb.js test/employee_portal_json_payload_regression_test.dart .github/workflows/fix-employee-otp-bootstrap-main-once.yml
+          git commit -m 'fix(auth): decode employee portal payload after OTP'
+          git pull --rebase origin main
+          git push origin HEAD:main
+
+      - name: Deploy employee portal auth fix
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh workflow run deploy-employee-portal.yml --ref main
