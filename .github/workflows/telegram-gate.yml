@@ -55,6 +55,7 @@ jobs:
       - name: Run Telegram unit tests
         run: |
           node server/pb_hooks/wesi_telegram_lib_test.mjs
+          node server/pb_hooks/wesi_telegram_link_expiry_test.mjs
           node server/pb_hooks/wesi_telegram_retention_test.mjs
           node server/pb_hooks/wesi_telegram_morning_photos_test.mjs
           node server/pb_hooks/wesi_telegram_morning_test.mjs
