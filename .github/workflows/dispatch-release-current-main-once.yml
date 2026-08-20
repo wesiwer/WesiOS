@@ -20,10 +20,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          echo 'dispatch 0.22.29+104 organization-sync recovery'
+          echo 'dispatch 0.22.30+105 legacy organization payload compatibility + settings cleanup'
           gh workflow run release-app.yml \
             --repo "$GITHUB_REPOSITORY" \
             --ref main \
-            -f notes='WesiOS 0.22.29+104: fixes organization sync recovery from stale/orphan local Hive rows; revision-v2 production fix retained; validated with dedicated Flutter regression tests and analyzer.' \
+            -f notes='WesiOS 0.22.30+105: fixes organizations:org_wesi_inc (+2) by normalizing legacy organization payloads on the production sync read path; removes the obsolete Telegram bot server-required placeholder from Settings.' \
             -f deploy_to_server=true
-          echo 'Release workflow dispatched for WesiOS 0.22.29+104.'
+          echo 'Release workflow dispatched for WesiOS 0.22.30+105.'
