@@ -180,5 +180,5 @@ test('manual named subagent bypasses planner and runs requested role', async () 
   assert.equal(plannerCalls, 0);
   assert.equal(result.results.length, 1);
   assert.equal(result.results[0].spec.role, 'Security Reviewer');
-  assert.ok(events.some((event) => event.event === 'planned' && event.name === 'Security Reviewer'));
+  assert.ok(events.some((event) => event.phase === 'planned' && event.name === 'Security Reviewer'));
 });
