@@ -6,6 +6,10 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/dispatch-auth-sync-hotfix-deploy-once.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/ops/run-auth-sync-hotfix-deploy-20260821'
 
 permissions:
   actions: write
