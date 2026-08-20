@@ -139,8 +139,10 @@ void main() {
     expect(find.text('Поручение специалисту'), findsOneWidget);
     expect(find.text('проверить форму входа на слабые проверки'), findsOneWidget);
     expect(find.text('Результат специалиста'), findsOneWidget);
+    // Результат остаётся виден на первом уровне и повторяется в открытом
+    // detail-sheet: это и есть ожидаемая двухуровневая навигация.
     expect(find.textContaining('Рекомендация: усилить серверную валидацию'),
-        findsOneWidget);
+        findsWidgets);
   });
 
   test('agent-envelope phase=tool сохраняет настоящий tool payload', () {
