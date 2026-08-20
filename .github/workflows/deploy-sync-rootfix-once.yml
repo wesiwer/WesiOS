@@ -1,4 +1,5 @@
 name: Deploy Sync Root Fix Once
+# production retrigger: clear stale PocketBase JS callbacks after Telegram/settings repair
 
 on:
   push:
