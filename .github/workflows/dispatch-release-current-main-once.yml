@@ -1,5 +1,5 @@
 name: Dispatch Release Current Main Once
-# trigger: final signed dispatch for 0.22.30+105 after production sync hotfix
+# trigger: signed dispatch for 0.22.32+107 with WesiAI live-thinking fixes
 
 on:
   push:
@@ -21,10 +21,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          echo 'dispatch 0.22.30+105 legacy organization payload compatibility + settings cleanup'
+          echo 'dispatch 0.22.32+107 WesiAI live thinking and deep work details'
           gh workflow run release-app.yml \
             --repo "$GITHUB_REPOSITORY" \
             --ref main \
-            -f notes='WesiOS 0.22.30+105: fixes organizations:org_wesi_inc (+2) by normalizing legacy organization payloads on the production sync read path; removes the obsolete Telegram bot server-required placeholder from Settings.' \
+            -f notes='WesiOS 0.22.32+107: восстановлен живой ход работы WesiAI; мысли, инструменты и специалисты снова видны в Thinking, глубокие детали раскрываются вторым уровнем, а длинные автономные проходы больше не обрываются старым клиентским таймаутом.' \
             -f deploy_to_server=true
-          echo 'Release workflow dispatched for WesiOS 0.22.30+105.'
+          echo 'Release workflow dispatched for WesiOS 0.22.32+107.'
