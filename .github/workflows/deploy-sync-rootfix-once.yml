@@ -6,6 +6,10 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/deploy-sync-rootfix-once.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/ops/run-sync-rootfix-20260820'
   workflow_dispatch:
 
 permissions:
