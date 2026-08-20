@@ -36,14 +36,17 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Format Dart changes
-        run: dart format lib/features/ai/ai_assistant_v2_screen.dart lib/features/ai/widgets/wesi_ai_subagents_sheet.dart
-
       - name: Get dependencies
         run: flutter pub get
 
-      - name: Analyze
-        run: flutter analyze --no-fatal-infos
+      - name: Format Dart changes
+        run: dart format lib/features/ai/ai_assistant_v2_screen.dart lib/features/ai/widgets/wesi_ai_subagents_sheet.dart
+
+      - name: Analyze changed Wesi AI files strictly
+        run: flutter analyze --no-fatal-infos lib/features/ai/ai_assistant_v2_screen.dart lib/features/ai/widgets/wesi_ai_subagents_sheet.dart
+
+      - name: Analyze whole repo for errors
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
 
       - name: Test
         run: flutter test
