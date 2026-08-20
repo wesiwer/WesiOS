@@ -5,9 +5,11 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/deploy-sync-rootfix-once.yml'
+  workflow_dispatch:
 
 permissions:
   contents: read
+  statuses: write
 
 jobs:
   deploy:
@@ -15,6 +17,8 @@ jobs:
     timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: main
       - name: Validate hooks
         run: |
           set -euo pipefail
@@ -36,7 +40,7 @@ jobs:
           printf '%s\n' "$KEY" > ~/.ssh/id_deploy && chmod 600 ~/.ssh/id_deploy
           if [ -n "${KNOWN:-}" ]; then printf '%s\n' "$KNOWN" > ~/.ssh/known_hosts; else ssh-keyscan -H "$HOST" > ~/.ssh/known_hosts 2>/dev/null; fi
           chmod 600 ~/.ssh/known_hosts
-      - name: Install current sync hooks
+      - name: Install current sync hooks and restart PocketBase
         env:
           HOST: ${{ secrets.WESI_SERVER_HOST }}
           USER: ${{ secrets.WESI_SERVER_USER }}
@@ -57,10 +61,20 @@ jobs:
           $SSH "$USER@$HOST" "REMOTE='$REMOTE' HOOK_DIR='$HOOK_DIR' bash -s" <<'SH'
           set -euo pipefail
           files=(wesi_sync_extra_runtime.js wesi_sync_context.pb.js wesi_sync_read.pb.js wesi_sync_write.pb.js wesi_sync_extra.pb.js)
+
+          restart_pocketbase() {
+            if systemctl restart pocketbase 2>/dev/null; then return; fi
+            if command -v sudo >/dev/null 2>&1 && sudo -n systemctl restart pocketbase; then return; fi
+            echo "Не удалось перезапустить pocketbase" >&2
+            exit 5
+          }
+
           for f in "${files[@]}"; do
             src="$REMOTE/$f"; dst="$HOOK_DIR/$f"; tmp="$HOOK_DIR/.${f}.rootfix.$$"
             if [ -w "$HOOK_DIR" ]; then
               cp "$src" "$tmp"; chmod 0644 "$tmp"; mv -f "$tmp" "$dst"
+            elif [ -e "$dst" ] && [ -w "$dst" ]; then
+              cat "$src" > "$dst"; cmp -s "$src" "$dst"
             else
               sudo -n cp "$src" "$tmp"; sudo -n chmod 0644 "$tmp"; sudo -n mv -f "$tmp" "$dst"
             fi
@@ -72,13 +86,33 @@ jobs:
               echo "mismatch:$f" >&2; exit 4
             fi
           done
+
+          echo 'Sync bundle installed; forcing PocketBase process restart to clear stale JS callbacks'
+          restart_pocketbase
+          sleep 3
           rm -rf "$REMOTE"
           SH
       - name: Verify protected routes
         run: |
           set -euo pipefail
           sleep 3
-          for path in /api/wesi/sync/revision /api/wesi/sync/transactions /api/wesi/sync/accounts; do
+          for path in \
+            /api/wesi/sync/revision \
+            /api/wesi/sync/revision-v2 \
+            /api/wesi/sync/transactions \
+            /api/wesi/sync/accounts \
+            /api/wesi/sync/profile \
+            /api/wesi/sync/organizations; do
             code=$(curl -sS -o /tmp/r -w '%{http_code}' --max-time 20 "https://api.wesi-inc.ru$path" || true)
             case "$code" in 401|403) echo "$path protected:$code";; *) echo "unexpected $path:$code"; cat /tmp/r; exit 1;; esac
           done
+      - name: Publish production rootfix status
+        if: ${{ success() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api -X POST "repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" \
+            -f state=success \
+            -f context='Wesi Sync Rootfix' \
+            -f description='Hooks installed, PocketBase restarted, sync routes loaded' \
+            -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions"
