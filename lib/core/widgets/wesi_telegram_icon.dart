@@ -8,11 +8,7 @@ import 'package:flutter/material.dart';
 /// platform/font version. Telegram's mark points to the upper-right, so keep
 /// the orientation explicit instead of relying on the platform glyph.
 class WesiTelegramIcon extends StatelessWidget {
-  const WesiTelegramIcon({
-    super.key,
-    this.size = 24,
-    this.color,
-  });
+  const WesiTelegramIcon({super.key, this.size = 24, this.color});
 
   final double size;
   final Color? color;

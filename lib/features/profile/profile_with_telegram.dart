@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/localization/wesi_locale.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/widgets/wesi_telegram_icon.dart';
 import 'profile_screen.dart';
 
 /// Keeps the existing profile intact and exposes Telegram as a first-class
@@ -22,13 +23,17 @@ class ProfileWithTelegram extends StatelessWidget {
             child: Material(
               color: Colors.transparent,
               child: FilledButton.icon(
-                onPressed: () => Navigator.of(context).pushNamed('/profile/telegram'),
-                icon: const Icon(Icons.telegram, size: 19),
+                onPressed: () =>
+                    Navigator.of(context).pushNamed('/profile/telegram'),
+                icon: const WesiTelegramIcon(size: 19),
                 label: Text(WesiLocale.isRussian ? 'Telegram' : 'Telegram'),
                 style: FilledButton.styleFrom(
                   backgroundColor: AppTheme.accent,
                   foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(14),
                   ),
