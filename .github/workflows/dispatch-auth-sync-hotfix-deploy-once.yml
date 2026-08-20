@@ -1,4 +1,5 @@
 name: Deploy OTP Sync-v3 Auth Hotfix Once
+# trigger: production deploy after hotfix merged to main
 
 on:
   push:
