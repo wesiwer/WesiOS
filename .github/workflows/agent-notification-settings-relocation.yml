@@ -310,6 +310,12 @@ jobs:
           path.write_text(text, encoding='utf-8')
           PY
 
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
       - name: Format and validate
         shell: bash
         run: |
