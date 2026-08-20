@@ -1,52 +1,63 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../core/localization/wesi_locale.dart';
-import '../../core/sync/pocketbase_transport.dart';
+import '../../core/sync/sync_auto.dart';
 import '../../core/sync/sync_codec.dart';
 import '../../core/sync/sync_endpoint.dart';
-import '../../core/sync/sync_auto.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/wesi_wordmark.dart';
 import '../../core/widgets/window_controls.dart';
+import '../team/services/team_service.dart';
 
-/// Синхронизация с единым сервером WesiOS.
-///
-/// Адрес не редактируется: приложение всегда подключается к
-/// https://api.wesi-inc.ru. Сотруднику нужны только его логин и пароль.
+/// Synchronization status and controls for the already authenticated WesiOS
+/// session. Authentication itself lives only on the main MFA login screen.
 class SyncScreen extends StatefulWidget {
   const SyncScreen({super.key});
 
   static Future<void> open(BuildContext context) => Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => const SyncScreen()),
-      );
+    context,
+    MaterialPageRoute(builder: (_) => const SyncScreen()),
+  );
 
   @override
   State<SyncScreen> createState() => _SyncScreenState();
 }
 
 class _SyncScreenState extends State<SyncScreen> {
-  late final TextEditingController _login =
-      TextEditingController(text: SyncEndpoint.login);
-  final TextEditingController _password = TextEditingController();
-
   bool _busy = false;
   String? _message;
   bool _messageIsError = false;
+  Timer? _expiryTimer;
 
   bool get _ru => WesiLocale.isRussian;
+  bool get _signedIn => TeamService.current != null && SyncEndpoint.isConnected;
 
   @override
   void initState() {
     super.initState();
-    SyncEndpoint.ensureDefaults();
+    unawaited(SyncEndpoint.ensureDefaults());
+    _scheduleExpiryRefresh();
   }
 
   @override
   void dispose() {
-    _login.dispose();
-    _password.dispose();
+    _expiryTimer?.cancel();
     super.dispose();
+  }
+
+  void _scheduleExpiryRefresh() {
+    _expiryTimer?.cancel();
+    final raw = SyncEndpoint.session?['expiresAt'];
+    final expiresAt = DateTime.tryParse('$raw');
+    if (expiresAt == null) return;
+    final delay = expiresAt.difference(DateTime.now());
+    if (delay.isNegative) return;
+    _expiryTimer = Timer(delay + const Duration(milliseconds: 150), () {
+      if (!mounted) return;
+      setState(() {});
+    });
   }
 
   void _say(String text, {bool error = false}) {
@@ -57,51 +68,46 @@ class _SyncScreenState extends State<SyncScreen> {
     });
   }
 
-  Future<void> _signIn() async {
-    final login = _login.text.trim();
-    final password = _password.text;
-    if (login.isEmpty || password.isEmpty) {
-      _say(_ru ? 'Нужны логин и пароль' : 'Login and password required',
-          error: true);
-      return;
-    }
-
+  Future<void> _goToLogin({bool clearCurrent = true}) async {
+    if (_busy) return;
     setState(() => _busy = true);
-    final address = SyncEndpoint.url;
-
-    var transport = PocketBaseTransport(address);
-    var result = await transport.signIn(login, password);
-    if (!result.ok && !login.contains('@')) {
-      transport = PocketBaseTransport(address);
-      result =
-          await transport.signIn('${login.toLowerCase()}@wesi.local', password);
+    if (clearCurrent) {
+      await TeamService.signOut();
     }
-
     if (!mounted) return;
     setState(() => _busy = false);
-
-    if (!result.ok) {
-      _say(result.failure!.describe(russian: _ru), error: true);
-      return;
-    }
-
-    await SyncEndpoint.configure(login: login);
-    await SyncEndpoint.setEnabled(true);
-    _password.clear();
-    _say(_ru ? 'Сервер подключён' : 'Server connected');
-  }
-
-  Future<void> _signOut() async {
-    await SyncEndpoint.clearSession();
-    if (!mounted) return;
-    setState(() {});
-    _say(_ru ? 'Вход сброшен' : 'Signed out');
+    Navigator.of(context).pushNamedAndRemoveUntil('/login', (_) => false);
   }
 
   Future<void> _syncNow() async {
+    if (_busy) return;
+    if (!_signedIn) {
+      _say(
+        _ru
+            ? 'Сеанс WesiOS завершён. Войдите заново, затем синхронизация продолжится автоматически.'
+            : 'Your WesiOS session has ended. Sign in again to resume sync.',
+        error: true,
+      );
+      await _goToLogin();
+      return;
+    }
+
     setState(() => _busy = true);
     final report = await SyncAuto.now();
     if (!mounted) return;
+
+    if (report.firstFailure?.code == 'NOT_SIGNED_IN') {
+      setState(() => _busy = false);
+      _say(
+        _ru
+            ? 'Сеанс WesiOS завершён. Требуется повторный вход.'
+            : 'Your WesiOS session has ended. Sign in again.',
+        error: true,
+      );
+      await _goToLogin();
+      return;
+    }
+
     setState(() => _busy = false);
     _say(report.describe(russian: _ru), error: !report.ok);
   }
@@ -111,7 +117,8 @@ class _SyncScreenState extends State<SyncScreen> {
     return ValueListenableBuilder<int>(
       valueListenable: SyncEndpoint.revision,
       builder: (context, _, __) {
-        final signedIn = SyncEndpoint.session != null;
+        final signedIn = _signedIn;
+        _scheduleExpiryRefresh();
         return Scaffold(
           backgroundColor: AppTheme.background,
           body: SafeArea(
@@ -120,17 +127,25 @@ class _SyncScreenState extends State<SyncScreen> {
               children: [
                 Padding(
                   padding: EdgeInsets.fromLTRB(
-                      8, kTitleBarInset + 12, kHasCustomTitleBar ? 148 : 16, 0),
+                    8,
+                    kTitleBarInset + 12,
+                    kHasCustomTitleBar ? 148 : 16,
+                    0,
+                  ),
                   child: Row(
                     children: [
                       IconButton(
-                        icon:
-                            Icon(Icons.arrow_back, color: AppTheme.textPrimary),
+                        icon: Icon(
+                          Icons.arrow_back,
+                          color: AppTheme.textPrimary,
+                        ),
                         onPressed: () => Navigator.pop(context),
                       ),
                       Expanded(
-                        child:
-                            WesiTitle(_ru ? 'Синхронизация' : 'Sync', size: 22),
+                        child: WesiTitle(
+                          _ru ? 'Синхронизация' : 'Sync',
+                          size: 22,
+                        ),
                       ),
                     ],
                   ),
@@ -143,46 +158,22 @@ class _SyncScreenState extends State<SyncScreen> {
                       const SizedBox(height: 14),
                       _serverCard(),
                       const SizedBox(height: 14),
-                      _field(
-                        controller: _login,
-                        label: _ru ? 'Логин' : 'Login',
-                        hint: 'WesiOff',
-                      ),
-                      const SizedBox(height: 12),
-                      _field(
-                        controller: _password,
-                        label: _ru ? 'Пароль' : 'Password',
-                        hint: '••••••••',
-                        obscure: true,
-                      ),
-                      const SizedBox(height: 16),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _button(
-                              label: signedIn
-                                  ? (_ru ? 'Войти заново' : 'Sign in again')
-                                  : (_ru ? 'Войти' : 'Sign in'),
-                              onTap: _busy ? null : _signIn,
-                            ),
-                          ),
-                          if (signedIn) ...[
-                            const SizedBox(width: 10),
-                            _button(
-                              label: _ru ? 'Выйти' : 'Sign out',
-                              onTap: _busy ? null : _signOut,
-                              muted: true,
-                            ),
-                          ],
-                        ],
-                      ),
-                      const SizedBox(height: 10),
+                      _sessionCard(signedIn),
+                      const SizedBox(height: 14),
                       _button(
-                        label:
-                            _ru ? 'Синхронизировать сейчас' : 'Synchronise now',
+                        label: _ru
+                            ? 'Синхронизировать сейчас'
+                            : 'Synchronise now',
                         onTap: (_busy || !signedIn) ? null : _syncNow,
                         filled: true,
                       ),
+                      if (!signedIn) ...[
+                        const SizedBox(height: 10),
+                        _button(
+                          label: _ru ? 'Войти в WesiOS' : 'Sign in to WesiOS',
+                          onTap: _busy ? null : () => _goToLogin(),
+                        ),
+                      ],
                       if (_message != null) ...[
                         const SizedBox(height: 14),
                         Text(
@@ -201,7 +192,7 @@ class _SyncScreenState extends State<SyncScreen> {
                       const SizedBox(height: 18),
                       _whatSyncs(),
                       const SizedBox(height: 14),
-                      _honestNote(),
+                      _securityNote(),
                     ],
                   ),
                 ),
@@ -214,40 +205,40 @@ class _SyncScreenState extends State<SyncScreen> {
   }
 
   Widget _serverCard() => Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: AppTheme.surface.withOpacity(0.32),
-          borderRadius: BorderRadius.circular(13),
-          border: Border.all(color: AppTheme.glassBorder),
-        ),
-        child: Row(
-          children: [
-            Icon(Icons.dns_outlined, size: 20, color: AppTheme.accent),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    _ru ? 'Сервер WesiOS' : 'WesiOS server',
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                      color: AppTheme.textPrimary,
-                    ),
-                  ),
-                  const SizedBox(height: 3),
-                  Text(
-                    'api.wesi-inc.ru · TLS',
-                    style: TextStyle(fontSize: 11, color: AppTheme.textMuted),
-                  ),
-                ],
+    padding: const EdgeInsets.all(14),
+    decoration: BoxDecoration(
+      color: AppTheme.surface.withOpacity(0.32),
+      borderRadius: BorderRadius.circular(13),
+      border: Border.all(color: AppTheme.glassBorder),
+    ),
+    child: Row(
+      children: [
+        Icon(Icons.dns_outlined, size: 20, color: AppTheme.accent),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                _ru ? 'Сервер WesiOS' : 'WesiOS server',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: AppTheme.textPrimary,
+                ),
               ),
-            ),
-            Icon(Icons.lock_outline, size: 17, color: AppTheme.accentGreen),
-          ],
+              const SizedBox(height: 3),
+              Text(
+                'api.wesi-inc.ru · TLS',
+                style: TextStyle(fontSize: 11, color: AppTheme.textMuted),
+              ),
+            ],
+          ),
         ),
-      );
+        Icon(Icons.lock_outline, size: 17, color: AppTheme.accentGreen),
+      ],
+    ),
+  );
 
   Widget _statusCard(bool signedIn) {
     final last = SyncEndpoint.lastRun;
@@ -289,8 +280,8 @@ class _SyncScreenState extends State<SyncScreen> {
                   last == null
                       ? (_ru ? 'Обмена ещё не было' : 'No exchange yet')
                       : (_ru
-                          ? 'Последний обмен: ${_when(last)}'
-                          : 'Last exchange: ${_when(last)}'),
+                            ? 'Последний обмен: ${_when(last)}'
+                            : 'Last exchange: ${_when(last)}'),
                   style: TextStyle(fontSize: 11.5, color: AppTheme.textMuted),
                 ),
               ],
@@ -301,8 +292,56 @@ class _SyncScreenState extends State<SyncScreen> {
               width: 16,
               height: 16,
               child: CircularProgressIndicator(
-                  strokeWidth: 2, color: AppTheme.accent),
+                strokeWidth: 2,
+                color: AppTheme.accent,
+              ),
             ),
+        ],
+      ),
+    );
+  }
+
+  Widget _sessionCard(bool signedIn) {
+    final employee = TeamService.current;
+    final login = SyncEndpoint.login.trim();
+    return _infoCard(
+      title: _ru ? 'Сеанс WesiOS' : 'WesiOS session',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            signedIn
+                ? (login.isEmpty ? (employee?.displayName ?? 'WesiOS') : login)
+                : (_ru
+                      ? 'Подтверждённый серверный сеанс отсутствует или истёк.'
+                      : 'The verified server session is missing or expired.'),
+            style: TextStyle(
+              fontSize: 12,
+              height: 1.45,
+              color: signedIn ? AppTheme.textSecondary : AppTheme.textMuted,
+            ),
+          ),
+          if (signedIn) ...[
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: _button(
+                    label: _ru ? 'Войти заново' : 'Sign in again',
+                    onTap: _busy ? null : () => _goToLogin(),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _button(
+                    label: _ru ? 'Выйти' : 'Sign out',
+                    onTap: _busy ? null : () => _goToLogin(),
+                    muted: true,
+                  ),
+                ),
+              ],
+            ),
+          ],
         ],
       ),
     );
@@ -335,11 +374,11 @@ class _SyncScreenState extends State<SyncScreen> {
                 Text(
                   signedIn
                       ? (_ru
-                          ? 'Данные отправляются после изменений и при запуске'
-                          : 'Data is sent after changes and on launch')
+                            ? 'Данные отправляются после изменений и при запуске'
+                            : 'Data is sent after changes and on launch')
                       : (_ru
-                          ? 'Включится после входа'
-                          : 'Turns on after sign-in'),
+                            ? 'Включится после подтверждённого входа'
+                            : 'Turns on after verified sign-in'),
                   style: TextStyle(fontSize: 11, color: AppTheme.textMuted),
                 ),
               ],
@@ -349,8 +388,13 @@ class _SyncScreenState extends State<SyncScreen> {
             value: on && signedIn,
             activeColor: AppTheme.accent,
             onChanged: signedIn
-                ? (v) async {
-                    await SyncEndpoint.setEnabled(v);
+                ? (value) async {
+                    await SyncEndpoint.setEnabled(value);
+                    if (value) {
+                      SyncAuto.start();
+                    } else {
+                      SyncAuto.stop(force: true);
+                    }
                     if (mounted) setState(() {});
                   }
                 : null,
@@ -377,19 +421,20 @@ class _SyncScreenState extends State<SyncScreen> {
             'employees': 'People',
           };
     return _infoCard(
-      title: _ru ? 'Что уезжает на сервер' : 'What goes to the server',
+      title: _ru ? 'Что синхронизируется' : 'What is synchronised',
       child: Column(
         children: [
-          for (final c in SyncCodec.collections)
+          for (final collection in SyncCodec.collections)
             Padding(
               padding: const EdgeInsets.only(bottom: 5),
               child: Row(
                 children: [
                   Icon(Icons.circle, size: 5, color: AppTheme.textMuted),
                   const SizedBox(width: 8),
-                  Text(names[c.name] ?? c.name,
-                      style:
-                          TextStyle(fontSize: 12, color: AppTheme.textMuted)),
+                  Text(
+                    names[collection.name] ?? collection.name,
+                    style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
+                  ),
                 ],
               ),
             ),
@@ -398,118 +443,79 @@ class _SyncScreenState extends State<SyncScreen> {
     );
   }
 
-  Widget _honestNote() => _infoCard(
-        title: _ru ? 'Безопасность' : 'Security',
-        child: Text(
-          _ru
-              ? 'Пароль после входа не сохраняется. На устройстве остаётся '
-                  'только ограниченный серверный токен. Ключи Firebase и '
-                  'пароль Wesi Shield на сервер не отправляются.'
-              : 'The password is not stored after sign-in. Only a limited '
-                  'server token remains on the device.',
-          style: TextStyle(
-              fontSize: 11.5, height: 1.45, color: AppTheme.textMuted),
-        ),
-      );
+  Widget _securityNote() => _infoCard(
+    title: _ru ? 'Безопасность' : 'Security',
+    child: Text(
+      _ru
+          ? 'У синхронизации больше нет отдельного входа. Она использует тот же подтверждённый MFA-сеанс, что и WesiOS. Пароль на экране синхронизации не запрашивается и не хранится.'
+          : 'Sync no longer has a separate sign-in. It uses the same verified MFA session as WesiOS. The sync screen never asks for or stores your password.',
+      style: TextStyle(fontSize: 11.5, height: 1.45, color: AppTheme.textMuted),
+    ),
+  );
 
   Widget _infoCard({required String title, required Widget child}) => Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: AppTheme.surface.withOpacity(0.3),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: AppTheme.glassBorder),
+    padding: const EdgeInsets.all(14),
+    decoration: BoxDecoration(
+      color: AppTheme.surface.withOpacity(0.3),
+      borderRadius: BorderRadius.circular(12),
+      border: Border.all(color: AppTheme.glassBorder),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+            color: AppTheme.textSecondary,
+          ),
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(title,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  color: AppTheme.textSecondary,
-                )),
-            const SizedBox(height: 8),
-            child,
-          ],
-        ),
-      );
+        const SizedBox(height: 8),
+        child,
+      ],
+    ),
+  );
 
   String _when(DateTime at) {
     final local = at.toLocal();
-    String two(int v) => v.toString().padLeft(2, '0');
+    String two(int value) => value.toString().padLeft(2, '0');
     return '${two(local.day)}.${two(local.month)}.${local.year} '
         '${two(local.hour)}:${two(local.minute)}';
   }
-
-  Widget _field({
-    required TextEditingController controller,
-    required String label,
-    required String hint,
-    bool obscure = false,
-  }) =>
-      Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(label,
-              style: TextStyle(fontSize: 11.5, color: AppTheme.textMuted)),
-          const SizedBox(height: 5),
-          TextField(
-            controller: controller,
-            obscureText: obscure,
-            autocorrect: false,
-            enableSuggestions: !obscure,
-            style: TextStyle(fontSize: 14, color: AppTheme.textPrimary),
-            decoration: InputDecoration(
-              hintText: hint,
-              hintStyle: TextStyle(fontSize: 13, color: AppTheme.textMuted),
-              filled: true,
-              fillColor: AppTheme.surface.withOpacity(0.35),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(11),
-                borderSide: BorderSide(color: AppTheme.glassBorder),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(11),
-                borderSide: BorderSide(color: AppTheme.accent),
-              ),
-            ),
-          ),
-        ],
-      );
 
   Widget _button({
     required String label,
     required VoidCallback? onTap,
     bool muted = false,
     bool filled = false,
-  }) =>
-      Material(
-        color: filled
-            ? AppTheme.accent
-            : muted
-                ? AppTheme.surface.withOpacity(0.45)
-                : AppTheme.surfaceLight.withOpacity(0.55),
-        borderRadius: BorderRadius.circular(11),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(11),
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
-            child: Center(
-              child: Text(
-                label,
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: onTap == null
-                      ? AppTheme.textMuted
-                      : filled
-                          ? Colors.white
-                          : AppTheme.textPrimary,
-                ),
-              ),
+  }) => Material(
+    color: filled
+        ? AppTheme.accent
+        : muted
+        ? AppTheme.surface.withOpacity(0.45)
+        : AppTheme.surfaceLight.withOpacity(0.55),
+    borderRadius: BorderRadius.circular(11),
+    child: InkWell(
+      borderRadius: BorderRadius.circular(11),
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+        child: Center(
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: onTap == null
+                  ? AppTheme.textMuted
+                  : filled
+                  ? Colors.white
+                  : AppTheme.textPrimary,
             ),
           ),
         ),
-      );
+      ),
+    ),
+  );
 }

@@ -64,6 +64,17 @@ function telegramApi(cfg, method, payload) {
   return {ok: true, result: data.result || null};
 }
 
+function resolveBotUsername(cfg) {
+  const me = telegramApi(cfg, "getMe", {});
+  const username = me && me.ok === true && me.result
+    ? String(me.result.username || "").replace(/^@/, "")
+    : "";
+  if (!/^[A-Za-z0-9_]{5,32}$/.test(username)) {
+    return {ok: false, code: me && me.code || "TELEGRAM_BOT_IDENTITY_UNAVAILABLE"};
+  }
+  return {ok: true, username: username};
+}
+
 function sendTyping(cfg, chatId) {
   telegramApi(cfg, "sendChatAction", {chat_id: chatId, action: "typing"});
 }
@@ -740,6 +751,14 @@ function createLink(e) {
   if (!selected.ok) {
     return e.json(403, {ok: false, code: selected.code, message: selected.message});
   }
+  const bot = resolveBotUsername(cfg);
+  if (!bot.ok) {
+    return e.json(502, {
+      ok: false,
+      code: "TELEGRAM_BOT_IDENTITY_UNAVAILABLE",
+      message: "Не удалось проверить имя Telegram-бота. Повторите попытку позже.",
+    });
+  }
   const ticket = store.createLinkCode(
     e.app,
     identity,
@@ -751,8 +770,8 @@ function createLink(e) {
     linked: false,
     code: ticket.code,
     expiresAt: ticket.payload.expiresAt,
-    botUsername: cfg.botUsername,
-    deepLink: `https://t.me/${cfg.botUsername}?start=${encodeURIComponent(ticket.code)}`,
+    botUsername: bot.username,
+    deepLink: `https://t.me/${bot.username}?start=${encodeURIComponent(ticket.code)}`,
     activeOrganizationId: selected.id,
   });
 }

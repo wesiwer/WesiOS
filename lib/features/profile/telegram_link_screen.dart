@@ -8,6 +8,7 @@ import '../../core/localization/wesi_locale.dart';
 import '../../core/services/telegram_link_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/window_controls.dart';
+import '../../core/widgets/wesi_telegram_icon.dart';
 
 class TelegramLinkScreen extends StatefulWidget {
   const TelegramLinkScreen({super.key});
@@ -45,7 +46,9 @@ class _TelegramLinkScreenState extends State<TelegramLinkScreen> {
     if (!result.ok || result.value == null) {
       setState(() {
         _loading = false;
-        _error = result.message ?? (_ru ? 'Не удалось получить статус' : 'Unable to load status');
+        _error =
+            result.message ??
+            (_ru ? 'Не удалось получить статус' : 'Unable to load status');
       });
       return;
     }
@@ -70,7 +73,9 @@ class _TelegramLinkScreenState extends State<TelegramLinkScreen> {
     if (!result.ok || result.value == null) {
       setState(() {
         _working = false;
-        _error = result.message ?? (_ru ? 'Не удалось создать привязку' : 'Unable to create link');
+        _error =
+            result.message ??
+            (_ru ? 'Не удалось создать привязку' : 'Unable to create link');
       });
       if (result.errorCode == 'TELEGRAM_ALREADY_LINKED') await _refresh();
       return;
@@ -94,7 +99,9 @@ class _TelegramLinkScreenState extends State<TelegramLinkScreen> {
       }
       _polls++;
       await _refresh();
-      if (_status.linked || _polls >= 30 || (_ticket?.expiresAt.isBefore(DateTime.now()) ?? false)) {
+      if (_status.linked ||
+          _polls >= 30 ||
+          (_ticket?.expiresAt.isBefore(DateTime.now()) ?? false)) {
         timer.cancel();
       }
     });
@@ -206,7 +213,10 @@ class _TelegramLinkScreenState extends State<TelegramLinkScreen> {
         elevation: 0,
         title: Text(
           'Telegram',
-          style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.w700),
+          style: TextStyle(
+            color: AppTheme.textPrimary,
+            fontWeight: FontWeight.w700,
+          ),
         ),
       ),
       body: SafeArea(
@@ -216,10 +226,12 @@ class _TelegramLinkScreenState extends State<TelegramLinkScreen> {
             _hero(),
             const SizedBox(height: 14),
             if (_loading)
-              const Center(child: Padding(
-                padding: EdgeInsets.all(28),
-                child: CircularProgressIndicator(),
-              ))
+              const Center(
+                child: Padding(
+                  padding: EdgeInsets.all(28),
+                  child: CircularProgressIndicator(),
+                ),
+              )
             else if (_status.linked)
               ..._linkedCards()
             else
@@ -235,124 +247,138 @@ class _TelegramLinkScreenState extends State<TelegramLinkScreen> {
   }
 
   Widget _hero() => Container(
-        padding: const EdgeInsets.all(18),
-        decoration: BoxDecoration(
-          color: AppTheme.surface.withOpacity(0.45),
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: AppTheme.glassBorder),
+    padding: const EdgeInsets.all(18),
+    decoration: BoxDecoration(
+      color: AppTheme.surface.withOpacity(0.45),
+      borderRadius: BorderRadius.circular(18),
+      border: Border.all(color: AppTheme.glassBorder),
+    ),
+    child: Row(
+      children: [
+        Container(
+          width: 52,
+          height: 52,
+          decoration: BoxDecoration(
+            color: AppTheme.accent.withOpacity(0.12),
+            borderRadius: BorderRadius.circular(15),
+          ),
+          child: WesiTelegramIcon(color: AppTheme.accent, size: 30),
         ),
-        child: Row(
-          children: [
-            Container(
-              width: 52,
-              height: 52,
-              decoration: BoxDecoration(
-                color: AppTheme.accent.withOpacity(0.12),
-                borderRadius: BorderRadius.circular(15),
-              ),
-              child: Icon(Icons.telegram, color: AppTheme.accent, size: 30),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Wesi Telegram',
-                    style: TextStyle(
-                      color: AppTheme.textPrimary,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    _ru
-                        ? 'Тонкий клиент WesiOS: касса, риски, задачи и важные алерты без отдельной «правды».'
-                        : 'A thin WesiOS client for cash, risk, tasks and important alerts.',
-                    style: TextStyle(color: AppTheme.textMuted, fontSize: 12.5, height: 1.4),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      );
-
-  List<Widget> _unlinkedCards() => [
-        _card(
-          title: _ru ? 'Не подключён' : 'Not connected',
-          subtitle: _ru
-              ? 'Привязка одноразовая и короткоживущая. Telegram не получает пароль или серверную сессию WesiOS.'
-              : 'The one-time link never exposes your WesiOS password or server session.',
+        const SizedBox(width: 14),
+        Expanded(
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              FilledButton.icon(
-                onPressed: _working ? null : _startLink,
-                icon: _working
-                    ? const SizedBox(
-                        width: 17,
-                        height: 17,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.open_in_new),
-                label: Text(_ru ? 'Подключить Telegram' : 'Connect Telegram'),
+              Text(
+                'Wesi Telegram',
+                style: TextStyle(
+                  color: AppTheme.textPrimary,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                ),
               ),
-              if (_ticket != null) ...[
-                const SizedBox(height: 14),
-                Text(
-                  _ru ? 'Если Telegram не открылся автоматически:' : 'If Telegram did not open:',
-                  style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+              const SizedBox(height: 4),
+              Text(
+                _ru
+                    ? 'Тонкий клиент WesiOS: касса, риски, задачи и важные алерты без отдельной «правды».'
+                    : 'A thin WesiOS client for cash, risk, tasks and important alerts.',
+                style: TextStyle(
+                  color: AppTheme.textMuted,
+                  fontSize: 12.5,
+                  height: 1.4,
                 ),
-                const SizedBox(height: 8),
-                InkWell(
-                  onTap: () async {
-                    await Clipboard.setData(ClipboardData(text: _ticket!.code));
-                    if (!mounted) return;
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text(_ru ? 'Код скопирован' : 'Code copied')),
-                    );
-                  },
-                  borderRadius: BorderRadius.circular(12),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                    decoration: BoxDecoration(
-                      color: AppTheme.background.withOpacity(0.55),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: AppTheme.glassBorder),
-                    ),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: SelectableText(
-                            '/start ${_ticket!.code}',
-                            style: TextStyle(
-                              color: AppTheme.textPrimary,
-                              fontFamily: 'monospace',
-                              fontSize: 12,
-                            ),
-                          ),
-                        ),
-                        Icon(Icons.copy, size: 17, color: AppTheme.textMuted),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
+              ),
             ],
           ),
         ),
-      ];
+      ],
+    ),
+  );
+
+  List<Widget> _unlinkedCards() => [
+    _card(
+      title: _ru ? 'Не подключён' : 'Not connected',
+      subtitle: _ru
+          ? 'Привязка одноразовая и короткоживущая. Telegram не получает пароль или серверную сессию WesiOS.'
+          : 'The one-time link never exposes your WesiOS password or server session.',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          FilledButton.icon(
+            onPressed: _working ? null : _startLink,
+            icon: _working
+                ? const SizedBox(
+                    width: 17,
+                    height: 17,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.open_in_new),
+            label: Text(_ru ? 'Подключить Telegram' : 'Connect Telegram'),
+          ),
+          if (_ticket != null) ...[
+            const SizedBox(height: 14),
+            Text(
+              _ru
+                  ? 'Если Telegram не открылся автоматически:'
+                  : 'If Telegram did not open:',
+              style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+            ),
+            const SizedBox(height: 8),
+            InkWell(
+              onTap: () async {
+                await Clipboard.setData(ClipboardData(text: _ticket!.code));
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(_ru ? 'Код скопирован' : 'Code copied'),
+                  ),
+                );
+              },
+              borderRadius: BorderRadius.circular(12),
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 12,
+                ),
+                decoration: BoxDecoration(
+                  color: AppTheme.background.withOpacity(0.55),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppTheme.glassBorder),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: SelectableText(
+                        '/start ${_ticket!.code}',
+                        style: TextStyle(
+                          color: AppTheme.textPrimary,
+                          fontFamily: 'monospace',
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                    Icon(Icons.copy, size: 17, color: AppTheme.textMuted),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    ),
+  ];
 
   List<Widget> _linkedCards() {
     final name = _status.telegramUsername.isNotEmpty
         ? '@${_status.telegramUsername}'
-        : (_status.telegramFirstName.isNotEmpty ? _status.telegramFirstName : 'Telegram');
+        : (_status.telegramFirstName.isNotEmpty
+              ? _status.telegramFirstName
+              : 'Telegram');
     return [
       _card(
         title: _ru ? 'Подключён' : 'Connected',
-        subtitle: '$name · ${_status.activeOrganizationName.isEmpty ? _status.activeOrganizationId : _status.activeOrganizationName}',
+        subtitle:
+            '$name · ${_status.activeOrganizationName.isEmpty ? _status.activeOrganizationId : _status.activeOrganizationName}',
         leading: Container(
           width: 10,
           height: 10,
@@ -368,14 +394,20 @@ class _TelegramLinkScreenState extends State<TelegramLinkScreen> {
               _ru
                   ? 'Права не копируются в Telegram: сервер проверяет их заново на каждую команду и кнопку.'
                   : 'Permissions are rechecked by WesiOS on every command and button.',
-              style: TextStyle(color: AppTheme.textMuted, fontSize: 12, height: 1.45),
+              style: TextStyle(
+                color: AppTheme.textMuted,
+                fontSize: 12,
+                height: 1.45,
+              ),
             ),
             const SizedBox(height: 14),
             OutlinedButton.icon(
               onPressed: _working ? null : _revoke,
               icon: const Icon(Icons.link_off),
               label: Text(_ru ? 'Отвязать Telegram' : 'Disconnect Telegram'),
-              style: OutlinedButton.styleFrom(foregroundColor: AppTheme.accentRed),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppTheme.accentRed,
+              ),
             ),
           ],
         ),
@@ -383,7 +415,9 @@ class _TelegramLinkScreenState extends State<TelegramLinkScreen> {
       const SizedBox(height: 14),
       _card(
         title: _ru ? 'Проактивные алерты' : 'Proactive alerts',
-        subtitle: _ru ? 'Только важное. Quiet hours: 23:00–08:00.' : 'Important only. Quiet hours: 23:00–08:00.',
+        subtitle: _ru
+            ? 'Только важное. Quiet hours: 23:00–08:00.'
+            : 'Important only. Quiet hours: 23:00–08:00.',
         child: Column(
           children: [
             SwitchListTile.adaptive(
@@ -395,7 +429,9 @@ class _TelegramLinkScreenState extends State<TelegramLinkScreen> {
                 style: TextStyle(color: AppTheme.textPrimary, fontSize: 13),
               ),
               subtitle: Text(
-                _ru ? 'Когда серверный запас переходит в warning/critical' : 'When server runway enters warning/critical',
+                _ru
+                    ? 'Когда серверный запас переходит в warning/critical'
+                    : 'When server runway enters warning/critical',
                 style: TextStyle(color: AppTheme.textMuted, fontSize: 11),
               ),
             ),
@@ -409,7 +445,9 @@ class _TelegramLinkScreenState extends State<TelegramLinkScreen> {
                 style: TextStyle(color: AppTheme.textPrimary, fontSize: 13),
               ),
               subtitle: Text(
-                _ru ? 'Сводка при изменении количества просрочек' : 'Digest when overdue count changes',
+                _ru
+                    ? 'Сводка при изменении количества просрочек'
+                    : 'Digest when overdue count changes',
                 style: TextStyle(color: AppTheme.textMuted, fontSize: 11),
               ),
             ),
@@ -424,7 +462,11 @@ class _TelegramLinkScreenState extends State<TelegramLinkScreen> {
           _ru
               ? 'В группах бот не показывает чувствительные цифры. Для кассы, рисков и задач используется личный чат.'
               : 'Sensitive values are never shown in groups. Use the private chat for cash, risk and tasks.',
-          style: TextStyle(color: AppTheme.textMuted, fontSize: 12, height: 1.45),
+          style: TextStyle(
+            color: AppTheme.textMuted,
+            fontSize: 12,
+            height: 1.45,
+          ),
         ),
       ),
     ];
@@ -435,58 +477,61 @@ class _TelegramLinkScreenState extends State<TelegramLinkScreen> {
     required String subtitle,
     required Widget child,
     Widget? leading,
-  }) =>
-      Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: AppTheme.surface.withOpacity(0.35),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppTheme.glassBorder),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+  }) => Container(
+    padding: const EdgeInsets.all(16),
+    decoration: BoxDecoration(
+      color: AppTheme.surface.withOpacity(0.35),
+      borderRadius: BorderRadius.circular(16),
+      border: Border.all(color: AppTheme.glassBorder),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
           children: [
-            Row(
-              children: [
-                if (leading != null) ...[leading, const SizedBox(width: 8)],
-                Expanded(
-                  child: Text(
-                    title,
-                    style: TextStyle(
-                      color: AppTheme.textPrimary,
-                      fontSize: 15,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
+            if (leading != null) ...[leading, const SizedBox(width: 8)],
+            Expanded(
+              child: Text(
+                title,
+                style: TextStyle(
+                  color: AppTheme.textPrimary,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
                 ),
-              ],
+              ),
             ),
-            const SizedBox(height: 4),
-            Text(
-              subtitle,
-              style: TextStyle(color: AppTheme.textMuted, fontSize: 11.5, height: 1.4),
-            ),
-            const SizedBox(height: 14),
-            child,
           ],
         ),
-      );
+        const SizedBox(height: 4),
+        Text(
+          subtitle,
+          style: TextStyle(
+            color: AppTheme.textMuted,
+            fontSize: 11.5,
+            height: 1.4,
+          ),
+        ),
+        const SizedBox(height: 14),
+        child,
+      ],
+    ),
+  );
 
   Widget _message(String value, {bool error = false}) => Container(
-        padding: const EdgeInsets.all(13),
-        decoration: BoxDecoration(
-          color: (error ? AppTheme.accentRed : AppTheme.accent).withOpacity(0.08),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: (error ? AppTheme.accentRed : AppTheme.accent).withOpacity(0.35),
-          ),
-        ),
-        child: Text(
-          value,
-          style: TextStyle(
-            color: error ? AppTheme.accentRed : AppTheme.textPrimary,
-            fontSize: 12,
-          ),
-        ),
-      );
+    padding: const EdgeInsets.all(13),
+    decoration: BoxDecoration(
+      color: (error ? AppTheme.accentRed : AppTheme.accent).withOpacity(0.08),
+      borderRadius: BorderRadius.circular(12),
+      border: Border.all(
+        color: (error ? AppTheme.accentRed : AppTheme.accent).withOpacity(0.35),
+      ),
+    ),
+    child: Text(
+      value,
+      style: TextStyle(
+        color: error ? AppTheme.accentRed : AppTheme.textPrimary,
+        fontSize: 12,
+      ),
+    ),
+  );
 }
