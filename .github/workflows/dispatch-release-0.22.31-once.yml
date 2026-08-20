@@ -1,0 +1,110 @@
+name: Dispatch WesiOS 0.22.31 Release Once
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/ops/run-release-0.22.31-20260820'
+
+permissions:
+  contents: read
+  actions: write
+  statuses: write
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Resolve current main
+        id: main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha')
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "main=$sha"
+
+      - name: Dispatch release-app from current main
+        id: dispatch
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MAIN_SHA: ${{ steps.main.outputs.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          since=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          echo "since=$since" >> "$GITHUB_OUTPUT"
+          gh workflow run release-app.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref main \
+            -f deploy_to_server=true \
+            -f notes='0.22.31: восстановлено подключение Telegram в настройках; синхронизация расширенных данных переведена на новые production-verified sync-v3 маршруты, исключающие старые зависшие PocketBase callbacks.'
+          echo "release dispatched for $MAIN_SHA at $since"
+
+      - name: Find dispatched release run
+        id: run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MAIN_SHA: ${{ steps.main.outputs.sha }}
+          SINCE: ${{ steps.dispatch.outputs.since }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          run_id=''
+          for i in $(seq 1 60); do
+            run_id=$(gh run list \
+              --repo "$GITHUB_REPOSITORY" \
+              --workflow release-app.yml \
+              --event workflow_dispatch \
+              --branch main \
+              --limit 20 \
+              --json databaseId,headSha,createdAt \
+              --jq --arg sha "$MAIN_SHA" --arg since "$SINCE" '[.[] | select(.headSha == $sha and .createdAt >= $since)] | sort_by(.createdAt) | reverse | .[0].databaseId // empty')
+            if [ -n "$run_id" ]; then break; fi
+            sleep 5
+          done
+          [ -n "$run_id" ] || { echo 'Release run not found' >&2; exit 1; }
+          echo "id=$run_id" >> "$GITHUB_OUTPUT"
+          echo "release run id=$run_id"
+
+      - name: Wait for Windows + Android release publication
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ steps.run.outputs.id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh run watch "$RUN_ID" --repo "$GITHUB_REPOSITORY" --exit-status --interval 15
+
+      - name: Publish release success status
+        if: ${{ success() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MAIN_SHA: ${{ steps.main.outputs.sha }}
+          RUN_ID: ${{ steps.run.outputs.id }}
+        shell: bash
+        run: |
+          gh api -X POST "repos/$GITHUB_REPOSITORY/statuses/$MAIN_SHA" \
+            -f state=success \
+            -f context='WesiOS Release 0.22.31' \
+            -f description='Windows and Android release published successfully' \
+            -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$RUN_ID"
+
+      - name: Publish release failure status
+        if: ${{ failure() && steps.main.outputs.sha != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MAIN_SHA: ${{ steps.main.outputs.sha }}
+          RUN_ID: ${{ steps.run.outputs.id }}
+        shell: bash
+        run: |
+          url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions"
+          if [ -n "${RUN_ID:-}" ]; then url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$RUN_ID"; fi
+          gh api -X POST "repos/$GITHUB_REPOSITORY/statuses/$MAIN_SHA" \
+            -f state=failure \
+            -f context='WesiOS Release 0.22.31' \
+            -f description='Release workflow failed; inspect Actions run' \
+            -f target_url="$url"
