@@ -207,7 +207,13 @@ class WesiAiActivityEvent {
     final id = _clip('${map['id'] ?? ''}', 180);
     // Совпадает с серверным пределом step_io: глубокий уровень должен уметь
     // показать код/аргументы целиком в пределах одного безопасного события.
-    final input = _clip('${map['input'] ?? ''}', 24000);
+    // Для итогового события специалиста сервер присылает отдельное `task`;
+    // кладём его в input только на втором уровне результата, чтобы первый
+    // уровень оставался живым журналом, а не дублировал поручение дважды.
+    final specialistTask = rawKind == 'agent' && phase == 'result'
+        ? map['task']
+        : null;
+    final input = _clip('${map['input'] ?? specialistTask ?? ''}', 24000);
     final output = _clip('${map['output'] ?? ''}', 24000);
     final mutation = map['mutation'] == true;
     final succeeded = map['ok'] == true;

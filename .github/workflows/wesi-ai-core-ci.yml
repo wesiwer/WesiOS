@@ -7,6 +7,7 @@ on:
       - 'lib/features/ai/wesi_ai_api.dart'
       - 'lib/features/ai/widgets/wesi_ai_rich_message.dart'
       - 'lib/features/ai/widgets/wesi_ai_step_detail_sheet.dart'
+      - 'test/wesi_ai_subagent_visibility_test.dart'
       - 'server/wesi-ai-stream/**'
       - '.github/workflows/wesi-ai-core-ci.yml'
 
@@ -29,7 +30,6 @@ jobs:
             server/wesi-ai-stream/step_io.test.mjs
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.24.0'
           channel: stable
           cache: true
       - run: flutter pub get
@@ -41,3 +41,5 @@ jobs:
             lib/features/ai/widgets/wesi_ai_rich_message.dart \
             lib/features/ai/widgets/wesi_ai_step_detail_sheet.dart \
             --no-fatal-infos
+      - name: Test Wesi AI thinking UI
+        run: flutter test test/wesi_ai_subagent_visibility_test.dart

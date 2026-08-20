@@ -3,17 +3,15 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:wesios/features/ai/models/wesi_ai_activity.dart';
 import 'package:wesios/features/ai/widgets/wesi_ai_rich_message.dart';
 
-// Работа специалистов должна быть видна в ходе мыслей.
-//
-// Раньше события агентов шли врезками внутрь текста ответа по смещению.
-// Специалисты отрабатывают ДО первой буквы ответа, поэтому смещение у всех
-// нулевое: весь их след сваливался одной кучей перед первым абзацем, а в
-// «Думающем» режиме — там, где человек его и ищет, — не было ничего.
+// Thinking показывает один наблюдаемый журнал работы: публичные мысли,
+// специалистов и инструменты. Детальный payload инструмента/специалиста
+// открывается уже вторым нажатием и не подменяет первый уровень.
 void main() {
   const timeline = <Map<String, dynamic>>[
     <String, dynamic>{
       'id': 'a1',
       'kind': 'agent',
+      'phase': 'planned',
       'label': 'Зову специалиста · Security Reviewer (субагент)',
       'detail': 'Поручаю: проверить форму входа на слабые проверки',
       'status': 'start',
@@ -21,7 +19,10 @@ void main() {
     },
     <String, dynamic>{
       'id': 'a2',
+      // Инструмент субагента идёт по agent-envelope, но phase=tool должен
+      // классифицироваться как инструмент для глубокого уровня.
       'kind': 'agent',
+      'phase': 'tool',
       'label': 'Security Reviewer · инструмент knowledge_search (субагент)',
       'status': 'result',
       'input': '{"query": "форма входа"}',
@@ -31,8 +32,12 @@ void main() {
     <String, dynamic>{
       'id': 'a3',
       'kind': 'agent',
+      'phase': 'result',
       'label': 'Security Reviewer · готово (субагент)',
-      'detail': 'Найдено две слабости в проверке пароля',
+      'task': 'проверить форму входа на слабые проверки',
+      'detail': 'Краткий вывод: Найдено две слабости в проверке пароля.\n\n'
+          'Наблюдения:\n• Проверка длины недостаточна.\n\n'
+          'Рекомендация: усилить серверную валидацию.',
       'status': 'result',
       'textOffset': 0,
     },
@@ -40,13 +45,14 @@ void main() {
       'id': 'r1',
       'kind': 'reasoning',
       'label': 'Что дал Security Reviewer',
-      'detail': 'Учту при сборке итогового ответа',
+      'detail': 'Учту найденные слабости при сборке итогового ответа.',
       'status': 'done',
       'textOffset': 0,
     },
     <String, dynamic>{
       'id': 't1',
       'kind': 'tool',
+      'phase': 'result',
       'label': 'Инструмент · finance_summary',
       'status': 'result',
       'textOffset': 0,
@@ -70,9 +76,6 @@ void main() {
     await tester.pump(const Duration(milliseconds: 400));
   }
 
-  // Ищем строго ВНУТРИ журнала работы. Просто find.textContaining нашёл бы
-  // текст и во врезке внутри ответа — то есть проходил бы и на старом
-  // поведении, которое эта правка и чинит.
   Finder inWorkLog(String text) => find.descendant(
         of: find.byType(WesiAiWorkLog),
         matching: find.textContaining(text),
@@ -88,62 +91,70 @@ void main() {
     expect(inWorkLog('(субагент)'), findsWidgets);
   });
 
-  testWidgets('видно, что именно поручено специалисту', (tester) async {
+  testWidgets('на первом уровне видно, что поручено специалисту',
+      (tester) async {
     await pump(tester, showWorkLog: true);
     expect(inWorkLog('проверить форму входа на слабые проверки'),
         findsOneWidget);
   });
 
-  testWidgets('видно, каким инструментом специалист пользовался',
-      (tester) async {
+  testWidgets('в ходе работы виден инструмент специалиста', (tester) async {
     await pump(tester, showWorkLog: true);
     expect(inWorkLog('Security Reviewer · инструмент knowledge_search'),
         findsOneWidget);
   });
 
-
-
-  testWidgets('видно, чем специалист закончил', (tester) async {
+  testWidgets('на первом уровне виден результат специалиста', (tester) async {
     await pump(tester, showWorkLog: true);
     expect(inWorkLog('Найдено две слабости в проверке пароля'), findsOneWidget);
   });
 
-  testWidgets('инструмент ведущей персоны остаётся врезкой в ответе',
+  testWidgets('инструмент ведущей персоны находится в ходе работы Thinking',
       (tester) async {
     await pump(tester, showWorkLog: true);
-    expect(inWorkLog('finance_summary'), findsNothing);
-    expect(find.textContaining('finance_summary'), findsOneWidget);
+    expect(inWorkLog('finance_summary'), findsOneWidget);
+    expect(find.text('Итоговый ответ по форме входа.'), findsOneWidget);
   });
 
-  testWidgets('шаг раскрывается и показывает запрос и ответ', (tester) async {
+  testWidgets('инструмент раскрывается вторым уровнем с входом и результатом',
+      (tester) async {
     await pump(tester, showWorkLog: true);
-    // Свёрнутый шаг показывает только подпись — иначе журнал превратится в
-    // простыню JSON.
-    expect(find.textContaining('форма входа'), findsNothing);
 
     await tester.tap(inWorkLog('инструмент knowledge_search').first);
     await tester.pumpAndSettle();
 
-    expect(find.text('Запрос'), findsOneWidget);
-    expect(find.text('Ответ'), findsOneWidget);
-    expect(find.textContaining('форма входа'), findsOneWidget);
-    expect(find.textContaining('articles'), findsOneWidget);
+    expect(find.text('Вход инструмента / код'), findsOneWidget);
+    expect(find.text('Результат инструмента'), findsOneWidget);
+    expect(find.text('{"query": "форма входа"}'), findsOneWidget);
+    expect(find.text('{"articles": []}'), findsOneWidget);
   });
 
-  test('в ход мыслей попадает всё, кроме инструментов ведущей персоны', () {
-    final events = WesiAiActivityEvent.listFrom(timeline);
-    final work = events
-        .where((event) => event.kind != WesiAiActivityKind.tool)
-        .toList();
-    final inline = events
-        .where((event) => event.kind == WesiAiActivityKind.tool)
-        .toList();
+  testWidgets('результат субагента раскрывает поручение и подробный вывод',
+      (tester) async {
+    await pump(tester, showWorkLog: true);
 
-    // Три события специалиста и одна мысль — в журнале работы.
-    expect(work, hasLength(4));
-    expect(work.where((e) => e.kind == WesiAiActivityKind.agent), hasLength(3));
-    // Инструмент ведущей персоны остаётся врезкой: его место в тексте осмысленно.
-    expect(inline, hasLength(1));
-    expect(inline.single.label, contains('finance_summary'));
+    await tester.tap(inWorkLog('Security Reviewer · готово').first);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Поручение специалисту'), findsOneWidget);
+    expect(find.text('проверить форму входа на слабые проверки'), findsOneWidget);
+    expect(find.text('Результат специалиста'), findsOneWidget);
+    expect(find.textContaining('Рекомендация: усилить серверную валидацию'),
+        findsOneWidget);
+  });
+
+  test('agent-envelope phase=tool сохраняет настоящий tool payload', () {
+    final events = WesiAiActivityEvent.listFrom(timeline);
+    final specialistTool = events.firstWhere((event) => event.id == 'a2');
+    final specialistResult = events.firstWhere((event) => event.id == 'a3');
+
+    expect(specialistTool.kind, WesiAiActivityKind.tool);
+    expect(specialistTool.input, contains('форма входа'));
+    expect(specialistTool.output, contains('articles'));
+    expect(specialistResult.kind, WesiAiActivityKind.agent);
+    // `task` приходит отдельным полем сервера, но второй уровень UI уже
+    // умеет показывать agent input как «Поручение специалисту».
+    expect(specialistResult.input,
+        contains('проверить форму входа на слабые проверки'));
   });
 }
