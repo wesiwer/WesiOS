@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/localization/wesi_locale.dart';
 import '../../core/notifications/wesi_notifications.dart';
+import '../../core/services/email_notification_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/window_controls.dart';
 import '../profile/telegram_link_screen.dart';
@@ -137,10 +138,20 @@ class NotificationSettingsScreen extends StatelessWidget {
                 ),
               ),
             ),
-            _plannedTile(
-              icon: Icons.email,
-              title: WesiLocale.get('email_notifications'),
-              subtitle: ru ? 'Нужен сервер' : 'Requires a server',
+            ValueListenableBuilder<int>(
+              valueListenable: EmailNotificationService.revision,
+              builder: (context, _, __) => _tile(
+                icon: Icons.email_outlined,
+                title: WesiLocale.get('email_notifications'),
+                subtitle: ru
+                    ? 'Все уведомления на почту из карточки сотрудника'
+                    : 'All notifications to the email in the employee card',
+                trailing: Switch(
+                  value: EmailNotificationService.enabled,
+                  activeColor: AppTheme.accent,
+                  onChanged: EmailNotificationService.setEnabled,
+                ),
+              ),
             ),
           ],
         ),
