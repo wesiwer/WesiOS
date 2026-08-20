@@ -1,4 +1,5 @@
 name: Fix employee OTP bootstrap on main once
+# Trigger refresh after the workflow became present on the default branch.
 
 on:
   push:
