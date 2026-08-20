@@ -538,7 +538,10 @@ class WesiAiApi {
       }
     });
     try {
-      final event = await done.future.timeout(const Duration(minutes: 7));
+      // Server-side autonomous mode can legitimately run for up to 30 minutes.
+      // Do not cut off its public thinking/tool stream at the old seven-minute
+      // client ceiling; keep a small margin over the server hard cap.
+      final event = await done.future.timeout(const Duration(minutes: 32));
       return _replyFromPayload(event);
     } finally {
       cancellation?.unbind();

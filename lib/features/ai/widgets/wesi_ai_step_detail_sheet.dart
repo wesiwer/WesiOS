@@ -34,6 +34,24 @@ class WesiAiStepDetailSheet extends StatelessWidget {
         WesiAiActivityKind.status => 'Этап',
       };
 
+  String get _detailTitle => switch (event.kind) {
+        WesiAiActivityKind.agent => 'Результат специалиста',
+        WesiAiActivityKind.tool => 'Краткая сводка работы',
+        _ => 'Что происходило',
+      };
+
+  String get _inputTitle => switch (event.kind) {
+        WesiAiActivityKind.agent => 'Поручение специалисту',
+        WesiAiActivityKind.tool => 'Вход инструмента / код',
+        _ => 'Запрос',
+      };
+
+  String get _outputTitle => switch (event.kind) {
+        WesiAiActivityKind.agent => 'Полный результат специалиста',
+        WesiAiActivityKind.tool => 'Результат инструмента',
+        _ => 'Ответ',
+      };
+
   String get _statusLabel {
     if (event.succeeded) return 'Успешно';
     return switch (event.status.trim().toLowerCase()) {
@@ -68,16 +86,16 @@ class WesiAiStepDetailSheet extends StatelessWidget {
       buffer.writeln('\nИсполнитель: ${event.sourceName}');
     }
     if (event.detail.isNotEmpty) {
-      buffer.writeln('\nДетали:\n${event.detail}');
+      buffer.writeln('\n$_detailTitle:\n${event.detail}');
     }
     if (event.files.isNotEmpty) {
       buffer.writeln('\nФайлы:\n${event.files.join('\n')}');
     }
     if (event.input.isNotEmpty) {
-      buffer.writeln('\nЗапрос:\n${event.input}');
+      buffer.writeln('\n$_inputTitle:\n${event.input}');
     }
     if (event.output.isNotEmpty) {
-      buffer.writeln('\nОтвет:\n${event.output}');
+      buffer.writeln('\n$_outputTitle:\n${event.output}');
     }
     await Clipboard.setData(ClipboardData(text: buffer.toString()));
     if (!context.mounted) return;
@@ -199,7 +217,7 @@ class WesiAiStepDetailSheet extends StatelessWidget {
                   ),
                   if (event.detail.isNotEmpty) ...[
                     const SizedBox(height: 18),
-                    const _SectionTitle(title: 'Что происходило'),
+                    _SectionTitle(title: _detailTitle),
                     const SizedBox(height: 7),
                     SelectableText(
                       event.detail,
@@ -249,7 +267,7 @@ class WesiAiStepDetailSheet extends StatelessWidget {
                   if (event.input.isNotEmpty) ...[
                     const SizedBox(height: 18),
                     _PayloadPanel(
-                      title: 'Запрос',
+                      title: _inputTitle,
                       body: event.input,
                       icon: Icons.call_made_rounded,
                     ),
@@ -257,7 +275,7 @@ class WesiAiStepDetailSheet extends StatelessWidget {
                   if (event.output.isNotEmpty) ...[
                     const SizedBox(height: 14),
                     _PayloadPanel(
-                      title: 'Ответ',
+                      title: _outputTitle,
                       body: event.output,
                       icon: Icons.call_received_rounded,
                     ),

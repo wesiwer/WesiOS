@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  buildDynamicSubagentEvent,
   createDynamicSubagentSpec,
   scopeDynamicCapabilities,
   validateDynamicSubagentResult,
@@ -54,4 +55,23 @@ test('workspace edits are bounded to declared writable paths', () => {
   }, spec);
   assert.equal(result.workspaceEdits.length, 1);
   assert.equal(result.workspaceEdits[0].path, 'notes/gradle.md');
+});
+
+test('result event exposes validated structured specialist output', () => {
+  const spec = baseSpec();
+  validateDynamicSubagentResult({
+    summary: 'Нашёл источник ошибки сборки.',
+    findings: ['Версия Gradle не совпадает с AGP.', 'Конфигурация репозитория корректна.'],
+    risks: ['Обновление только Gradle без AGP сломает совместимость.'],
+    recommendation: 'Обновить совместимую пару Gradle + AGP.',
+  }, spec);
+  const event = buildDynamicSubagentEvent(spec, 'result', {
+    label: 'Gradle specialist · готово',
+    detail: 'Короткая запасная сводка',
+  });
+  assert.match(event.detail, /Краткий вывод:/);
+  assert.match(event.detail, /Наблюдения:/);
+  assert.match(event.detail, /Риски:/);
+  assert.match(event.detail, /Рекомендация:/);
+  assert.match(event.detail, /Версия Gradle/);
 });

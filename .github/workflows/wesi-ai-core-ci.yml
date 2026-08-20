@@ -1,0 +1,45 @@
+name: Wesi AI Core CI
+
+on:
+  pull_request:
+    paths:
+      - 'lib/features/ai/models/wesi_ai_activity.dart'
+      - 'lib/features/ai/wesi_ai_api.dart'
+      - 'lib/features/ai/widgets/wesi_ai_rich_message.dart'
+      - 'lib/features/ai/widgets/wesi_ai_step_detail_sheet.dart'
+      - 'test/wesi_ai_subagent_visibility_test.dart'
+      - 'server/wesi-ai-stream/**'
+      - '.github/workflows/wesi-ai-core-ci.yml'
+
+jobs:
+  focused-wesi-ai-core:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate Wesi AI stream modules
+        run: |
+          node --check server/wesi-ai-stream/public_deliberation.mjs
+          node --check server/wesi-ai-stream/dynamic_subagent.mjs
+          node --check server/wesi-ai-stream/step_io.mjs
+      - name: Test public thinking and deep work details
+        run: |
+          node --test \
+            server/wesi-ai-stream/public_deliberation.test.mjs \
+            server/wesi-ai-stream/dynamic_subagent.test.mjs \
+            server/wesi-ai-stream/step_io.test.mjs
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - name: Analyze Wesi AI thinking UI
+        run: |
+          flutter analyze \
+            lib/features/ai/models/wesi_ai_activity.dart \
+            lib/features/ai/wesi_ai_api.dart \
+            lib/features/ai/widgets/wesi_ai_rich_message.dart \
+            lib/features/ai/widgets/wesi_ai_step_detail_sheet.dart \
+            --no-fatal-infos
+      - name: Test Wesi AI thinking UI
+        run: flutter test test/wesi_ai_subagent_visibility_test.dart

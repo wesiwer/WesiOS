@@ -23,8 +23,9 @@ class WesiAiActivityEvent {
   /// Что ушло в инструмент и что он вернул.
   ///
   /// Без этого длинный проход нельзя проверить: человек видит два десятка
-  /// строк «инструмент отработал» и обязан верить им на слово. Обрезается на
-  /// сервере — это ход мыслей, а не хранилище.
+  /// строк «инструмент отработал» и обязан верить им на слово. Сервер держит
+  /// защитный предел, но детальный слой сохраняет достаточно места для кода,
+  /// аргументов и фактического результата инструмента.
   final String input;
   final String output;
 
@@ -133,8 +134,14 @@ class WesiAiActivityEvent {
     final map = Map<String, dynamic>.from(raw);
     final rawKind =
         '${map['kind'] ?? map['type'] ?? 'status'}'.trim().toLowerCase();
+    final phase = '${map['phase'] ?? ''}'.trim().toLowerCase();
     final kind = switch (rawKind) {
       'tool' => WesiAiActivityKind.tool,
+      // Dynamic-subagent tool events travel over the shared `agent` envelope
+      // so the lead can keep ownership of the run. Visually they are still
+      // tool work: the second level must show tool input/code and tool result,
+      // not mislabel the payload as another specialist assignment.
+      'agent' when phase == 'tool' => WesiAiActivityKind.tool,
       'agent' => WesiAiActivityKind.agent,
       'reasoning' ||
       'reasoning_summary' ||
@@ -146,7 +153,6 @@ class WesiAiActivityEvent {
     final sourceName = _clip(
         '${map['sourceName'] ?? map['name'] ?? map['tool'] ?? map['agent'] ?? map['persona'] ?? ''}',
         180);
-    final phase = '${map['phase'] ?? ''}'.trim().toLowerCase();
     final explicitLabel = _clip('${map['label'] ?? map['title'] ?? ''}', 240);
     final label = explicitLabel.isNotEmpty
         ? explicitLabel
@@ -168,7 +174,7 @@ class WesiAiActivityEvent {
           };
     final detail = _clip(
       '${map['detail'] ?? map['message'] ?? map['summary'] ?? map['code'] ?? ''}',
-      1200,
+      12000,
     );
     final status = _clip('${map['status'] ?? map['phase'] ?? ''}', 80);
     final additions = _nonNegativeInt(
@@ -199,11 +205,16 @@ class WesiAiActivityEvent {
     final startedAt = _date(map['startedAt'] ?? map['at']);
     final completedAt = _date(map['completedAt'] ?? map['finishedAt']);
     final id = _clip('${map['id'] ?? ''}', 180);
-    // Предел вдвое больше серверного: сервер уже обрезал, здесь запас на
-    // случай, если обрежет иначе. Хранить безразмерный вывод в истории чата
-    // нельзя — она лежит на устройстве.
-    final input = _clip('${map['input'] ?? ''}', 8000);
-    final output = _clip('${map['output'] ?? ''}', 8000);
+    // Совпадает с серверным пределом step_io: глубокий уровень должен уметь
+    // показать код/аргументы целиком в пределах одного безопасного события.
+    // Для итогового события специалиста сервер присылает отдельное `task`;
+    // кладём его в input только на втором уровне результата, чтобы первый
+    // уровень оставался живым журналом, а не дублировал поручение дважды.
+    final specialistTask = rawKind == 'agent' && phase == 'result'
+        ? map['task']
+        : null;
+    final input = _clip('${map['input'] ?? specialistTask ?? ''}', 24000);
+    final output = _clip('${map['output'] ?? ''}', 24000);
     final mutation = map['mutation'] == true;
     final succeeded = map['ok'] == true;
     final module = _clip('${map['module'] ?? ''}', 60);
@@ -231,7 +242,10 @@ class WesiAiActivityEvent {
   static List<WesiAiActivityEvent> listFrom(dynamic raw) {
     if (raw is! List) return const <WesiAiActivityEvent>[];
     final result = <WesiAiActivityEvent>[];
-    for (var index = 0; index < raw.length && index < 120; index++) {
+    // Длинный проход может законно содержать десятки инструментов и живых
+    // публичных заметок между ними. Старые 120 событий обрезали хвост именно
+    // тогда, когда пользователю важнее всего видеть продолжение работы.
+    for (var index = 0; index < raw.length && index < 400; index++) {
       final event = fromJson(raw[index], fallbackIndex: index);
       if (event != null) result.add(event);
     }
