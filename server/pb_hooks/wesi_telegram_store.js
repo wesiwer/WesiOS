@@ -112,8 +112,35 @@ function config() {
   };
 }
 
+function linkCodeExpiresAtMs(payload) {
+  const source = payload && typeof payload === "object" ? payload : {};
+  const direct = Number(source.expiresAtMs);
+  if (Number.isFinite(direct) && direct > 0) return direct;
+
+  const createdDirect = Number(source.createdAtMs);
+  if (Number.isFinite(createdDirect) && createdDirect > 0) {
+    return createdDirect + CODE_TTL_MS;
+  }
+
+  const createdParsed = Date.parse(String(source.createdAt || ""));
+  if (Number.isFinite(createdParsed)) return createdParsed + CODE_TTL_MS;
+
+  const expiresParsed = Date.parse(String(source.expiresAt || ""));
+  if (Number.isFinite(expiresParsed)) return expiresParsed;
+
+  return NaN;
+}
+
+function isLinkCodeExpired(payload, nowMs) {
+  const now = Number(nowMs == null ? Date.now() : nowMs);
+  const expiresAtMs = linkCodeExpiresAtMs(payload);
+  if (!Number.isFinite(now) || !Number.isFinite(expiresAtMs)) return true;
+  return expiresAtMs <= now;
+}
+
 function createLinkCode(app, identity, activeOrganizationId, timezoneOffsetMinutes) {
   const now = Date.now();
+  const expiresAtMs = now + CODE_TTL_MS;
   const code = randomCode();
   const payload = {
     authUserId: identity.authUserId,
@@ -122,8 +149,10 @@ function createLinkCode(app, identity, activeOrganizationId, timezoneOffsetMinut
     isOwner: identity.isOwner === true,
     activeOrganizationId: String(activeOrganizationId || ""),
     timezoneOffsetMinutes: Math.max(-840, Math.min(840, Number(timezoneOffsetMinutes || 0))),
+    createdAtMs: now,
+    expiresAtMs: expiresAtMs,
     createdAt: new Date(now).toISOString(),
-    expiresAt: new Date(now + CODE_TTL_MS).toISOString(),
+    expiresAt: new Date(expiresAtMs).toISOString(),
   };
   upsert(app, COLL_CODES, codeRid(code), payload);
   return {code: code, payload: payload};
@@ -134,8 +163,7 @@ function consumeLinkCode(app, code) {
   const record = find(app, COLL_CODES, rid);
   if (!record) return {ok: false, code: "LINK_CODE_INVALID"};
   const payload = payloadOf(record);
-  const expiresAt = Date.parse(String(payload.expiresAt || ""));
-  if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) {
+  if (isLinkCodeExpired(payload, Date.now())) {
     remove(app, COLL_CODES, rid);
     return {ok: false, code: "LINK_CODE_EXPIRED"};
   }
@@ -304,6 +332,8 @@ module.exports = {
   payloadOf,
   config,
   rows,
+  linkCodeExpiresAtMs,
+  isLinkCodeExpired,
   createLinkCode,
   consumeLinkCode,
   linkByAuth,
