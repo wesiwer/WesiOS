@@ -146,8 +146,6 @@ jobs:
             esac
           }
 
-          # PocketBase hot-reloads ordinary pb_hooks. Give the new route time to
-          # register before attempting a privileged service restart.
           active=0
           for attempt in $(seq 1 10); do
             if probe_route; then
@@ -197,6 +195,15 @@ jobs:
           echo "::error::Email notification route returned HTTP $code"
           cat response.txt || true
           exit 1
+
+      - name: Verify production mail transport readiness
+        run: |
+          set -euo pipefail
+          body=$(curl -fsS --max-time 20 https://api.wesi-inc.ru/api/wesi/auth/mail-ready)
+          echo "$body"
+          printf '%s' "$body" | grep -q '"ready":true'
+          printf '%s' "$body" | grep -q '"senderConfigured":true'
+          echo 'Production mail transport is ready'
 
   report:
     name: Report production email deploy status
