@@ -1,0 +1,259 @@
+name: Repair legacy organization sync and Telegram placeholder
+
+on:
+  push:
+    branches: ['agent/fix-org-sync-telegram-placeholder']
+    paths:
+      - '.github/workflows/repair-org-sync-telegram-placeholder.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch-test-push:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/fix-org-sync-telegram-placeholder
+          fetch-depth: 0
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Patch legacy organization decoder and settings
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          codec_path = Path('lib/core/sync/sync_codec.dart')
+          text = codec_path.read_text(encoding='utf-8')
+          class_start = text.index('class OrganizationsSync extends SyncCollection<OrganizationModel>')
+          decode_start = text.index('  @override\n  OrganizationModel? decode(', class_start)
+          local_start = text.index('  @override\n  Map<String, OrganizationModel> local()', decode_start)
+          replacement = r'''  @override
+          OrganizationModel? decode(Map<String, dynamic> fields) {
+            bool legacyTrue(Object? raw) {
+              if (raw == true || raw == 1) return true;
+              if (raw is String) {
+                final value = raw.trim().toLowerCase();
+                return value == '1' || value == 'true';
+              }
+              return false;
+            }
+
+            final id = _strOrNull(fields['id'])?.trim();
+            final name = _strOrNull(fields['name'])?.trim();
+            if (id == null || id.isEmpty || name == null || name.isEmpty) {
+              return null;
+            }
+
+            final existing = box()?.get(id);
+            final canonicalRoot = id == OrganizationModel.rootId;
+            final declaredRoot = legacyTrue(fields['isRoot']);
+
+            // org_wesi_inc is the immutable root identity. Older server rows
+            // were written before isRoot became a strict boolean and may have
+            // no flag, 0/1/string flags or even a stale parent. Recover those
+            // rows from the stable id instead of making the whole remote tree
+            // impossible to apply. No other id is allowed to promote itself
+            // to root through a legacy flag.
+            if (!canonicalRoot && declaredRoot) return null;
+            final isRoot = canonicalRoot;
+
+            var parentId = _strOrNull(fields['parentId'])?.trim();
+            if (canonicalRoot) {
+              parentId = null;
+            } else if (parentId == null || parentId.isEmpty) {
+              return null;
+            }
+
+            // Old organization payloads used created/updated aliases and some
+            // rows omitted immutable metadata that already exists locally.
+            // Prefer server values, then legacy aliases, then the same local
+            // entity. Never use DateTime.now(): recovery must be deterministic
+            // and must not manufacture a newer LWW timestamp on every pull.
+            final createdAt = _date(fields['createdAt']) ??
+                _date(fields['created']) ??
+                existing?.createdAt;
+            if (createdAt == null) return null;
+            final updatedAt = _date(fields['updatedAt']) ??
+                _date(fields['updated']) ??
+                existing?.updatedAt ??
+                createdAt;
+
+            final status = switch (_strOrNull(fields['status'])) {
+              'active' => OrganizationStatus.active,
+              'archived' => OrganizationStatus.archived,
+              _ when fields.containsKey('archived') => legacyTrue(fields['archived'])
+                  ? OrganizationStatus.archived
+                  : OrganizationStatus.active,
+              _ => existing?.status ?? OrganizationStatus.active,
+            };
+
+            final rawCurrency = _str(
+              fields['baseCurrency'],
+              existing?.baseCurrency ?? 'RUB',
+            ).trim().toUpperCase();
+
+            return OrganizationModel(
+              id: id,
+              name: name,
+              parentId: parentId,
+              isRoot: isRoot,
+              baseCurrency: rawCurrency.isEmpty ? 'RUB' : rawCurrency,
+              status: status,
+              createdAt: createdAt,
+              updatedAt: updatedAt,
+              createdBy: _str(
+                fields['createdBy'],
+                existing?.createdBy ?? 'sync-legacy',
+              ),
+              code: fields.containsKey('code')
+                  ? _strOrNull(fields['code'])
+                  : existing?.code,
+              description: fields.containsKey('description')
+                  ? _strOrNull(fields['description'])
+                  : existing?.description,
+              colorValue: fields.containsKey('colorValue')
+                  ? (fields['colorValue'] == null
+                      ? null
+                      : _int(fields['colorValue']))
+                  : existing?.colorValue,
+              sortOrder: fields.containsKey('sortOrder')
+                  ? _int(fields['sortOrder'])
+                  : (existing?.sortOrder ?? 0),
+            );
+          }
+
+          '''
+          text = text[:decode_start] + replacement + text[local_start:]
+          codec_path.write_text(text, encoding='utf-8')
+
+          settings_path = Path('lib/features/settings/settings_screen.dart')
+          settings = settings_path.read_text(encoding='utf-8')
+          telegram_placeholder = """              _plannedTile(\n                icon: Icons.telegram,\n                title: WesiLocale.get('telegram_bot'),\n                subtitle: ru ? 'Нужен сервер' : 'Requires a server',\n              ),\n"""
+          if settings.count(telegram_placeholder) != 1:
+              raise SystemExit('Telegram placeholder shape changed; refusing blind patch')
+          settings = settings.replace(telegram_placeholder, '', 1)
+          settings_path.write_text(settings, encoding='utf-8')
+
+          pubspec_path = Path('pubspec.yaml')
+          pubspec = pubspec_path.read_text(encoding='utf-8')
+          if 'version: 0.22.29+104' not in pubspec:
+              raise SystemExit('Unexpected pubspec version; rebase required')
+          pubspec_path.write_text(
+              pubspec.replace('version: 0.22.29+104', 'version: 0.22.30+105', 1),
+              encoding='utf-8',
+          )
+
+          version_path = Path('lib/core/constants/app_version.dart')
+          version = version_path.read_text(encoding='utf-8')
+          version = version.replace("static const String number = '0.22.29';", "static const String number = '0.22.30';", 1)
+          version = version.replace('static const int build = 104;', 'static const int build = 105;', 1)
+          version_path.write_text(version, encoding='utf-8')
+          PY
+
+          mkdir -p test/core/sync
+          cat > test/core/sync/organization_sync_legacy_payload_test.dart <<'DART'
+          import 'package:flutter_test/flutter_test.dart';
+          import 'package:wesios/core/sync/sync_codec.dart';
+          import 'package:wesios/features/organizations/models/organization_model.dart';
+
+          void main() {
+            test('canonical root repairs legacy root metadata by stable id', () {
+              final root = OrganizationsSync().decode(<String, dynamic>{
+                'id': OrganizationModel.rootId,
+                'name': 'Wesi Inc',
+                // Old rows may have numeric/string flags or stale parent data.
+                'isRoot': 0,
+                'parentId': 'legacy-root',
+                'created': '2026-08-01T10:00:00Z',
+                'updated': '2026-08-02T10:00:00Z',
+                'archived': false,
+              });
+
+              expect(root, isNotNull);
+              expect(root!.id, OrganizationModel.rootId);
+              expect(root.isRoot, isTrue);
+              expect(root.parentId, isNull);
+              expect(root.createdAt, DateTime.utc(2026, 8, 1, 10));
+              expect(root.updatedAt, DateTime.utc(2026, 8, 2, 10));
+              expect(root.archived, isFalse);
+            });
+
+            test('legacy child remains a child and accepts timestamp aliases', () {
+              final child = OrganizationsSync().decode(<String, dynamic>{
+                'id': OrganizationModel.wesiBeatsId,
+                'name': 'Wesi Beats',
+                'parentId': OrganizationModel.rootId,
+                'isRoot': '0',
+                'created': '2026-08-01T10:00:00Z',
+                'archived': 0,
+              });
+
+              expect(child, isNotNull);
+              expect(child!.isRoot, isFalse);
+              expect(child.parentId, OrganizationModel.rootId);
+              expect(child.baseCurrency, 'RUB');
+              expect(child.status, OrganizationStatus.active);
+            });
+
+            test('non-canonical organization cannot claim root via legacy flag', () {
+              final invalid = OrganizationsSync().decode(<String, dynamic>{
+                'id': 'org_untrusted_root',
+                'name': 'Wrong root',
+                'isRoot': '1',
+                'createdAt': '2026-08-01T10:00:00Z',
+              });
+
+              expect(invalid, isNull);
+            });
+          }
+          DART
+
+      - name: Format changed Dart files
+        run: dart format lib/core/sync/sync_codec.dart lib/features/settings/settings_screen.dart lib/core/constants/app_version.dart test/core/sync/organization_sync_legacy_payload_test.dart
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Regression tests
+        run: |
+          flutter test test/core/sync/organization_sync_legacy_payload_test.dart
+          flutter test test/organization_sync_integrity_test.dart
+
+      - name: Targeted analyze
+        run: flutter analyze lib/core/sync/sync_codec.dart lib/features/settings/settings_screen.dart lib/core/constants/app_version.dart test/core/sync/organization_sync_legacy_payload_test.dart
+
+      - name: Verify Telegram placeholder is gone and version is aligned
+        shell: bash
+        run: |
+          set -euo pipefail
+          ! grep -F "title: WesiLocale.get('telegram_bot')" lib/features/settings/settings_screen.dart
+          grep -F 'version: 0.22.30+105' pubspec.yaml
+          grep -F "static const String number = '0.22.30';" lib/core/constants/app_version.dart
+          grep -F 'static const int build = 105;' lib/core/constants/app_version.dart
+
+      - name: Commit repaired application files
+        shell: bash
+        env:
+          BRANCH: agent/fix-org-sync-telegram-placeholder
+          SELF: .github/workflows/repair-org-sync-telegram-placeholder.yml
+        run: |
+          set -euo pipefail
+          git config user.name 'WesiOS CI'
+          git config user.email 'actions@users.noreply.github.com'
+          git rm -- "$SELF"
+          git add lib/core/sync/sync_codec.dart \
+                  lib/features/settings/settings_screen.dart \
+                  lib/core/constants/app_version.dart \
+                  pubspec.yaml \
+                  test/core/sync/organization_sync_legacy_payload_test.dart
+          git commit -m 'fix: recover legacy organization sync and remove Telegram placeholder'
+          git push origin "HEAD:$BRANCH"
