@@ -2,14 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../core/feedback/wesi_feedback.dart';
 import '../../core/feedback/wesi_haptics.dart';
-import '../../core/notifications/wesi_notifications.dart';
 import '../../core/constants/app_version.dart';
 import '../../core/services/app_icon_service.dart';
 import '../../core/services/backup_service.dart';
 import '../../core/services/currency_service.dart';
 import '../tasks/services/task_service.dart';
 import '../treasury/services/treasury_service.dart';
-import '../profile/telegram_link_screen.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/localization/wesi_locale.dart';
 import '../../core/widgets/module_header.dart';
@@ -18,6 +16,7 @@ import '../../widgets/glass_card.dart';
 import '../../core/sync/sync_endpoint.dart';
 import '../../core/sync/sync_engine.dart';
 import '../chats/services/topic_privacy.dart';
+import 'notification_settings_screen.dart';
 import 'sync_screen.dart';
 import 'widgets/forecast_engines_section.dart';
 import 'widgets/github_auth_section.dart';
@@ -170,106 +169,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 icon: Icons.notifications_active_outlined,
                 title: ru ? 'Уведомления в приложении' : 'In-app notifications',
                 subtitle: ru
-                    ? 'Просрочки, сроки, списания — колокольчик на главной'
-                    : 'Overdue, deadlines, charges — the bell on Home',
-                onTap: () => Navigator.pushNamed(context, '/home'),
-              ),
-              // Системные уведомления. Раньше здесь стояла заглушка
-              // «нужен сервер» — она была неправдой: сообщать о просрочке,
-              // списании и пришедшем сообщении можно и с самого устройства,
-              // сервер нужен только для доставки в закрытое приложение.
-              ValueListenableBuilder<int>(
-                valueListenable: WesiNotifications.revision,
-                builder: (context, _, __) {
-                  if (!WesiNotifications.isSupported) {
-                    return _plannedTile(
-                      icon: Icons.notifications,
-                      title: ru ? 'Системные уведомления' : 'System notifications',
-                      subtitle: ru
-                          ? 'Эта платформа их не показывает'
-                          : 'Not available on this platform',
-                    );
-                  }
-                  final on = WesiNotifications.enabled;
-                  return Column(
-                    children: [
-                      _tile(
-                        icon: Icons.notifications,
-                        title: ru ? 'Системные уведомления' : 'System notifications',
-                        subtitle: ru
-                            ? 'Приходят, даже когда окно свёрнуто'
-                            : 'Arrive even when the window is minimised',
-                        trailing: Switch(
-                          value: on,
-                          activeColor: AppTheme.accent,
-                          onChanged: (v) async {
-                            await WesiNotifications.setEnabled(v);
-                            if (v) await WesiNotifications.init();
-                          },
-                        ),
-                      ),
-                      // Виды показываются только при включённом главном:
-                      // четыре переключателя под выключенным — это четыре
-                      // настройки, которые ничего не делают.
-                      if (on)
-                        for (final kind in NotifyKind.values)
-                          _tile(
-                            icon: switch (kind) {
-                              NotifyKind.alert => Icons.warning_amber_outlined,
-                              NotifyKind.message => Icons.chat_bubble_outline,
-                              NotifyKind.sync => Icons.sync_problem,
-                              NotifyKind.update => Icons.system_update_alt,
-                            },
-                            title: switch (kind) {
-                              NotifyKind.alert =>
-                                ru ? 'Сроки и деньги' : 'Deadlines and money',
-                              NotifyKind.message =>
-                                ru ? 'Сообщения' : 'Messages',
-                              NotifyKind.sync =>
-                                ru ? 'Сбои обмена' : 'Sync failures',
-                              NotifyKind.update =>
-                                ru ? 'Обновления' : 'Updates',
-                            },
-                            subtitle: switch (kind) {
-                              NotifyKind.alert => ru
-                                  ? 'Просрочки, ближайшие списания, минус на счету'
-                                  : 'Overdue, upcoming charges, negative balance',
-                              NotifyKind.message => ru
-                                  ? 'Пришедшее в переписке'
-                                  : 'Incoming messages',
-                              NotifyKind.sync => ru
-                                  ? 'Когда данные не уехали на сервер'
-                                  : 'When data did not reach the server',
-                              NotifyKind.update =>
-                                ru ? 'Вышла новая версия' : 'A new version is out',
-                            },
-                            trailing: Switch(
-                              value: WesiNotifications.kindEnabled(kind),
-                              activeColor: AppTheme.accent,
-                              onChanged: (v) =>
-                                  WesiNotifications.setKindEnabled(kind, v),
-                            ),
-                          ),
-                    ],
-                  );
-                },
-              ),
-              _tile(
-                icon: Icons.send_rounded,
-                title: 'Telegram',
-                subtitle: ru
-                    ? 'Привязка бота и настройки уведомлений'
-                    : 'Bot linking and notification settings',
+                    ? 'Системные, Telegram, Email и события внутри WesiOS'
+                    : 'System, Telegram, Email and in-app events',
                 onTap: () => Navigator.of(context).push(
                   MaterialPageRoute(
-                    builder: (_) => const TelegramLinkScreen(),
+                    builder: (_) => const NotificationSettingsScreen(),
                   ),
                 ),
-              ),
-              _plannedTile(
-                icon: Icons.email,
-                title: WesiLocale.get('email_notifications'),
-                subtitle: ru ? 'Нужен сервер' : 'Requires a server',
               ),
               const SizedBox(height: 24),
               _section(WesiLocale.get('privacy')),
