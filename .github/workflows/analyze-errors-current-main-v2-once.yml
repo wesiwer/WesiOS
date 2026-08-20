@@ -1,49 +1,73 @@
 name: Analyze Errors Current Main V2 Once
 
 on:
-  push:
+  pull_request:
     branches: [main]
     paths:
-      - '.github/workflows/analyze-errors-current-main-v2-once.yml'
+      - '.github/ops/run-sync-rootfix-20260820'
 
 permissions:
-  contents: write
+  contents: read
+  pull-requests: write
+  issues: write
 
 jobs:
   analyze:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          ref: main
+          fetch-depth: 1
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
           cache: true
-      - name: Analyze actual errors only
+      - name: Capture exact analyzer output
+        id: analyze
         shell: bash
         run: |
-          # Revalidate after pinning dartssh2 2.14.0 with current SDK/NDK.
           set +e
           flutter pub get >/tmp/pub.log 2>&1
           PUB=$?
-          flutter analyze --no-fatal-infos --no-fatal-warnings >/tmp/analyze.log 2>&1
+          flutter analyze >/tmp/analyze.log 2>&1
           ANALYZE=$?
           set -e
+
           {
-            echo "SOURCE=$(git rev-parse HEAD)"
-            echo "PUB_GET=$PUB"
-            echo "ANALYZE=$ANALYZE"
-            echo '=== ERRORS ==='
-            grep -n 'error •' /tmp/analyze.log || true
-            echo '=== SUMMARY ==='
-            tail -n 8 /tmp/analyze.log
-          } > .github/analyze-errors-current-main-v2.txt
-          git config user.name 'WesiOS Analyzer V2'
-          git config user.email 'actions@users.noreply.github.com'
-          git switch -C diag/analyze-errors-current-main-v2
-          git add .github/analyze-errors-current-main-v2.txt
-          git commit -m 'ops: capture analyzer errors current main v2'
-          git push --force origin HEAD:diag/analyze-errors-current-main-v2
-          test "$PUB" -eq 0 -a "$ANALYZE" -eq 0
+            echo '### WesiOS current main — flutter analyze'
+            echo
+            echo "- source: \`$(git rev-parse HEAD)\`"
+            echo "- pub get: \`$PUB\`"
+            echo "- analyze: \`$ANALYZE\`"
+            echo
+            echo '```text'
+            if [ "$PUB" -ne 0 ]; then
+              tail -n 120 /tmp/pub.log
+            else
+              grep -E '(^|[[:space:]])(error|warning|info) • ' /tmp/analyze.log | tail -n 120 || true
+              echo
+              echo '--- summary ---'
+              tail -n 20 /tmp/analyze.log
+            fi
+            echo '```'
+          } > /tmp/comment.md
+
+          echo "pub=$PUB" >> "$GITHUB_OUTPUT"
+          echo "analyze=$ANALYZE" >> "$GITHUB_OUTPUT"
+
+      - name: Comment exact result on PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          gh pr comment "${{ github.event.pull_request.number }}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --body-file /tmp/comment.md
+
+      - name: Preserve analyzer exit status
+        shell: bash
+        run: |
+          test "${{ steps.analyze.outputs.pub }}" -eq 0
+          test "${{ steps.analyze.outputs.analyze }}" -eq 0
