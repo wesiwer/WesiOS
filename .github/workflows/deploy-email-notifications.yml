@@ -165,6 +165,7 @@ jobs:
           DEPLOY_RESULT: ${{ needs.deploy.result }}
           SHA: ${{ github.sha }}
           REPOSITORY: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
         run: |
           set -euo pipefail
           case "$DEPLOY_RESULT" in
@@ -180,7 +181,7 @@ jobs:
           payload=$(jq -nc \
             --arg state "$STATE" \
             --arg description "$DESCRIPTION" \
-            --arg target "https://github.com/$REPOSITORY/actions/workflows/deploy-email-notifications.yml" \
+            --arg target "https://github.com/$REPOSITORY/actions/runs/$RUN_ID" \
             '{state:$state,context:"WesiOS Email Notifications Deploy",description:$description,target_url:$target}')
           curl --fail-with-body -sS \
             -X POST \
