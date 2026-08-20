@@ -297,7 +297,6 @@ class WesiAiRichMessage extends StatelessWidget {
       if (text.isNotEmpty || inline.isNotEmpty)
         children.add(const SizedBox(height: 8));
     }
-
     if (inline.isEmpty) {
       children.addAll(_renderBlocks(context, text));
     } else {
@@ -1095,18 +1094,28 @@ class WesiAiActivityRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final inlineReadDetail = (event.kind == WesiAiActivityKind.tool ||
-            event.kind == WesiAiActivityKind.agent) &&
-        event.detail.isNotEmpty &&
-        !event.hasDiff &&
-        event.files.isEmpty;
-    final hasDetails = event.detail.isNotEmpty ||
+    final detail = event.detail.trim();
+    final isPublicThought = event.kind == WesiAiActivityKind.reasoning ||
+        event.kind == WesiAiActivityKind.verification;
+    final isWorkerStep = event.kind == WesiAiActivityKind.tool ||
+        event.kind == WesiAiActivityKind.agent;
+
+    // Первый уровень раскрытия — сам живой публичный ход работы. Раньше
+    // reasoning имел detail, но не показывал его здесь: нажатие просто
+    // переносило тот же текст в отдельную шторку. Теперь публичная мысль
+    // читается прямо в «Ходе работы», как и ожидает пользователь.
+    final inlineReadDetail = detail.isNotEmpty &&
+        (isPublicThought ||
+            (isWorkerStep && !event.hasDiff && event.files.isEmpty));
+
+    // Второй уровень открывается только когда действительно есть что-то
+    // глубже первой строки: реальные I/O инструмента, файлы/diff или полный
+    // развёрнутый результат агента. Для обычной публичной мысли отдельная
+    // шторка больше не дублирует тот же текст.
+    final hasDeepDetails = event.hasIo ||
         event.files.isNotEmpty ||
-        event.hasIo ||
-        event.sourceName.isNotEmpty ||
-        event.status.isNotEmpty ||
-        event.duration != null ||
-        event.hasDiff;
+        event.hasDiff ||
+        (isWorkerStep && detail.length > 320);
     final icon = switch (event.kind) {
       WesiAiActivityKind.tool => Icons.build_outlined,
       WesiAiActivityKind.agent => Icons.account_tree_outlined,
@@ -1123,8 +1132,9 @@ class WesiAiActivityRow extends StatelessWidget {
 
     return InkWell(
       borderRadius: BorderRadius.circular(10),
-      onTap:
-          hasDetails ? () => WesiAiStepDetailSheet.open(context, event) : null,
+      onTap: hasDeepDetails
+          ? () => WesiAiStepDetailSheet.open(context, event)
+          : null,
       child: Padding(
         padding: EdgeInsets.symmetric(
           horizontal: compact ? 0 : 8,
@@ -1164,7 +1174,7 @@ class WesiAiActivityRow extends StatelessWidget {
                     ),
                   ),
                 ],
-                if (hasDetails) ...[
+                if (hasDeepDetails) ...[
                   const SizedBox(width: 3),
                   Icon(
                     Icons.chevron_right_rounded,
@@ -1178,11 +1188,14 @@ class WesiAiActivityRow extends StatelessWidget {
               Padding(
                 padding: const EdgeInsets.only(left: 24, top: 5),
                 child: Text(
-                  event.detail,
-                  maxLines: 3,
-                  overflow: TextOverflow.ellipsis,
+                  detail,
+                  maxLines: isPublicThought ? null : (compact ? 3 : 6),
+                  overflow: isPublicThought
+                      ? TextOverflow.visible
+                      : TextOverflow.ellipsis,
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
+                    height: 1.42,
                   ),
                 ),
               ),
