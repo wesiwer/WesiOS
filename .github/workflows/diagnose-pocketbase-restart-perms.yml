@@ -58,4 +58,15 @@ jobs:
           sudo -n -l 2>&1 || true
           echo '=== service unit ==='
           systemctl cat pocketbase --no-pager 2>&1 | sed -n '1,160p' || true
+          echo '=== allowed helper metadata ==='
+          ls -la /usr/local/sbin/wesi-promote-release 2>&1 || true
+          stat /usr/local/sbin/wesi-promote-release 2>&1 || true
+          file /usr/local/sbin/wesi-promote-release 2>&1 || true
+          sha256sum /usr/local/sbin/wesi-promote-release 2>&1 || true
+          echo '=== allowed helper source ==='
+          if [ -r /usr/local/sbin/wesi-promote-release ]; then
+            sed -n '1,260p' /usr/local/sbin/wesi-promote-release
+          else
+            echo 'helper is not readable by deploy user'
+          fi
           SH
