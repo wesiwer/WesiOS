@@ -1,5 +1,5 @@
 name: Deploy Sync Root Fix Once
-# production retrigger: verified PocketBase restart for stale sync callbacks
+# Fresh versioned routes bypass stale PocketBase callbacks without root restart.
 
 on:
   push:
@@ -24,16 +24,17 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: main
-      - name: Validate hooks
+
+      - name: Validate fresh sync v3 hook
         run: |
           set -euo pipefail
-          node --check server/pb_hooks/wesi_sync_context.pb.js
-          node --check server/pb_hooks/wesi_sync_read.pb.js
-          node --check server/pb_hooks/wesi_sync_write.pb.js
-          node --check server/pb_hooks/wesi_sync_extra.pb.js
           node --check server/pb_hooks/wesi_sync_extra_runtime.js
-          ! grep -n '"id", 0, 0' server/pb_hooks/wesi_sync_read.pb.js
-          grep -q '"id", 10000, 0' server/pb_hooks/wesi_sync_read.pb.js
+          node --check server/pb_hooks/wesi_sync_extra_v3.pb.js
+          grep -q '/api/wesi/sync-v3/revision' server/pb_hooks/wesi_sync_extra_v3.pb.js
+          grep -q '/api/wesi/sync-v3/profile' server/pb_hooks/wesi_sync_extra_v3.pb.js
+          grep -q '/api/wesi/sync-v3/audio_extras' server/pb_hooks/wesi_sync_extra_v3.pb.js
+          ! grep -q 'wesiSyncExtraRead' server/pb_hooks/wesi_sync_extra_v3.pb.js
+
       - name: Prepare SSH
         env:
           KEY: ${{ secrets.WESI_SERVER_SSH_KEY }}
@@ -43,9 +44,14 @@ jobs:
           set -euo pipefail
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
           printf '%s\n' "$KEY" > ~/.ssh/id_deploy && chmod 600 ~/.ssh/id_deploy
-          if [ -n "${KNOWN:-}" ]; then printf '%s\n' "$KNOWN" > ~/.ssh/known_hosts; else ssh-keyscan -H "$HOST" > ~/.ssh/known_hosts 2>/dev/null; fi
+          if [ -n "${KNOWN:-}" ]; then
+            printf '%s\n' "$KNOWN" > ~/.ssh/known_hosts
+          else
+            ssh-keyscan -H "$HOST" > ~/.ssh/known_hosts 2>/dev/null
+          fi
           chmod 600 ~/.ssh/known_hosts
-      - name: Install current sync hooks and restart PocketBase
+
+      - name: Install fresh sync v3 routes by hot reload
         env:
           HOST: ${{ secrets.WESI_SERVER_HOST }}
           USER: ${{ secrets.WESI_SERVER_USER }}
@@ -53,71 +59,71 @@ jobs:
         run: |
           set -euo pipefail
           HOOK_DIR="${CONFIGURED_HOOK_DIR:-/opt/pocketbase/pb_hooks}"
-          REMOTE="/tmp/wesios-sync-rootfix-$GITHUB_RUN_ID"
+          REMOTE="/tmp/wesios-sync-v3-$GITHUB_RUN_ID"
           SSH="ssh -i $HOME/.ssh/id_deploy -o BatchMode=yes -o UserKnownHostsFile=$HOME/.ssh/known_hosts"
+
           $SSH "$USER@$HOST" "rm -rf '$REMOTE' && mkdir -p '$REMOTE'"
           scp -i "$HOME/.ssh/id_deploy" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
-            server/pb_hooks/wesi_sync_context.pb.js \
-            server/pb_hooks/wesi_sync_read.pb.js \
-            server/pb_hooks/wesi_sync_write.pb.js \
-            server/pb_hooks/wesi_sync_extra.pb.js \
             server/pb_hooks/wesi_sync_extra_runtime.js \
+            server/pb_hooks/wesi_sync_extra_v3.pb.js \
             "$USER@$HOST:$REMOTE/"
+
           $SSH "$USER@$HOST" "REMOTE='$REMOTE' HOOK_DIR='$HOOK_DIR' bash -s" <<'SH'
           set -euo pipefail
-          files=(wesi_sync_extra_runtime.js wesi_sync_context.pb.js wesi_sync_read.pb.js wesi_sync_write.pb.js wesi_sync_extra.pb.js)
-
-          restart_pocketbase() {
-            if systemctl restart pocketbase 2>/dev/null; then return; fi
-            if command -v sudo >/dev/null 2>&1 && sudo -n systemctl restart pocketbase; then return; fi
-            echo "Не удалось перезапустить pocketbase" >&2
-            exit 5
-          }
-
+          files=(wesi_sync_extra_runtime.js wesi_sync_extra_v3.pb.js)
           for f in "${files[@]}"; do
-            src="$REMOTE/$f"; dst="$HOOK_DIR/$f"; tmp="$HOOK_DIR/.${f}.rootfix.$$"
+            src="$REMOTE/$f"
+            dst="$HOOK_DIR/$f"
+            tmp="$HOOK_DIR/.${f}.syncv3.$$"
             if [ -w "$HOOK_DIR" ]; then
-              cp "$src" "$tmp"; chmod 0644 "$tmp"; mv -f "$tmp" "$dst"
+              cp "$src" "$tmp"
+              chmod 0644 "$tmp"
+              mv -f "$tmp" "$dst"
             elif [ -e "$dst" ] && [ -w "$dst" ]; then
-              cat "$src" > "$dst"; cmp -s "$src" "$dst"
+              cat "$src" > "$dst"
+              cmp -s "$src" "$dst"
             else
-              sudo -n cp "$src" "$tmp"; sudo -n chmod 0644 "$tmp"; sudo -n mv -f "$tmp" "$dst"
+              sudo -n cp "$src" "$tmp"
+              sudo -n chmod 0644 "$tmp"
+              sudo -n mv -f "$tmp" "$dst"
             fi
           done
           for f in "${files[@]}"; do
             if cmp -s "$REMOTE/$f" "$HOOK_DIR/$f" 2>/dev/null || sudo -n cmp -s "$REMOTE/$f" "$HOOK_DIR/$f" 2>/dev/null; then
               echo "installed:$f"
             else
-              echo "mismatch:$f" >&2; exit 4
+              echo "mismatch:$f" >&2
+              exit 4
             fi
           done
-
-          echo 'Sync bundle installed; forcing PocketBase process restart to clear stale JS callbacks'
-          restart_pocketbase
-          sleep 3
           rm -rf "$REMOTE"
           SH
-      - name: Verify protected routes
+
+      - name: Verify fresh protected v3 routes are live
         run: |
           set -euo pipefail
-          sleep 3
+          # PocketBase watches pb_hooks and loads a new route file without a
+          # privileged process restart. Give the watcher a moment to settle.
+          sleep 5
           for path in \
-            /api/wesi/sync/revision \
-            /api/wesi/sync/revision-v2 \
-            /api/wesi/sync/transactions \
-            /api/wesi/sync/accounts \
-            /api/wesi/sync/profile \
-            /api/wesi/sync/organizations; do
+            /api/wesi/sync-v3/revision \
+            /api/wesi/sync-v3/profile \
+            /api/wesi/sync-v3/sandbox_transactions \
+            /api/wesi/sync-v3/audio_extras; do
             code=$(curl -sS -o /tmp/r -w '%{http_code}' --max-time 20 "https://api.wesi-inc.ru$path" || true)
-            case "$code" in 401|403) echo "$path protected:$code";; *) echo "unexpected $path:$code"; cat /tmp/r; exit 1;; esac
+            case "$code" in
+              401|403) echo "$path live-and-protected:$code" ;;
+              *) echo "unexpected $path:$code"; cat /tmp/r; exit 1 ;;
+            esac
           done
-      - name: Publish production rootfix status
+
+      - name: Publish production v3 status
         if: ${{ success() }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh api -X POST "repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" \
             -f state=success \
-            -f context='Wesi Sync Rootfix' \
-            -f description='Hooks installed, PocketBase restarted, sync routes loaded' \
+            -f context='Wesi Sync V3' \
+            -f description='Fresh sync v3 routes hot-loaded and verified on production' \
             -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions"
