@@ -1,5 +1,5 @@
 name: Capture latest sync deploy once
-# trigger: recapture after 0.22.30 organization compatibility merge
+# trigger: capture OTP sync-v3 session-context hotfix deployment
 
 on:
   push:
