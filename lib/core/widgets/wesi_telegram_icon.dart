@@ -6,7 +6,8 @@ import 'package:flutter/material.dart';
 ///
 /// Material's Telegram/send glyphs can render horizontally depending on the
 /// platform/font version. Telegram's mark points to the upper-right, so keep
-/// the orientation explicit instead of relying on the platform glyph.
+/// the orientation explicit instead of relying on the platform glyph. The
+/// fixed -45° rotation is intentional and must stay platform-independent.
 class WesiTelegramIcon extends StatelessWidget {
   const WesiTelegramIcon({super.key, this.size = 24, this.color});
 
