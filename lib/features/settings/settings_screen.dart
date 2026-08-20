@@ -258,11 +258,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 title: WesiLocale.get('email_notifications'),
                 subtitle: ru ? 'Нужен сервер' : 'Requires a server',
               ),
-              _plannedTile(
-                icon: Icons.telegram,
-                title: WesiLocale.get('telegram_bot'),
-                subtitle: ru ? 'Нужен сервер' : 'Requires a server',
-              ),
               const SizedBox(height: 24),
               _section(WesiLocale.get('privacy')),
               ValueListenableBuilder<bool>(
