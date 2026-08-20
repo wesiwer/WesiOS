@@ -20,6 +20,13 @@ test('public deliberation parser accepts only bounded public notes', () => {
   assert.match(value.notes[1].text, /меняю направление/);
 });
 
+test('public deliberation extracts JSON from harmless provider wrapper text', () => {
+  const value = parsePublicDeliberation(`Короткая служебная преамбула.\n\n{\n  "complexity": "normal",\n  "notes": [{"kind":"plan","title":"Проверю источник","text":"Сопоставлю запрос с фактическим результатом инструмента."}]\n}\nГотово.`);
+  assert.equal(value?.complexity, 'normal');
+  assert.equal(value?.notes?.length, 1);
+  assert.equal(value?.notes?.[0]?.title, 'Проверю источник');
+});
+
 test('public deliberation rejects hidden reasoning payload fields', () => {
   assert.equal(parsePublicDeliberation(JSON.stringify({
     complexity: 'deep',
@@ -28,18 +35,29 @@ test('public deliberation rejects hidden reasoning payload fields', () => {
   })), null);
 });
 
-test('reasoning budget grows with task complexity and is enforced', () => {
+test('complexity still controls the initial reasoning burst', () => {
   assert.ok(publicReasoningBudget('deep') > publicReasoningBudget('simple'));
+});
+
+test('public reasoning continues beyond the old complexity budget', () => {
   const state = createDeliberationState({
     complexity: 'simple',
-    notes: [{kind: 'observation', title: 'Начало', text: 'Короткая задача.'}],
+    notes: [{kind: 'observation', title: 'Начало', text: 'Короткая задача стала длинным проходом.'}],
   });
-  const added = appendDeliberation(state, {
-    notes: [
-      {kind: 'decision', title: 'Итог', text: 'Достаточно прямого ответа.'},
-      {kind: 'decision', title: 'Лишнее', text: 'Не должно войти.'},
-    ],
-  });
-  assert.equal(added.length, 1);
-  assert.equal(state.remaining, 0);
+  const oldBudget = publicReasoningBudget('simple');
+  let accepted = 0;
+  for (let index = 0; index < 40; index += 1) {
+    accepted += appendDeliberation(state, {
+      notes: [{kind: 'check', title: `Проверка ${index + 1}`, text: `Получен новый проверенный результат шага ${index + 1}.`}],
+    }).length;
+  }
+  assert.ok(accepted > oldBudget);
+  assert.equal(accepted, 40);
+  assert.ok(state.remaining > 1_000_000);
+});
+
+test('duplicate public notes are not emitted twice', () => {
+  const note = {kind: 'check', title: 'Один факт', text: 'Этот результат уже показывался.'};
+  const state = createDeliberationState({complexity: 'normal', notes: [note]});
+  assert.equal(appendDeliberation(state, {notes: [note]}).length, 0);
 });
