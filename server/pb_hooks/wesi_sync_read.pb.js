@@ -74,6 +74,45 @@ routerAdd("GET", "/api/wesi/sync/{collection}", (e) => {
     } catch (_) {}
     return {};
   };
+
+  // Organization rows have lived through several client schemas. The server
+  // stores the original payload verbatim, so an old root row can otherwise be
+  // returned forever with a missing/non-boolean isRoot, legacy timestamp keys
+  // or a stale parentId. Current clients intentionally validate the tree
+  // strictly and reject that row; every child is then deferred as well. Repair
+  // only transport representation here. The stored business row is untouched.
+  const normalizeOrganizationPayload = (payload, record) => {
+    const p = Object.assign({}, payload && typeof payload === "object" ? payload : {});
+    const id = String(p.id || record.getString("rid") || "");
+    const stamp = String(record.getString("stamp") || new Date(0).toISOString());
+    p.id = id;
+
+    if (!p.createdAt) p.createdAt = String(p.created || p.updatedAt || p.updated || stamp);
+    if (!p.updatedAt) p.updatedAt = String(p.updated || p.createdAt || stamp);
+    if (!p.baseCurrency) p.baseCurrency = "RUB";
+    if (!p.createdBy) p.createdBy = "sync-server";
+
+    if (!p.status) {
+      const rawArchived = p.archived;
+      const archived = rawArchived === true || rawArchived === 1 ||
+        String(rawArchived || "").trim().toLowerCase() === "true" ||
+        String(rawArchived || "").trim() === "1";
+      p.status = archived ? "archived" : "active";
+    }
+
+    if (id === "org_wesi_inc") {
+      // The root identity is immutable across WesiOS versions. Canonicalise by
+      // id instead of trusting legacy flags, and remove stale legacy parents.
+      p.isRoot = true;
+      p.parentId = null;
+    } else {
+      // No other organization may promote itself to a second root through an
+      // old numeric/string flag.
+      p.isRoot = false;
+    }
+    return p;
+  };
+
   const orgIdOf = (p) => String(p.organizationId || p.orgId || "org_wesi_inc");
   const grantApplies = (orgId, permission) => {
     if (ctx.isOwner) return true;
@@ -177,6 +216,9 @@ routerAdd("GET", "/api/wesi/sync/{collection}", (e) => {
   const items = [];
   for (const row of records) {
     let p = payloadOf(row);
+    if (collection === "organizations") {
+      p = normalizeOrganizationPayload(p, row);
+    }
     let allowed = true;
 
     if (collection === "organizations" && !ctx.isOwner) {
