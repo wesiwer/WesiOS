@@ -1,0 +1,107 @@
+name: Deploy OTP Sync-v3 Auth Hotfix Once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/dispatch-auth-sync-hotfix-deploy-once.yml'
+
+permissions:
+  actions: write
+  contents: read
+  statuses: write
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Resolve current main
+        id: main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha')
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "main=$sha"
+
+      - name: Dispatch production sync deployment
+        id: dispatch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          since=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          echo "since=$since" >> "$GITHUB_OUTPUT"
+          gh workflow run deploy-sync-hooks.yml --repo "$GITHUB_REPOSITORY" --ref main
+
+      - name: Find dispatched deployment
+        id: run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MAIN_SHA: ${{ steps.main.outputs.sha }}
+          SINCE: ${{ steps.dispatch.outputs.since }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          run_id=''
+          for i in $(seq 1 60); do
+            payload=$(gh run list \
+              --repo "$GITHUB_REPOSITORY" \
+              --workflow deploy-sync-hooks.yml \
+              --event workflow_dispatch \
+              --branch main \
+              --limit 20 \
+              --json databaseId,headSha,createdAt)
+            run_id=$(printf '%s' "$payload" | jq -r \
+              --arg sha "$MAIN_SHA" \
+              --arg since "$SINCE" \
+              '[.[] | select(.headSha == $sha and .createdAt >= $since)] | sort_by(.createdAt) | reverse | .[0].databaseId // empty')
+            if [ -n "$run_id" ]; then break; fi
+            sleep 3
+          done
+          [ -n "$run_id" ] || { echo 'Sync deploy run not found' >&2; exit 1; }
+          echo "id=$run_id" >> "$GITHUB_OUTPUT"
+          echo "sync deploy run id=$run_id"
+
+      - name: Wait for production deployment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ steps.run.outputs.id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh run watch "$RUN_ID" --repo "$GITHUB_REPOSITORY" --exit-status --interval 10
+
+      - name: Publish success status
+        if: ${{ success() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MAIN_SHA: ${{ steps.main.outputs.sha }}
+          RUN_ID: ${{ steps.run.outputs.id }}
+        shell: bash
+        run: |
+          gh api -X POST "repos/$GITHUB_REPOSITORY/statuses/$MAIN_SHA" \
+            -f state=success \
+            -f context='WesiOS Auth Sync Hotfix Deploy' \
+            -f description='OTP sync-v3 session-context hotfix deployed to production' \
+            -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$RUN_ID"
+
+      - name: Publish failure status
+        if: ${{ failure() && steps.main.outputs.sha != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MAIN_SHA: ${{ steps.main.outputs.sha }}
+          RUN_ID: ${{ steps.run.outputs.id }}
+        shell: bash
+        run: |
+          url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions"
+          if [ -n "${RUN_ID:-}" ]; then url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$RUN_ID"; fi
+          gh api -X POST "repos/$GITHUB_REPOSITORY/statuses/$MAIN_SHA" \
+            -f state=failure \
+            -f context='WesiOS Auth Sync Hotfix Deploy' \
+            -f description='OTP sync-v3 session-context hotfix deploy failed' \
+            -f target_url="$url"
