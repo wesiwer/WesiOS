@@ -52,20 +52,24 @@ class EmailNotificationService {
 
   /// Сначала фиксирует событие в защищённом outbox, затем пытается отправить.
   /// Ошибки канала не ломают локальное уведомление и не выходят наружу.
+  ///
+  /// Для постановки в очередь достаточно знать сервер и пользователя. Это
+  /// намеренно слабее требования к отправке: если WesiOS-сессия только что
+  /// истекла, событие всё равно сохраняется и уйдёт после переавторизации.
   static Future<void> enqueue(WesiNotification notification) =>
       _serialized(() async {
         if (!enabled) return;
-        final auth = _auth();
-        if (auth == null) return;
+        final scope = _scope();
+        if (scope == null) return;
 
         final pending = await _readOutbox();
         final exists = pending.any(
           (entry) =>
-              entry['scope'] == auth.scope && entry['id'] == notification.id,
+              entry['scope'] == scope && entry['id'] == notification.id,
         );
         if (!exists) {
           pending.add(<String, dynamic>{
-            'scope': auth.scope,
+            'scope': scope,
             'id': notification.id,
             'title': notification.title,
             'body': notification.body,
@@ -150,18 +154,37 @@ class EmailNotificationService {
     }
   }
 
+  /// Стабильный идентификатор очереди для конкретного серверного аккаунта.
+  /// Он доступен и у только что истёкшей сессии, поэтому события не теряются
+  /// в промежутке между expiry и повторным входом.
+  static String? _scope() {
+    final session = SyncEndpoint.session;
+    if (session == null) return null;
+
+    final userId = '${session['userId'] ?? ''}'.trim();
+    final baseUri = Uri.tryParse(SyncEndpoint.url);
+    if (userId.isEmpty ||
+        baseUri == null ||
+        !baseUri.hasScheme ||
+        baseUri.host.isEmpty) {
+      return null;
+    }
+    return '${baseUri.origin}|$userId';
+  }
+
+  /// Полные полномочия нужны только в момент фактической отправки.
   static _EmailAuth? _auth() {
     if (!SyncEndpoint.isConnected) return null;
     final session = SyncEndpoint.session;
     if (session == null) return null;
 
     final token = '${session['token'] ?? ''}'.trim();
-    final userId = '${session['userId'] ?? ''}'.trim();
     final sessionId = '${session['sessionId'] ?? ''}'.trim();
     final baseUri = Uri.tryParse(SyncEndpoint.url);
+    final scope = _scope();
     if (token.isEmpty ||
-        userId.isEmpty ||
         sessionId.isEmpty ||
+        scope == null ||
         baseUri == null ||
         !baseUri.hasScheme ||
         baseUri.host.isEmpty) {
@@ -171,7 +194,7 @@ class EmailNotificationService {
       baseUri: baseUri,
       token: token,
       sessionId: sessionId,
-      scope: '${baseUri.origin}|$userId',
+      scope: scope,
     );
   }
 
