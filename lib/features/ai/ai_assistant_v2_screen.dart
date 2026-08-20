@@ -20,6 +20,7 @@ import 'wesi_ai_voice_session.dart';
 import 'widgets/wesi_ai_camera_capture.dart';
 import 'widgets/wesi_ai_message_content.dart';
 import 'widgets/wesi_ai_run_summary_chip.dart';
+import 'widgets/wesi_ai_subagents_sheet.dart';
 import 'widgets/wesi_ai_message_actions.dart';
 import 'widgets/wesi_ai_rich_message.dart';
 
@@ -525,6 +526,22 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
             clipBehavior: Clip.antiAlias,
             child: Column(
               children: [
+                ListTile(
+                  dense: true,
+                  leading: const Icon(Icons.account_tree_outlined),
+                  title: const Text('Субагенты'),
+                  subtitle:
+                      const Text('Каталог, ручной вызов и Dynamic Agents'),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () => showModalBottomSheet<void>(
+                    context: context,
+                    isScrollControlled: true,
+                    showDragHandle: true,
+                    builder: (_) =>
+                        WesiAiSubagentsSheet(controller: controller),
+                  ),
+                ),
+                const Divider(height: 1, indent: 52),
                 ListTile(
                   dense: true,
                   leading: const Icon(Icons.hub_outlined),
