@@ -1,0 +1,513 @@
+name: Temporary Wesi AI subagent repair
+
+on:
+  push:
+    branches:
+      - agent/fix-wesi-ai-subagents-20260820
+
+permissions:
+  contents: write
+
+jobs:
+  patch-test-commit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/fix-wesi-ai-subagents-20260820
+          fetch-depth: 0
+
+      - name: Patch Wesi AI subagents
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          orchestrator = Path('server/wesi-ai-stream/dynamic_subagent_orchestrator.mjs')
+          text = orchestrator.read_text(encoding='utf-8')
+
+          old_parse = '''function parseObject(value) {
+            const text = stripOuterCodeFence(stripLeadingReasoningBlocks(value));
+            if (!text.startsWith('{') || !text.endsWith('}')) return null;
+            try {
+              const parsed = JSON.parse(text);
+              return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null;
+            } catch {
+              return null;
+            }
+          }
+          '''
+          new_parse = '''function parseJsonObjectText(text) {
+            try {
+              const parsed = JSON.parse(text);
+              return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null;
+            } catch {
+              return null;
+            }
+          }
+
+          function extractBalancedJsonObject(value) {
+            const text = String(value || '');
+            for (let start = text.indexOf('{'); start >= 0; start = text.indexOf('{', start + 1)) {
+              let depth = 0;
+              let quoted = false;
+              let escaped = false;
+              for (let index = start; index < text.length; index += 1) {
+                const char = text[index];
+                if (quoted) {
+                  if (escaped) {
+                    escaped = false;
+                  } else if (char === '\\\\') {
+                    escaped = true;
+                  } else if (char === '"') {
+                    quoted = false;
+                  }
+                  continue;
+                }
+                if (char === '"') {
+                  quoted = true;
+                  continue;
+                }
+                if (char === '{') depth += 1;
+                if (char !== '}') continue;
+                depth -= 1;
+                if (depth !== 0) continue;
+                const parsed = parseJsonObjectText(text.slice(start, index + 1));
+                if (parsed) return parsed;
+                break;
+              }
+            }
+            return null;
+          }
+
+          function parseObject(value) {
+            const text = stripOuterCodeFence(stripLeadingReasoningBlocks(value));
+            const exact = parseJsonObjectText(text);
+            return exact || extractBalancedJsonObject(text);
+          }
+          '''
+          if old_parse not in text:
+              raise SystemExit('parseObject block not found')
+          text = text.replace(old_parse, new_parse, 1)
+
+          marker = '''function reasoningEvent(label, detail) {
+            return {type: 'activity', kind: 'reasoning', phase: 'done', label, detail};
+          }
+          '''
+          helper = '''function reasoningEvent(label, detail) {
+            return {type: 'activity', kind: 'reasoning', phase: 'done', label, detail};
+          }
+
+          const BASELINE_SUBAGENT_ROLES = Object.freeze([
+            'Coding / Flutter Agent',
+            'QA Agent',
+            'Build Agent',
+            'Research Agent',
+            'Documents Agent',
+            'Media Agent',
+            'Review Agent',
+            'Security Reviewer',
+          ]);
+
+          function parseManualSubagentRequest(value) {
+            const text = String(value || '').trim();
+            const match = text.match(/^Позови\\s+(?:субагента|сабагента)\\s+[«"]([^»"]+)[»"]\\s+и\\s+поручи\\s+ему\\s*:\\s*([\\s\\S]+)$/iu);
+            if (!match) return null;
+            const role = match[1].trim().slice(0, 120);
+            const task = match[2].trim().slice(0, 5000);
+            return role && task ? {role, task} : null;
+          }
+          '''
+          if marker not in text:
+              raise SystemExit('reasoningEvent marker not found')
+          text = text.replace(marker, helper, 1)
+
+          planner_fragment = '''        'Каждому специалисту дай узкую роль и независимую задачу. requestedCapabilities могут содержать только разрешённые read-only tools. ' +
+                  'writablePaths относятся только к изолированному coordination workspace и НЕ дают доступ к host filesystem. ' +
+          '''
+          planner_replacement = '''        'Каждому специалисту дай узкую роль и независимую задачу. requestedCapabilities могут содержать только разрешённые read-only tools. ' +
+                  `Базовый каталог специалистов: ${BASELINE_SUBAGENT_ROLES.join('; ')}. Предпочитай подходящую роль из каталога, а если ни одна не подходит — создай узкую динамическую роль под задачу. ` +
+                  'writablePaths относятся только к изолированному coordination workspace и НЕ дают доступ к host filesystem. ' +
+          '''
+          if planner_fragment not in text:
+              raise SystemExit('planner prompt fragment not found')
+          text = text.replace(planner_fragment, planner_replacement, 1)
+
+          run_fragment = '''  let planRaw = '';
+            planRaw = await invokeModel({actor: 'lead', phase: 'subagent-plan', input: plannerInput(prepared, policy)});
+            const specs = sanitizePlan(planRaw, prepared, policy, workspace);
+          '''
+          run_replacement = '''  const manualRequest = parseManualSubagentRequest(prepared.message);
+            let planRaw = '';
+            if (manualRequest) {
+              planRaw = JSON.stringify({
+                subagents: [{
+                  role: manualRequest.role,
+                  task: manualRequest.task,
+                  requestedCapabilities: Array.isArray(policy.allowedToolNames) ? policy.allowedToolNames : [],
+                }],
+              });
+            } else {
+              planRaw = await invokeModel({actor: 'lead', phase: 'subagent-plan', input: plannerInput(prepared, policy)});
+            }
+            const specs = sanitizePlan(planRaw, prepared, policy, workspace);
+          '''
+          if run_fragment not in text:
+              raise SystemExit('run planner fragment not found')
+          text = text.replace(run_fragment, run_replacement, 1)
+          orchestrator.write_text(text, encoding='utf-8')
+
+          test_file = Path('server/wesi-ai-stream/dynamic_subagent_orchestrator.test.mjs')
+          tests = test_file.read_text(encoding='utf-8')
+          addition = r'''
+
+          test('provider prose around planner and specialist JSON is accepted', async () => {
+            const p = prepared();
+            p.subagents.maxToolTurns = 0;
+            const result = await runDynamicSubagents({
+              prepared: p,
+              invokeModel: async ({phase}) => {
+                if (phase === 'subagent-plan') {
+                  return 'План готов:\n```json\n{"subagents":[{"role":"QA Agent","task":"Проверь сборку"}]}\n```\nПродолжаю.';
+                }
+                return '<analysis>internal provider prelude</analysis>\nРезультат:\n{"summary":"checked","findings":[],"risks":[],"recommendation":"ok"}\nГотово.';
+              },
+              invokeTool: async () => ({ok: true}),
+            });
+            assert.equal(result.ok, true);
+            assert.equal(result.results.length, 1);
+            assert.equal(result.results[0].spec.role, 'QA Agent');
+            assert.equal(result.results[0].result.summary, 'checked');
+          });
+
+          test('manual named subagent bypasses planner and runs requested role', async () => {
+            const p = prepared({message: 'Позови субагента «Security Reviewer» и поручи ему: Проверь авторизацию'});
+            p.subagents.maxToolTurns = 0;
+            let plannerCalls = 0;
+            const events = [];
+            const result = await runDynamicSubagents({
+              prepared: p,
+              emit: (event) => events.push(event),
+              invokeModel: async ({phase, spec}) => {
+                if (phase === 'subagent-plan') {
+                  plannerCalls += 1;
+                  throw new Error('planner must be bypassed');
+                }
+                assert.equal(spec.role, 'Security Reviewer');
+                assert.equal(spec.task, 'Проверь авторизацию');
+                return JSON.stringify({summary: 'security checked', findings: [], risks: [], recommendation: 'ok'});
+              },
+              invokeTool: async () => ({ok: true}),
+            });
+            assert.equal(plannerCalls, 0);
+            assert.equal(result.results.length, 1);
+            assert.equal(result.results[0].spec.role, 'Security Reviewer');
+            assert.ok(events.some((event) => event.event === 'planned' && event.agentName === 'Security Reviewer'));
+          });
+          '''
+          if "manual named subagent bypasses planner" in tests:
+              raise SystemExit('tests already patched unexpectedly')
+          test_file.write_text(tests.rstrip() + addition + '\n', encoding='utf-8')
+
+          sheet = Path('lib/features/ai/widgets/wesi_ai_subagents_sheet.dart')
+          sheet.write_text(r'''import 'package:flutter/material.dart';
+
+import '../models/wesi_ai_chat_models.dart';
+import '../wesi_ai_managed_controller.dart';
+
+class WesiAiSubagentsSheet extends StatefulWidget {
+  final WesiAiManagedChatController controller;
+
+  const WesiAiSubagentsSheet({
+    super.key,
+    required this.controller,
+  });
+
+  @override
+  State<WesiAiSubagentsSheet> createState() => _WesiAiSubagentsSheetState();
+}
+
+class _WesiAiSubagentsSheetState extends State<WesiAiSubagentsSheet> {
+  static const _agents = <_SubagentDefinition>[
+    _SubagentDefinition(
+      name: 'Coding / Flutter Agent',
+      description: 'Код, Flutter, архитектура и точечная реализация.',
+      icon: Icons.code_rounded,
+    ),
+    _SubagentDefinition(
+      name: 'QA Agent',
+      description: 'Тесты, регрессии, edge cases и воспроизведение ошибок.',
+      icon: Icons.fact_check_outlined,
+    ),
+    _SubagentDefinition(
+      name: 'Build Agent',
+      description: 'CI/CD, сборки, зависимости и релизные проблемы.',
+      icon: Icons.build_circle_outlined,
+    ),
+    _SubagentDefinition(
+      name: 'Research Agent',
+      description: 'Исследование вариантов, документации и фактов.',
+      icon: Icons.manage_search_rounded,
+    ),
+    _SubagentDefinition(
+      name: 'Documents Agent',
+      description: 'Документы, спецификации, отчёты и структурирование.',
+      icon: Icons.description_outlined,
+    ),
+    _SubagentDefinition(
+      name: 'Media Agent',
+      description: 'Медиа-задачи, ассеты и анализ материалов.',
+      icon: Icons.perm_media_outlined,
+    ),
+    _SubagentDefinition(
+      name: 'Review Agent',
+      description: 'Независимая проверка решения и поиск слабых мест.',
+      icon: Icons.rate_review_outlined,
+    ),
+    _SubagentDefinition(
+      name: 'Security Reviewer',
+      description: 'Авторизация, секреты, права и security-регрессии.',
+      icon: Icons.security_outlined,
+    ),
+  ];
+
+  WesiAiManagedChatController get controller => widget.controller;
+
+  bool get _tierSupportsSubagents => controller.state.tier != WesiAiTier.fast;
+
+  bool get _directPersonaSelected {
+    final persona = controller.state.activeConversation?.persona;
+    return persona == WesiAiPersona.zane || persona == WesiAiPersona.nirvana;
+  }
+
+  String? get _unavailableReason {
+    if (!_tierSupportsSubagents) {
+      return 'Субагенты доступны в Pro и Maximum. Переключите уровень в верхней панели.';
+    }
+    if (controller.state.activeConversation == null) {
+      return 'Сначала откройте чат с Зейном или Нирваной.';
+    }
+    if (!_directPersonaSelected) {
+      return 'Для ручного вызова откройте прямой чат с Зейном или Нирваной. В Lobby ведущая персона выбирается автоматически.';
+    }
+    return null;
+  }
+
+  Future<void> _invoke(_SubagentDefinition agent) async {
+    if (_unavailableReason != null) return;
+    final taskController = TextEditingController();
+    final task = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('Задача для ${agent.name}'),
+        content: TextField(
+          controller: taskController,
+          autofocus: true,
+          minLines: 3,
+          maxLines: 8,
+          decoration: const InputDecoration(
+            hintText: 'Что именно нужно проверить или сделать?',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Отмена'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final value = taskController.text.trim();
+              if (value.isNotEmpty) Navigator.pop(dialogContext, value);
+            },
+            child: const Text('Позвать'),
+          ),
+        ],
+      ),
+    );
+    taskController.dispose();
+    if (task == null || !mounted) return;
+
+    final result = await controller.submitUserMessage(
+      'Позови субагента «${agent.name}» и поручи ему: $task',
+      thinkingMode: true,
+    );
+    if (!mounted) return;
+    if (result == WesiAiMessageSubmitResult.accepted) {
+      Navigator.of(context).pop();
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(_submitError(result))),
+    );
+  }
+
+  String _submitError(WesiAiMessageSubmitResult result) => switch (result) {
+        WesiAiMessageSubmitResult.queueFull => 'Очередь Wesi AI заполнена.',
+        WesiAiMessageSubmitResult.invalidAttachments => 'Некорректные вложения.',
+        WesiAiMessageSubmitResult.persistenceFailed => 'Не удалось сохранить задачу в очередь.',
+        WesiAiMessageSubmitResult.unavailable => 'Сейчас субагент недоступен.',
+        WesiAiMessageSubmitResult.accepted => '',
+      };
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final reason = _unavailableReason;
+    return SafeArea(
+      child: SizedBox(
+        height: MediaQuery.sizeOf(context).height * 0.82,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Субагенты',
+                    style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Выберите специалиста вручную. В Pro и Maximum Wesi AI также может создавать узких Dynamic Sub-Agents автоматически.',
+                    style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                  ),
+                  if (reason != null) ...[
+                    const SizedBox(height: 12),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.secondaryContainer,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(reason),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+            Expanded(
+              child: ListView.separated(
+                padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
+                itemCount: _agents.length,
+                separatorBuilder: (_, __) => const SizedBox(height: 8),
+                itemBuilder: (context, index) {
+                  final agent = _agents[index];
+                  return Card(
+                    margin: EdgeInsets.zero,
+                    child: ListTile(
+                      leading: CircleAvatar(child: Icon(agent.icon)),
+                      title: Text(agent.name),
+                      subtitle: Text(agent.description),
+                      trailing: FilledButton.tonal(
+                        onPressed: reason == null ? () => _invoke(agent) : null,
+                        child: const Text('Позвать'),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SubagentDefinition {
+  final String name;
+  final String description;
+  final IconData icon;
+
+  const _SubagentDefinition({
+    required this.name,
+    required this.description,
+    required this.icon,
+  });
+}
+''', encoding='utf-8')
+
+          screen = Path('lib/features/ai/ai_assistant_v2_screen.dart')
+          ui = screen.read_text(encoding='utf-8')
+          import_marker = "import 'widgets/wesi_ai_run_summary_chip.dart';\n"
+          if import_marker not in ui:
+              raise SystemExit('screen import marker not found')
+          ui = ui.replace(import_marker, import_marker + "import 'widgets/wesi_ai_subagents_sheet.dart';\n", 1)
+
+          tile_marker = '''              children: [
+                          ListTile(
+                            dense: true,
+                            leading: const Icon(Icons.hub_outlined),
+                            title: const Text('Коннекторы'),
+          '''
+          tile_replacement = '''              children: [
+                          ListTile(
+                            dense: true,
+                            leading: const Icon(Icons.account_tree_outlined),
+                            title: const Text('Субагенты'),
+                            subtitle: const Text('Каталог, ручной вызов и Dynamic Agents'),
+                            trailing: const Icon(Icons.chevron_right_rounded),
+                            onTap: () => showModalBottomSheet<void>(
+                              context: context,
+                              isScrollControlled: true,
+                              showDragHandle: true,
+                              builder: (_) => WesiAiSubagentsSheet(controller: controller),
+                            ),
+                          ),
+                          const Divider(height: 1, indent: 52),
+                          ListTile(
+                            dense: true,
+                            leading: const Icon(Icons.hub_outlined),
+                            title: const Text('Коннекторы'),
+          '''
+          if tile_marker not in ui:
+              raise SystemExit('sidebar utility marker not found')
+          ui = ui.replace(tile_marker, tile_replacement, 1)
+          screen.write_text(ui, encoding='utf-8')
+          PY
+
+      - name: Validate server JavaScript
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check server/wesi-ai-stream/dynamic_subagent_orchestrator.mjs
+          node --test server/wesi-ai-stream/dynamic_subagent_orchestrator.test.mjs
+          node --test server/wesi-ai-stream/*.test.mjs
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Format Dart changes
+        run: dart format lib/features/ai/ai_assistant_v2_screen.dart lib/features/ai/widgets/wesi_ai_subagents_sheet.dart
+
+      - name: Flutter dependencies
+        run: flutter pub get
+
+      - name: Flutter analyze
+        run: flutter analyze --no-fatal-infos
+
+      - name: Flutter tests
+        run: flutter test
+
+      - name: Commit verified repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          git config user.name 'Wesi AI Repair Bot'
+          git config user.email 'actions@github.com'
+          git rm .github/workflows/tmp-fix-wesi-ai-subagents.yml
+          git add server/wesi-ai-stream/dynamic_subagent_orchestrator.mjs server/wesi-ai-stream/dynamic_subagent_orchestrator.test.mjs lib/features/ai/ai_assistant_v2_screen.dart lib/features/ai/widgets/wesi_ai_subagents_sheet.dart
+          git diff --cached --check
+          git commit -m 'fix(wesi-ai): restore visible and reliable subagents'
+          git push origin HEAD:agent/fix-wesi-ai-subagents-20260820
