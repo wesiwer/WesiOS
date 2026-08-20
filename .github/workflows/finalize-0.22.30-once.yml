@@ -1,4 +1,5 @@
 name: Finalize WesiOS 0.22.30 Once
+# trigger: activate after workflow exists on default branch
 
 on:
   push:
