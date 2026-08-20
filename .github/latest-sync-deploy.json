@@ -1,0 +1,19 @@
+{
+  "conclusion": "cancelled",
+  "databaseId": 32426982569,
+  "event": "push",
+  "headSha": "a28be304e569b1cdcb56200c27a192751517bdbb",
+  "jobs": [
+    {
+      "completedAt": "2026-08-20T23:03:08Z",
+      "conclusion": "cancelled",
+      "databaseId": 96610812230,
+      "name": "deploy",
+      "startedAt": "2026-08-20T23:03:08Z",
+      "status": "completed",
+      "steps": [],
+      "url": "https://github.com/wesiwer/WesiOS/actions/runs/32426982569/job/96610812230"
+    }
+  ],
+  "status": "completed"
+}
