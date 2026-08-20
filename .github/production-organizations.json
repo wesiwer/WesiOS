@@ -1,0 +1,74 @@
+{
+  "columns": [
+    "coll",
+    "deleted",
+    "id",
+    "org",
+    "owner",
+    "payload",
+    "rid",
+    "stamp"
+  ],
+  "rows": [
+    {
+      "rid": "org_1786636872294887",
+      "payload": {
+        "baseCurrency": "RUB",
+        "code": null,
+        "colorValue": null,
+        "createdAt": "2026-08-13T19:01:12.294",
+        "createdBy": "owner",
+        "description": null,
+        "id": "org_1786636872294887",
+        "isRoot": false,
+        "name": "Wesi Inc IT Studio's",
+        "parentId": "org_wesi_inc",
+        "sortOrder": 0,
+        "status": "active",
+        "updatedAt": "2026-08-13T19:01:12.294"
+      },
+      "stamp": "2026-08-13T16:01:12.294Z",
+      "deleted": false
+    },
+    {
+      "rid": "org_wesi_beats",
+      "payload": {
+        "baseCurrency": "RUB",
+        "code": "BEATS",
+        "colorValue": null,
+        "createdAt": "2026-08-17T13:19:24.672",
+        "createdBy": "migration:v1",
+        "description": null,
+        "id": "org_wesi_beats",
+        "isRoot": false,
+        "name": "Wesi Beats",
+        "parentId": "org_wesi_inc",
+        "sortOrder": 10,
+        "status": "active",
+        "updatedAt": "2026-08-17T13:19:24.672"
+      },
+      "stamp": "2026-08-17T17:44:07.239Z",
+      "deleted": false
+    },
+    {
+      "rid": "org_wesi_inc",
+      "payload": {
+        "baseCurrency": "RUB",
+        "code": "WESI",
+        "colorValue": null,
+        "createdAt": "2026-08-17T13:19:24.672",
+        "createdBy": "migration:v1",
+        "description": null,
+        "id": "org_wesi_inc",
+        "isRoot": true,
+        "name": "Wesi Inc",
+        "parentId": null,
+        "sortOrder": 0,
+        "status": "active",
+        "updatedAt": "2026-08-17T13:19:24.672"
+      },
+      "stamp": "2026-08-17T17:44:07.239Z",
+      "deleted": false
+    }
+  ]
+}
