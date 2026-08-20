@@ -8,7 +8,14 @@
 
 routerUse((e) => {
   const path = String(e.request.url.path || "");
-  if (!path.startsWith("/api/wesi/sync/")) return e.next();
+  // sync-v3 uses the same authorization context as the legacy sync gateway.
+  // Without this prefix the v3 runtime sees no wesiSyncContext, returns 401,
+  // and the client correctly interprets that as an ended session — which was
+  // kicking a freshly OTP-authenticated user straight back to /login.
+  const isSyncPath =
+    path.startsWith("/api/wesi/sync/") ||
+    path.startsWith("/api/wesi/sync-v3/");
+  if (!isSyncPath) return e.next();
   if (!e.auth || e.hasSuperuserAuth()) {
     if (e.hasSuperuserAuth()) return e.next();
     throw new UnauthorizedError("Требуется вход WesiOS");
