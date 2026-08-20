@@ -55,14 +55,17 @@ jobs:
           set -euo pipefail
           run_id=''
           for i in $(seq 1 60); do
-            run_id=$(gh run list \
+            payload=$(gh run list \
               --repo "$GITHUB_REPOSITORY" \
               --workflow release-app.yml \
               --event workflow_dispatch \
               --branch main \
               --limit 20 \
-              --json databaseId,headSha,createdAt \
-              --jq --arg sha "$MAIN_SHA" --arg since "$SINCE" '[.[] | select(.headSha == $sha and .createdAt >= $since)] | sort_by(.createdAt) | reverse | .[0].databaseId // empty')
+              --json databaseId,headSha,createdAt)
+            run_id=$(printf '%s' "$payload" | jq -r \
+              --arg sha "$MAIN_SHA" \
+              --arg since "$SINCE" \
+              '[.[] | select(.headSha == $sha and .createdAt >= $since)] | sort_by(.createdAt) | reverse | .[0].databaseId // empty')
             if [ -n "$run_id" ]; then break; fi
             sleep 5
           done
