@@ -1,4 +1,5 @@
 name: Capture Final Release Result Once
+# trigger: capture signed WesiOS 0.22.30+105 release
 
 on:
   push:
