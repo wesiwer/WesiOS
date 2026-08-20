@@ -8,6 +8,7 @@ import '../../features/home/widgets/alerts_sheet.dart';
 import '../../features/team/services/team_service.dart';
 import '../localization/wesi_locale.dart';
 import '../services/app_update_service.dart';
+import '../services/email_notification_service.dart';
 import '../sync/sync_engine.dart';
 import '../feedback/wesi_feedback.dart';
 import 'wesi_notifications.dart';
@@ -44,6 +45,7 @@ class NotificationWatcher {
     if (_running) return;
     _running = true;
 
+    unawaited(EmailNotificationService.flush());
     unawaited(_seedQuietly());
 
     AlertService.unreadCount.addListener(_schedule);
@@ -159,7 +161,12 @@ class NotificationWatcher {
 
   static void _onSyncReport() {
     final report = SyncEngine.lastReport.value;
-    if (report == null || report.ok) return;
+    if (report == null) return;
+    if (report.ok) {
+      _lastReported = null;
+      unawaited(EmailNotificationService.flush());
+      return;
+    }
     // Один и тот же отказ повторяется каждые две минуты, пока не появится
     // связь. Сообщать о нём каждые две минуты — значит сообщать ни о чём.
     final failure = report.firstFailure;
@@ -178,10 +185,14 @@ class NotificationWatcher {
   }
 
   static Future<void> _raise(WesiNotification notification) async {
+    // Email-дублирование начинается сразу и независимо от разрешения ОС на
+    // локальные уведомления. Outbox сохраняет событие до попытки доставки.
+    final email = EmailNotificationService.enqueue(notification);
     final shown = await WesiNotifications.show(notification);
     // Звук и вибрация — только вместе с настоящим уведомлением. Отдельно
     // они означали бы «что-то произошло, но что — не скажем».
     if (shown) WesiFeedback.notify();
+    await email;
   }
 
   /// Только для тестов.
