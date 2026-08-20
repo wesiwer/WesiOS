@@ -1,0 +1,1 @@
+Final rollout helper for WesiOS 0.22.30+105. Safe to remove after the release is confirmed.
