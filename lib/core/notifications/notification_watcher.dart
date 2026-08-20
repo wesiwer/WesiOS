@@ -9,6 +9,7 @@ import '../../features/team/services/team_service.dart';
 import '../localization/wesi_locale.dart';
 import '../services/app_update_service.dart';
 import '../services/email_notification_service.dart';
+import '../sync/sync_endpoint.dart';
 import '../sync/sync_engine.dart';
 import '../feedback/wesi_feedback.dart';
 import 'wesi_notifications.dart';
@@ -52,6 +53,7 @@ class NotificationWatcher {
     AppUpdateService.latest.addListener(_schedule);
     ChatService.revision.addListener(_schedule);
     MessageStore.revision.addListener(_schedule);
+    SyncEndpoint.revision.addListener(_onEndpointChanged);
     SyncEngine.lastReport.addListener(_onSyncReport);
   }
 
@@ -64,6 +66,7 @@ class NotificationWatcher {
     AppUpdateService.latest.removeListener(_schedule);
     ChatService.revision.removeListener(_schedule);
     MessageStore.revision.removeListener(_schedule);
+    SyncEndpoint.revision.removeListener(_onEndpointChanged);
     SyncEngine.lastReport.removeListener(_onSyncReport);
   }
 
@@ -158,6 +161,14 @@ class NotificationWatcher {
       };
 
   static SyncReport? _lastReported;
+
+  /// Новая/обновлённая серверная сессия должна сразу разблокировать очередь
+  /// писем, не дожидаясь следующего полного цикла синхронизации.
+  static void _onEndpointChanged() {
+    if (SyncEndpoint.isConnected) {
+      unawaited(EmailNotificationService.flush());
+    }
+  }
 
   static void _onSyncReport() {
     final report = SyncEngine.lastReport.value;
