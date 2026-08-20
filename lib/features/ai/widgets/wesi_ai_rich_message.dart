@@ -266,22 +266,19 @@ class WesiAiRichMessage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final activities = WesiAiActivityEvent.listFrom(activityRaw);
-    // Работа агентов принадлежит ходу мыслей, а не тексту ответа.
-    //
-    // Раньше события агентов шли врезками внутрь сообщения по смещению в
-    // тексте. Но специалисты отрабатывают до того, как появится первая буква
-    // ответа, поэтому смещение у всех нулевое — весь их след сваливался в
-    // одну кучу перед первым абзацем. Человек хотел видеть, кого позвали и
-    // зачем, а видел стопку одинаковых строк не на своём месте.
-    //
-    // Инструменты ведущей персоны остаются врезками: они вызываются по ходу
-    // ответа, и их место в тексте осмысленно.
-    final work = activities
-        .where((event) => event.kind != WesiAiActivityKind.tool)
-        .toList(growable: false);
-    final inline = activities
-        .where((event) => event.kind == WesiAiActivityKind.tool)
-        .toList(growable: false);
+    // В Thinking все уровни одного прохода должны жить в одном раскрываемом
+    // журнале: публичные мысли -> специалисты/инструменты -> глубокие данные.
+    // В Classic сохраняем прежние inline tool-врезки в ответ.
+    final work = showWorkLog
+        ? activities
+        : activities
+            .where((event) => event.kind != WesiAiActivityKind.tool)
+            .toList(growable: false);
+    final inline = showWorkLog
+        ? const <WesiAiActivityEvent>[]
+        : activities
+            .where((event) => event.kind == WesiAiActivityKind.tool)
+            .toList(growable: false);
 
     final children = <Widget>[];
     if (showWorkLog && (work.isNotEmpty || streaming)) {
