@@ -1,5 +1,5 @@
 name: Capture production organizations once
-# trigger: inspect sync payloads after organization apply failure
+# trigger: install and verify 0.22.30 organization read compatibility hotfix
 
 on:
   push:
@@ -9,6 +9,7 @@ on:
 
 permissions:
   contents: write
+  statuses: write
 
 jobs:
   capture:
@@ -21,6 +22,15 @@ jobs:
         with:
           ref: main
           fetch-depth: 0
+
+      - name: Validate organization sync read hook
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check server/pb_hooks/wesi_sync_read.pb.js
+          grep -q 'normalizeOrganizationPayload' server/pb_hooks/wesi_sync_read.pb.js
+          grep -q 'if (id === "org_wesi_inc")' server/pb_hooks/wesi_sync_read.pb.js
+
       - name: Prepare SSH
         env:
           HOST: ${{ secrets.WESI_SERVER_HOST }}
@@ -31,8 +41,86 @@ jobs:
           set -euo pipefail
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
           printf '%s\n' "$KEY" > ~/.ssh/id_deploy && chmod 600 ~/.ssh/id_deploy
-          if [ -n "${KNOWN:-}" ]; then printf '%s\n' "$KNOWN" > ~/.ssh/known_hosts; else ssh-keyscan -H "$HOST" > ~/.ssh/known_hosts 2>/dev/null; fi
+          if [ -n "${KNOWN:-}" ]; then
+            printf '%s\n' "$KNOWN" > ~/.ssh/known_hosts
+          else
+            ssh-keyscan -H "$HOST" > ~/.ssh/known_hosts 2>/dev/null
+          fi
           chmod 600 ~/.ssh/known_hosts
+
+      - name: Install organization read hook only
+        env:
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          USER: ${{ secrets.WESI_SERVER_USER }}
+          CONFIGURED_HOOK_DIR: ${{ vars.WESI_PB_HOOK_DIR }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          SSH="ssh -i $HOME/.ssh/id_deploy -o BatchMode=yes"
+          HOOK_DIR="${CONFIGURED_HOOK_DIR:-/opt/pocketbase/pb_hooks}"
+          REMOTE="/tmp/wesi-org-read-hotfix-$GITHUB_RUN_ID"
+          $SSH "$USER@$HOST" "rm -rf '$REMOTE' && mkdir -p '$REMOTE'"
+          scp -i "$HOME/.ssh/id_deploy" -o BatchMode=yes \
+            server/pb_hooks/wesi_sync_read.pb.js \
+            "$USER@$HOST:$REMOTE/"
+          $SSH "$USER@$HOST" "REMOTE='$REMOTE' HOOK_DIR='$HOOK_DIR' bash -s" <<'SH'
+          set -euo pipefail
+          src="$REMOTE/wesi_sync_read.pb.js"
+          dst="$HOOK_DIR/wesi_sync_read.pb.js"
+          dir="$(dirname "$dst")"
+
+          if [ -w "$dir" ]; then
+            tmp="$dir/.deploy-wesi_sync_read.pb.js.$$.$RANDOM.tmp"
+            cat "$src" > "$tmp"
+            chmod 0644 "$tmp"
+            cmp -s "$src" "$tmp"
+            mv -f "$tmp" "$dst"
+          elif [ -e "$dst" ] && [ -w "$dst" ]; then
+            cat "$src" > "$dst"
+            cmp -s "$src" "$dst"
+          elif command -v sudo >/dev/null 2>&1 && sudo -n true >/dev/null 2>&1; then
+            tmp="$dir/.deploy-wesi_sync_read.pb.js.$$.$RANDOM.tmp"
+            sudo -n cp "$src" "$tmp"
+            sudo -n chmod 0644 "$tmp"
+            sudo -n cmp -s "$src" "$tmp"
+            sudo -n mv -f "$tmp" "$dst"
+          else
+            echo "Нет прав обновить $dst" >&2
+            exit 3
+          fi
+
+          if cmp -s "$src" "$dst" 2>/dev/null; then
+            :
+          elif command -v sudo >/dev/null 2>&1 && sudo -n cmp -s "$src" "$dst"; then
+            :
+          else
+            echo "Установленный wesi_sync_read.pb.js не совпадает" >&2
+            exit 4
+          fi
+
+          if grep -q 'normalizeOrganizationPayload' "$dst" 2>/dev/null; then
+            :
+          elif command -v sudo >/dev/null 2>&1 && sudo -n grep -q 'normalizeOrganizationPayload' "$dst"; then
+            :
+          else
+            echo "На production нет normalizeOrganizationPayload" >&2
+            exit 5
+          fi
+          rm -rf "$REMOTE"
+          SH
+
+      - name: Verify production sync route is loaded and protected
+        shell: bash
+        run: |
+          set -euo pipefail
+          sleep 2
+          code=$(curl -sS -o /tmp/body -w '%{http_code}' --connect-timeout 10 --max-time 20 \
+            https://api.wesi-inc.ru/api/wesi/sync/organizations || true)
+          case "$code" in
+            401|403) echo "Protected organizations sync route loaded: HTTP $code" ;;
+            *) cat /tmp/body || true; echo "Unexpected organizations sync route HTTP $code" >&2; exit 6 ;;
+          esac
+
       - name: Read organization sync rows
         env:
           HOST: ${{ secrets.WESI_SERVER_HOST }}
@@ -60,6 +148,7 @@ jobs:
           print(json.dumps({'columns':cols,'rows':rows},ensure_ascii=False,indent=2,default=str))
           PYREMOTE
           cp /tmp/orgs.json .github/production-organizations.json
+
       - name: Publish diagnostics
         shell: bash
         run: |
@@ -68,5 +157,20 @@ jobs:
           git config user.email 'actions@users.noreply.github.com'
           git switch -C diag/production-organizations
           git add .github/production-organizations.json
-          git commit -m 'diag(sync): capture production organizations' || true
+          git commit -m 'diag(sync): capture production organizations after 0.22.30 hotfix' || true
           git push --force origin HEAD:diag/production-organizations
+
+      - name: Publish hotfix commit status
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          JOB_STATUS: ${{ job.status }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "$JOB_STATUS" = success ]; then STATE=success; else STATE=failure; fi
+          gh api -X POST "repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" \
+            -f state="$STATE" \
+            -f context='Wesi Sync Read Hotfix' \
+            -f description="Organization sync read hotfix: $JOB_STATUS" \
+            -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
