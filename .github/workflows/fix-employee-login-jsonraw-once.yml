@@ -1,0 +1,172 @@
+name: Fix employee OTP JSONRaw bootstrap once
+
+on:
+  push:
+    branches: ['fix/employee-otp-jsonraw-bootstrap']
+    paths:
+      - '.github/workflows/fix-employee-login-jsonraw-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/employee-otp-jsonraw-bootstrap
+          fetch-depth: 0
+
+      - name: Patch employee bootstrap JSON payload decoding
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('server/pb_hooks/employee_portal.pb.js')
+          text = path.read_text(encoding='utf-8')
+
+          old = '''  const valueObject = (record, field) => {
+            if (!record) return {};
+            try {
+              const value = record.get(field);
+              return value && typeof value === "object" ? value : {};
+            } catch (_) { return {}; }
+          };'''
+
+          new = '''  // PocketBase JSON fields are not guaranteed to reach JSVM as plain JS
+          // objects. Depending on the runtime path they can be JSONRaw byte arrays,
+          // JSONMap-like values or JSON strings. Employee login reaches this helper
+          // immediately after a valid OTP when /api/wesi/app/bootstrap resolves the
+          // portal-account link, so treating every `object` as a normal map breaks
+          // otherwise valid employee sign-ins.
+          const valueObject = (record, field) => {
+            if (!record) return {};
+
+            const parseText = (text) => {
+              try {
+                let parsed = JSON.parse(String(text || ""));
+                if (typeof parsed === "string" && parsed.trim()) {
+                  try { parsed = JSON.parse(parsed); } catch (_) {}
+                }
+                return parsed && typeof parsed === "object" ? parsed : {};
+              } catch (_) { return {}; }
+            };
+
+            try {
+              const raw = record.get(field);
+              if (!raw) return {};
+              if (typeof raw === "string") return parseText(raw);
+
+              if (typeof raw === "object") {
+                // JSONMap-like values exposed by some PocketBase/JSVM paths.
+                if (typeof raw.get === "function") {
+                  const out = {};
+                  const keys = [
+                    "kind", "employeeId", "id", "login", "fullName", "name",
+                    "nickname", "position", "email", "avatarIndex", "createdAt",
+                    "permissions", "snapshot"
+                  ];
+                  let found = false;
+                  for (const key of keys) {
+                    try {
+                      const value = raw.get(key);
+                      if (value !== undefined && value !== null) {
+                        out[key] = value;
+                        found = true;
+                      }
+                    } catch (_) {}
+                  }
+                  if (found) return out;
+                }
+
+                // PocketBase JSONRaw ([]byte) values are array-like in JSVM.
+                if (typeof raw.length === "number" && raw.length >= 0) {
+                  try {
+                    let json = "";
+                    for (let i = 0; i < raw.length; i++) {
+                      json += String.fromCharCode(Number(raw[i]) & 255);
+                    }
+                    const parsed = parseText(json);
+                    if (parsed && typeof parsed === "object" && Object.keys(parsed).length) {
+                      return parsed;
+                    }
+                  } catch (_) {}
+                }
+
+                if (!Array.isArray(raw)) return raw;
+              }
+            } catch (_) {}
+
+            // Final typed fallback keeps the authentication path working even if a
+            // future PocketBase runtime changes how JSON values are exported.
+            try {
+              const model = new DynamicModel({
+                "kind": "", "employeeId": "", "id": "", "login": "",
+                "fullName": "", "name": "", "nickname": "", "position": "",
+                "email": "", "avatarIndex": 0, "createdAt": "",
+                "permissions": {}, "snapshot": {}
+              });
+              record.unmarshalJSONField(field, model);
+              return {
+                "kind": model.kind, "employeeId": model.employeeId, "id": model.id,
+                "login": model.login, "fullName": model.fullName, "name": model.name,
+                "nickname": model.nickname, "position": model.position,
+                "email": model.email, "avatarIndex": model.avatarIndex,
+                "createdAt": model.createdAt, "permissions": model.permissions,
+                "snapshot": model.snapshot
+              };
+            } catch (_) { return {}; }
+          };'''
+
+          count = text.count(old)
+          if count != 1:
+              raise SystemExit(f'expected exactly one legacy valueObject block, found {count}')
+          path.write_text(text.replace(old, new), encoding='utf-8')
+
+          test = Path('test/employee_portal_json_payload_regression_test.dart')
+          test.write_text(r'''import 'dart:io';
+
+import 'package:flutter_test/flutter_test.dart';
+
+void main() {
+  test('employee bootstrap decodes PocketBase JSONRaw portal payloads', () {
+    final source = File('server/pb_hooks/employee_portal.pb.js').readAsStringSync();
+
+    expect(source.contains('PocketBase JSONRaw ([]byte) values are array-like in JSVM.'), isTrue);
+    expect(source.contains('typeof raw.length === "number" && raw.length >= 0'), isTrue);
+    expect(source.contains('String.fromCharCode(Number(raw[i]) & 255)'), isTrue);
+    expect(source.contains('record.unmarshalJSONField(field, model);'), isTrue);
+    expect(
+      source.contains('return value && typeof value === "object" ? value : {};'),
+      isFalse,
+      reason: 'plain-object assumption would break employee bootstrap after a valid OTP',
+    );
+  });
+}
+''', encoding='utf-8')
+          PY
+
+      - name: Validate patched hook
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check server/pb_hooks/employee_portal.pb.js
+          grep -q 'PocketBase JSONRaw' server/pb_hooks/employee_portal.pb.js
+          grep -q 'unmarshalJSONField(field, model)' server/pb_hooks/employee_portal.pb.js
+          ! grep -q 'return value && typeof value === "object" ? value : {};' server/pb_hooks/employee_portal.pb.js
+          git diff --check
+
+      - name: Commit functional fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm .github/workflows/fix-employee-login-jsonraw-once.yml
+          git config user.name 'WesiOS Auth Fix'
+          git config user.email 'actions@users.noreply.github.com'
+          git add server/pb_hooks/employee_portal.pb.js test/employee_portal_json_payload_regression_test.dart .github/workflows/fix-employee-login-jsonraw-once.yml
+          git commit -m 'fix(auth): decode employee portal JSON payloads after OTP'
+          git push origin HEAD:fix/employee-otp-jsonraw-bootstrap
