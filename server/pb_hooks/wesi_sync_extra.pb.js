@@ -1,3 +1,4 @@
+// Deployment retrigger only: force the corrected production sync workflow to run.
 // Extended WesiOS sync routes.
 //
 // Every callback resolves its helper module inside the request. PocketBase can
