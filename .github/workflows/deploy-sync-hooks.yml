@@ -204,11 +204,6 @@ jobs:
               cmp -s "$src" "$tmp"
               mv -f "$tmp" "$dst"
             elif [ -e "$dst" ] && [ -w "$dst" ]; then
-              # Some production installs intentionally expose existing hook
-              # files as writable while keeping the hook directory read-only.
-              # We cannot rename a sibling temp file in that layout, so fall
-              # back to a verified in-place replacement instead of failing the
-              # whole sync deployment before a hot-reload can happen.
               cat "$src" > "$dst"
               cmp -s "$src" "$dst"
             elif command -v sudo >/dev/null 2>&1 && sudo -n true >/dev/null 2>&1; then
@@ -266,19 +261,12 @@ jobs:
             fi
           done
 
-          restart_needed="$migration_changed"
-          if [ "$restart_needed" = "0" ]; then
-            if verify_db >"$REMOTE/schema-before.txt" 2>&1; then
-              cat "$REMOTE/schema-before.txt"
-            else
-              cat "$REMOTE/schema-before.txt" >&2 || true
-              echo "Schema invariant ещё не применён — нужен restart"
-              restart_needed=1
-            fi
-          fi
+          # PocketBase can keep already-registered JS callbacks alive across
+          # hot hook reloads. Always restart after replacing the sync bundle.
+          restart_needed="1"
 
           if [ "$restart_needed" = "1" ]; then
-            echo "Перезапускаю PocketBase для применения/восстановления sync migration"
+            echo "Перезапускаю PocketBase для применения sync bundle без старых callback'ов"
             restart_pocketbase
             sleep 3
           fi
