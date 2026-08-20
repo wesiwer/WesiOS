@@ -1,0 +1,153 @@
+name: Deploy WesiOS Email Notifications
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'server/pb_hooks/wesi_email_notifications.pb.js'
+      - '.github/workflows/deploy-email-notifications.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: wesios-email-notifications-production
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: employee-portal
+      url: https://api.wesi-inc.ru
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Validate email notification hook
+        run: |
+          set -euo pipefail
+          test -s server/pb_hooks/wesi_email_notifications.pb.js
+          node --check server/pb_hooks/wesi_email_notifications.pb.js
+          grep -q '/api/wesi/notifications/email' server/pb_hooks/wesi_email_notifications.pb.js
+          grep -q 'requireWesiSession(e)' server/pb_hooks/wesi_email_notifications.pb.js
+          grep -q "coll='employees'" server/pb_hooks/wesi_email_notifications.pb.js
+          grep -q 'employeePayload.email' server/pb_hooks/wesi_email_notifications.pb.js
+          grep -q 'sendMail(e.app, email' server/pb_hooks/wesi_email_notifications.pb.js
+          if grep -q 'body.email' server/pb_hooks/wesi_email_notifications.pb.js; then
+            echo '::error::Recipient email must be resolved server-side from the employee card'
+            exit 1
+          fi
+
+      - name: Check server secrets
+        env:
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          USER: ${{ secrets.WESI_SERVER_USER }}
+          KEY: ${{ secrets.WESI_SERVER_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          [ -n "${HOST:-}" ] || { echo '::error::Нет WESI_SERVER_HOST'; exit 1; }
+          [ -n "${USER:-}" ] || { echo '::error::Нет WESI_SERVER_USER'; exit 1; }
+          [ -n "${KEY:-}" ] || { echo '::error::Нет WESI_SERVER_SSH_KEY'; exit 1; }
+
+      - name: Prepare SSH
+        env:
+          KEY: ${{ secrets.WESI_SERVER_SSH_KEY }}
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          KNOWN: ${{ secrets.WESI_SERVER_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          if [ -n "${KNOWN:-}" ]; then
+            printf '%s\n' "$KNOWN" > ~/.ssh/known_hosts
+          else
+            ssh-keyscan -H "$HOST" > ~/.ssh/known_hosts 2>/dev/null
+          fi
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Install email notification hook atomically
+        env:
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          USER: ${{ secrets.WESI_SERVER_USER }}
+          CONFIGURED_HOOK_DIR: ${{ vars.WESI_PB_HOOK_DIR }}
+        run: |
+          set -euo pipefail
+          SSH="ssh -i $HOME/.ssh/id_deploy -o BatchMode=yes"
+          REMOTE="/tmp/wesi-email-notifications-$GITHUB_RUN_ID"
+          HOOK_DIR="${CONFIGURED_HOOK_DIR:-/opt/pocketbase/pb_hooks}"
+          $SSH "$USER@$HOST" "rm -rf '$REMOTE' && mkdir -p '$REMOTE'"
+          scp -i "$HOME/.ssh/id_deploy" -o BatchMode=yes \
+            server/pb_hooks/wesi_email_notifications.pb.js \
+            "$USER@$HOST:$REMOTE/"
+          $SSH "$USER@$HOST" "REMOTE='$REMOTE' HOOK_DIR='$HOOK_DIR' bash -s" <<'SH'
+          set -euo pipefail
+          src="$REMOTE/wesi_email_notifications.pb.js"
+          dst="$HOOK_DIR/wesi_email_notifications.pb.js"
+
+          if [ ! -d "$HOOK_DIR" ]; then
+            if command -v sudo >/dev/null 2>&1 && sudo -n true >/dev/null 2>&1; then
+              sudo -n mkdir -p "$HOOK_DIR"
+            else
+              mkdir -p "$HOOK_DIR"
+            fi
+          fi
+
+          if [ -w "$HOOK_DIR" ]; then
+            tmp="$HOOK_DIR/.deploy-wesi_email_notifications.pb.js.$$.$RANDOM.tmp"
+            cat "$src" > "$tmp"
+            chmod 0644 "$tmp"
+            cmp -s "$src" "$tmp"
+            mv -f "$tmp" "$dst"
+          elif [ -e "$dst" ] && [ -w "$dst" ]; then
+            cat "$src" > "$dst"
+            cmp -s "$src" "$dst"
+          elif command -v sudo >/dev/null 2>&1 && sudo -n true >/dev/null 2>&1; then
+            tmp="$HOOK_DIR/.deploy-wesi_email_notifications.pb.js.$$.$RANDOM.tmp"
+            sudo -n cp "$src" "$tmp"
+            sudo -n chmod 0644 "$tmp"
+            sudo -n cmp -s "$src" "$tmp"
+            sudo -n mv -f "$tmp" "$dst"
+          else
+            echo "Нет прав на установку $dst" >&2
+            exit 3
+          fi
+
+          if cmp -s "$src" "$dst" 2>/dev/null; then
+            echo 'Email notification hook installed'
+          elif command -v sudo >/dev/null 2>&1 && sudo -n cmp -s "$src" "$dst"; then
+            echo 'Email notification hook installed'
+          else
+            echo 'Установленный email notification hook не совпадает' >&2
+            exit 4
+          fi
+
+          if systemctl restart pocketbase 2>/dev/null; then
+            true
+          elif command -v sudo >/dev/null 2>&1 && sudo -n systemctl restart pocketbase; then
+            true
+          else
+            echo 'Не удалось перезапустить PocketBase' >&2
+            exit 5
+          fi
+          rm -rf "$REMOTE"
+          SH
+
+      - name: Verify production email notification route
+        run: |
+          set -euo pipefail
+          sleep 3
+          code=$(curl -sS -o response.txt -w '%{http_code}' --max-time 20 \
+            -X POST \
+            -H 'Content-Type: application/json' \
+            -d '{"id":"deployment-probe","title":"probe","body":"probe"}' \
+            https://api.wesi-inc.ru/api/wesi/notifications/email || true)
+          case "$code" in
+            401|403) echo "Protected email notification route loaded ($code)" ;;
+            *) echo "::error::Email notification route returned HTTP $code"; cat response.txt; exit 1 ;;
+          esac
