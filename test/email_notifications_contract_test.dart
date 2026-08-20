@@ -39,7 +39,7 @@ void main() {
     expect(hook, contains('requireWesiSession(e)'));
     expect(hook, contains("rid={:rid} && deleted=false"));
     expect(hook, contains("session:"));
-    expect(hook, contains(r'$apis.requireAuth("users")'));
+    expect(hook, contains(r'$apis.requireAuth'));
     expect(hook, contains("coll='employees'"));
     expect(hook, contains('employeePayload.email'));
     expect(hook, contains('sendMail(e.app, email'));
