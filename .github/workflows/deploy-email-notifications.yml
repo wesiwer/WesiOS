@@ -72,7 +72,7 @@ jobs:
           fi
           chmod 600 ~/.ssh/known_hosts
 
-      - name: Install email notification hook atomically
+      - name: Install and activate email notification hook
         env:
           HOST: ${{ secrets.WESI_SERVER_HOST }}
           USER: ${{ secrets.WESI_SERVER_USER }}
@@ -128,30 +128,75 @@ jobs:
             exit 4
           fi
 
-          if systemctl restart pocketbase 2>/dev/null; then
-            true
-          elif command -v sudo >/dev/null 2>&1 && sudo -n systemctl restart pocketbase; then
-            true
-          else
-            echo 'Не удалось перезапустить PocketBase' >&2
-            exit 5
+          probe_route() {
+            code=$(curl -sS -o /tmp/wesi-email-route-probe.txt -w '%{http_code}' --max-time 5 \
+              -X POST \
+              -H 'Content-Type: application/json' \
+              -d '{"id":"deployment-probe","title":"probe","body":"probe"}' \
+              http://127.0.0.1:8090/api/wesi/notifications/email || true)
+            case "$code" in
+              401|403)
+                echo "PocketBase email route active locally ($code)"
+                return 0
+                ;;
+              *)
+                echo "PocketBase local email route not active yet (HTTP $code)"
+                return 1
+                ;;
+            esac
+          }
+
+          # PocketBase hot-reloads ordinary pb_hooks. Give the new route time to
+          # register before attempting a privileged service restart.
+          active=0
+          for attempt in $(seq 1 10); do
+            if probe_route; then
+              active=1
+              break
+            fi
+            sleep 1
+          done
+
+          if [ "$active" != '1' ]; then
+            echo 'Hot reload did not activate the route; trying service restart fallback'
+            restarted=0
+            if systemctl restart pocketbase 2>/dev/null; then
+              restarted=1
+            elif command -v sudo >/dev/null 2>&1 && sudo -n systemctl restart pocketbase 2>/dev/null; then
+              restarted=1
+            fi
+            if [ "$restarted" != '1' ]; then
+              echo 'Не удалось активировать hook: hot reload не сработал и прав на restart PocketBase нет' >&2
+              exit 5
+            fi
+            sleep 3
+            probe_route || { echo 'PocketBase route отсутствует после restart' >&2; exit 6; }
           fi
+
           rm -rf "$REMOTE"
           SH
 
       - name: Verify production email notification route
         run: |
           set -euo pipefail
-          sleep 3
-          code=$(curl -sS -o response.txt -w '%{http_code}' --max-time 20 \
-            -X POST \
-            -H 'Content-Type: application/json' \
-            -d '{"id":"deployment-probe","title":"probe","body":"probe"}' \
-            https://api.wesi-inc.ru/api/wesi/notifications/email || true)
-          case "$code" in
-            401|403) echo "Protected email notification route loaded ($code)" ;;
-            *) echo "::error::Email notification route returned HTTP $code"; cat response.txt; exit 1 ;;
-          esac
+          code=''
+          for attempt in $(seq 1 10); do
+            code=$(curl -sS -o response.txt -w '%{http_code}' --max-time 20 \
+              -X POST \
+              -H 'Content-Type: application/json' \
+              -d '{"id":"deployment-probe","title":"probe","body":"probe"}' \
+              https://api.wesi-inc.ru/api/wesi/notifications/email || true)
+            case "$code" in
+              401|403)
+                echo "Protected production email notification route loaded ($code)"
+                exit 0
+                ;;
+            esac
+            sleep 1
+          done
+          echo "::error::Email notification route returned HTTP $code"
+          cat response.txt || true
+          exit 1
 
   report:
     name: Report production email deploy status
