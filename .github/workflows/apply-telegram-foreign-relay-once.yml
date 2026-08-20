@@ -61,3 +61,5 @@ jobs:
           git status --short
           git commit -m 'feat(telegram): route all traffic through foreign Wesi relay'
           git push origin HEAD:agent/telegram-foreign-relay
+
+# retrigger: 2026-08-20T14:52+03:00
