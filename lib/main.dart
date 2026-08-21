@@ -28,6 +28,7 @@ import 'core/sync/sync_auto.dart';
 import 'core/sync/sync_endpoint.dart';
 import 'core/sync/sync_engine.dart';
 import 'core/sync/sync_feature_extensions.dart';
+import 'core/sync/sync_recovery.dart';
 import 'core/sync/sync_transaction_anchor_fix.dart';
 import 'core/theme/app_theme.dart';
 import 'features/chats/models/chat_message.dart';
@@ -204,6 +205,13 @@ Future<bool> _bootstrap(List<String> arguments) async {
   await SyncFeatureExtensions.install();
   SyncAuditExtensions.install();
   SyncBusinessExtensions.install();
+
+  // Existing mobile installations may contain business rows created while
+  // cloud synchronization was unhealthy. Arm the persistent recovery lock
+  // before any startup pull can read authoritative server rows into the phone.
+  if (!kIsWeb && (Platform.isAndroid || Platform.isIOS)) {
+    await SyncRecovery.armMigrationIfNeeded();
+  }
 
   if (TeamService.current != null && SyncEndpoint.isConnected) {
     SessionService.startHeartbeat();
