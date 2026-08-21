@@ -25,6 +25,7 @@ jobs:
         run: |
           node --check server/wesi-ai-stream/dynamic_subagent.mjs
           node --check server/wesi-ai-stream/dynamic_subagent_orchestrator.mjs
+          node --check server/wesi-ai-stream/agency_agents_catalog.mjs
           node --check server/wesi-ai-stream/multi_agent_workspace.mjs
           node --check server/wesi-ai-stream/gateway.mjs
           node --check server/pb_hooks/wesi_ai_stream.pb.js
@@ -32,6 +33,7 @@ jobs:
         run: |
           node --test server/wesi-ai-stream/dynamic_subagent.test.mjs
           node --test server/wesi-ai-stream/multi_agent_workspace.test.mjs
+          node --test server/wesi-ai-stream/agency_agents_catalog.test.mjs
           node --test server/wesi-ai-stream/dynamic_subagent_orchestrator.test.mjs
           node --test server/wesi-ai-stream/gateway.test.mjs
           node --test server/wesi-ai-stream/persona_coagent.test.mjs
