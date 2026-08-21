@@ -28,6 +28,35 @@ class GatewaySecretStore {
     );
   }
 
+  Future<ImportedGatewayConfig?> readProfile() async {
+    final values = await Future.wait([
+      _storage.read(key: _profileKey),
+      _storage.read(key: _profileNameKey),
+      _storage.read(key: _profileProtocolKey),
+    ]);
+    final rawValue = values[0];
+    if (rawValue == null || rawValue.trim().isEmpty) return null;
+
+    final protocolName = values[2];
+    final protocol = GatewayProtocol.values.firstWhere(
+      (item) => item.wireName == protocolName,
+      orElse: () => GatewayProtocol.automatic,
+    );
+    if (protocol == GatewayProtocol.automatic) {
+      await clearProfile();
+      return null;
+    }
+
+    final storedName = values[1]?.trim();
+    return ImportedGatewayConfig(
+      protocol: protocol,
+      displayName: storedName?.isNotEmpty == true
+          ? storedName!
+          : 'Wesi Aero VPN',
+      rawValue: rawValue,
+    );
+  }
+
   Future<void> clearProfile() async {
     await Future.wait([
       _storage.delete(key: _profileKey),
