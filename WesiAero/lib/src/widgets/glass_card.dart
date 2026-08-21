@@ -35,11 +35,17 @@ class GlassCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final palette = context.palette;
     final borderRadius = BorderRadius.circular(radius);
+    // Metric cards historically requested sigma 12 while the rest of the
+    // dashboard used sigma 18. A single grouped backdrop filter is much cheaper
+    // for the GPU when all dashboard glass shares the same filter. Promote the
+    // lighter variant instead of reducing any effect: visually the small cards
+    // become slightly richer while the renderer can reuse the sigma-18 pass.
+    final effectiveBlur = blur == 12 ? 18.0 : blur;
 
     return ClipRRect(
       borderRadius: borderRadius,
       child: BackdropFilter.grouped(
-        filter: _blurFilter(blur),
+        filter: _blurFilter(effectiveBlur),
         child: DecoratedBox(
           decoration: BoxDecoration(
             color: color ?? palette.glass,
