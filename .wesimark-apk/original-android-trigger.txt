@@ -1,0 +1,1 @@
+Rebuild WesiMark 2.4.0+14 from original Android project to restore launcher icon and original signing configuration.
