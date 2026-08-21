@@ -283,14 +283,22 @@ class GatewayConfigParser {
       throw const FormatException('Конфигурация не может быть пустой.');
     }
 
-    if (value.startsWith('vless://')) return _parseVless(value);
-    if (value.startsWith('vmess://')) return _parseVmess(value);
-    if (value.startsWith('trojan://')) return _parseSimpleUri(
-          value,
-          GatewayProtocol.trojan,
-          schemes: const {'trojan'},
-        );
-    if (value.startsWith('ss://')) return _parseShadowsocks(value);
+    if (value.startsWith('vless://')) {
+      return _parseVless(value);
+    }
+    if (value.startsWith('vmess://')) {
+      return _parseVmess(value);
+    }
+    if (value.startsWith('trojan://')) {
+      return _parseSimpleUri(
+        value,
+        GatewayProtocol.trojan,
+        schemes: const {'trojan'},
+      );
+    }
+    if (value.startsWith('ss://')) {
+      return _parseShadowsocks(value);
+    }
     if (value.startsWith('hysteria2://') || value.startsWith('hy2://')) {
       return _parseSimpleUri(
         value,
@@ -298,17 +306,21 @@ class GatewayConfigParser {
         schemes: const {'hysteria2', 'hy2'},
       );
     }
-    if (value.startsWith('tuic://')) return _parseSimpleUri(
-          value,
-          GatewayProtocol.tuic,
-          schemes: const {'tuic'},
-        );
+    if (value.startsWith('tuic://')) {
+      return _parseSimpleUri(
+        value,
+        GatewayProtocol.tuic,
+        schemes: const {'tuic'},
+      );
+    }
 
     if (value.contains('[Interface]') && value.contains('[Peer]')) {
       return _parseWireGuardFamily(value);
     }
 
-    if (value.startsWith('{')) return _parseJson(value);
+    if (value.startsWith('{')) {
+      return _parseJson(value);
+    }
 
     throw const FormatException(
       'Поддерживаются VLESS, VMess, Trojan, Shadowsocks, Hysteria2, TUIC, WireGuard, AmneziaWG и JSON-профили.',
@@ -386,8 +398,6 @@ class GatewayConfigParser {
     if (uri == null || uri.scheme != 'ss') {
       throw const FormatException('Некорректный Shadowsocks URI.');
     }
-    // SIP002 permits both base64 userinfo and legacy fully-base64 payloads.
-    // Native engines perform the final method/password validation.
     if (uri.host.isEmpty && !value.substring(5).contains('@')) {
       try {
         final payload = value.substring(5).split('#').first.split('?').first;
