@@ -11,17 +11,20 @@ enum TunnelStatus {
 enum GatewayProtocol {
   automatic,
   vlessReality,
+  vmessXray,
   amneziaWg;
 
   String get title => switch (this) {
         GatewayProtocol.automatic => 'Автоматически',
-        GatewayProtocol.vlessReality => 'VLESS · REALITY',
+        GatewayProtocol.vlessReality => 'VLESS · Xray/REALITY',
+        GatewayProtocol.vmessXray => 'VMess · Xray',
         GatewayProtocol.amneziaWg => 'AmneziaWG',
       };
 
   String get wireName => switch (this) {
         GatewayProtocol.automatic => 'auto',
         GatewayProtocol.vlessReality => 'vless-reality',
+        GatewayProtocol.vmessXray => 'vmess-xray',
         GatewayProtocol.amneziaWg => 'amneziawg',
       };
 }
@@ -210,6 +213,10 @@ class GatewayConfigParser {
       return _parseVless(value);
     }
 
+    if (value.startsWith('vmess://')) {
+      return _parseVmess(value);
+    }
+
     if (value.contains('[Interface]') && value.contains('[Peer]')) {
       return _parseAmneziaWg(value);
     }
@@ -219,7 +226,7 @@ class GatewayConfigParser {
     }
 
     throw const FormatException(
-      'Поддерживаются VLESS URI, AmneziaWG/WireGuard INI и JSON-профиль.',
+      'Поддерживаются VLESS URI, VMess URI, AmneziaWG/WireGuard INI и JSON-профиль.',
     );
   }
 
@@ -234,6 +241,12 @@ class GatewayConfigParser {
     if (uri.queryParameters['security']?.toLowerCase() != 'reality') {
       throw const FormatException('Ожидается транспорт VLESS + REALITY.');
     }
+    if ((uri.queryParameters['pbk'] ?? '').trim().isEmpty ||
+        (uri.queryParameters['sni'] ?? '').trim().isEmpty) {
+      throw const FormatException(
+        'Для VLESS + REALITY необходимы public key (pbk) и SNI.',
+      );
+    }
 
     final name = uri.fragment.isEmpty
         ? '${uri.host}:${uri.port}'
@@ -241,6 +254,47 @@ class GatewayConfigParser {
     return ImportedGatewayConfig(
       protocol: GatewayProtocol.vlessReality,
       displayName: name,
+      rawValue: value,
+    );
+  }
+
+  static ImportedGatewayConfig _parseVmess(String value) {
+    final encoded = value.substring('vmess://'.length).trim();
+    if (encoded.isEmpty) {
+      throw const FormatException('VMess-профиль пуст.');
+    }
+
+    Map<String, dynamic> decoded;
+    try {
+      final json = utf8.decode(base64.decode(base64.normalize(encoded)));
+      final object = jsonDecode(json);
+      if (object is! Map<String, dynamic>) {
+        throw const FormatException('VMess payload должен быть JSON-объектом.');
+      }
+      decoded = object;
+    } on FormatException {
+      rethrow;
+    } catch (_) {
+      throw const FormatException('Некорректный VMess base64/JSON профиль.');
+    }
+
+    final host = (decoded['add'] as String?)?.trim() ?? '';
+    final uuid = (decoded['id'] as String?)?.trim() ?? '';
+    final portValue = decoded['port'];
+    final port = portValue is num
+        ? portValue.toInt()
+        : int.tryParse(portValue?.toString() ?? '');
+    if (host.isEmpty || port == null || port < 1 || port > 65535) {
+      throw const FormatException('В VMess-конфигурации нет адреса или порта.');
+    }
+    if (!_uuid.hasMatch(uuid)) {
+      throw const FormatException('Некорректный UUID VMess.');
+    }
+
+    final name = (decoded['ps'] as String?)?.trim();
+    return ImportedGatewayConfig(
+      protocol: GatewayProtocol.vmessXray,
+      displayName: name?.isNotEmpty == true ? name! : '$host:$port',
       rawValue: value,
     );
   }
@@ -283,6 +337,7 @@ class GatewayConfigParser {
 
     final protocol = switch (decoded['protocol']) {
       'vless-reality' => GatewayProtocol.vlessReality,
+      'vmess-xray' => GatewayProtocol.vmessXray,
       'amneziawg' => GatewayProtocol.amneziaWg,
       _ => throw const FormatException('Неизвестный протокол JSON-профиля.'),
     };
@@ -291,11 +346,20 @@ class GatewayConfigParser {
       throw const FormatException('В JSON-профиле отсутствует поле config.');
     }
 
+    final parsed = switch (protocol) {
+      GatewayProtocol.vlessReality => _parseVless(config),
+      GatewayProtocol.vmessXray => _parseVmess(config),
+      GatewayProtocol.amneziaWg => _parseAmneziaWg(config),
+      GatewayProtocol.automatic => throw const FormatException(
+          'Автоматический протокол нельзя импортировать как профиль.',
+        ),
+    };
+
     return ImportedGatewayConfig(
       protocol: protocol,
       displayName: (decoded['name'] as String?)?.trim().isNotEmpty == true
           ? (decoded['name'] as String).trim()
-          : 'Импортированный профиль',
+          : parsed.displayName,
       rawValue: config,
     );
   }
@@ -320,4 +384,3 @@ String formatDuration(Duration duration) {
   final seconds = (duration.inSeconds % 60).toString().padLeft(2, '0');
   return '$hours:$minutes:$seconds';
 }
-
