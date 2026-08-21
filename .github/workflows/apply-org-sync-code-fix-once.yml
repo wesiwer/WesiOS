@@ -1,5 +1,5 @@
 name: Diagnose PR 241 full analyze
-# trigger: pr241-analyze-v2
+# trigger: pr241-analyze-v3-start-marker
 
 on:
   push:
@@ -19,6 +19,20 @@ jobs:
         with:
           ref: fix/recovery-org-canonical-compare
           fetch-depth: 1
+
+      - name: Mark analyzer started
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf 'started=1\nworkflow_source=%s\nbranch_head=%s\n' "$GITHUB_SHA" "$(git rev-parse HEAD)" > /tmp/start.txt
+          CONTENT=$(base64 -w0 /tmp/start.txt)
+          URL="/repos/$GITHUB_REPOSITORY/contents/.github/ops/pr241-full-analyze-started.txt"
+          SHA=$(gh api "$URL" --jq .sha 2>/dev/null || true)
+          ARGS=(--method PUT "$URL" -f message='ops(sync): mark PR 241 analyzer started' -f content="$CONTENT" -f branch=main)
+          if [ -n "$SHA" ]; then ARGS+=( -f sha="$SHA" ); fi
+          gh api "${ARGS[@]}" >/dev/null
 
       - uses: subosito/flutter-action@v2
         with:
