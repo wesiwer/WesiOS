@@ -1,5 +1,5 @@
-name: Validate legacy JSON restore
-# trigger: legacy-json-v1-simple-runner
+name: Diagnose PR 241 full analyze
+# trigger: pr241-analyze-v1
 
 on:
   push:
@@ -11,90 +11,51 @@ permissions:
   contents: write
 
 jobs:
-  validate:
+  analyze:
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
         with:
           ref: fix/recovery-org-canonical-compare
-          fetch-depth: 0
-          token: ${{ github.token }}
-
-      - name: Mark runner started
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          printf 'started=1\nsource=%s\n' "$GITHUB_SHA" > /tmp/start.txt
-          CONTENT=$(base64 -w0 /tmp/start.txt)
-          URL="/repos/$GITHUB_REPOSITORY/contents/.github/ops/legacy-backup-started.txt"
-          SHA=$(gh api "$URL" --jq .sha 2>/dev/null || true)
-          ARGS=(--method PUT "$URL" -f message='ops(backup): mark legacy validation started' -f content="$CONTENT" -f branch=main)
-          if [ -n "$SHA" ]; then ARGS+=( -f sha="$SHA" ); fi
-          gh api "${ARGS[@]}" >/dev/null
+          fetch-depth: 1
 
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
           cache: true
 
-      - name: Patch and validate
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 tools/ops/integrate_legacy_backup.py
-          dart format \
-            lib/core/backup/legacy_json_backup.dart \
-            lib/core/backup/local_backup_service.dart \
-            lib/core/constants/app_version.dart \
-            lib/features/settings/sync_screen.dart \
-            test/core/backup/legacy_json_backup_test.dart
-          git diff --check
-          grep -q '^version: 0.22.35+110$' pubspec.yaml
-          grep -q "number = '0.22.35'" lib/core/constants/app_version.dart
-          grep -q 'build = 110' lib/core/constants/app_version.dart
-          flutter pub get
-          flutter test \
-            test/core/backup/local_backup_service_test.dart \
-            test/core/backup/legacy_json_backup_test.dart \
-            test/core/sync/sync_recovery_test.dart \
-            test/core/sync/organization_sync_hidden_cache_engine_test.dart \
-            test/core/sync/organization_manual_download_used_device_test.dart \
-            test/core/sync/organization_sync_legacy_root_test.dart \
-            test/core/sync/organization_sync_recovery_test.dart \
-            test/core/sync/organization_sync_server_compat_test.dart
-          flutter analyze --no-fatal-infos --no-fatal-warnings \
-            lib/core/backup/legacy_json_backup.dart \
-            lib/core/backup/local_backup_service.dart \
-            lib/core/sync/sync_engine.dart \
-            lib/core/sync/sync_manual_direction.dart \
-            lib/core/sync/sync_recovery.dart \
-            lib/features/settings/sync_screen.dart \
-            test/core/backup/legacy_json_backup_test.dart
-
-      - name: Commit validated fix
-        run: |
-          set -euo pipefail
-          rm -f tools/ops/integrate_legacy_backup.py
-          git config user.name 'WesiOS Backup Fix'
-          git config user.email 'actions@users.noreply.github.com'
-          git add -A \
-            lib/core/backup \
-            lib/core/constants/app_version.dart \
-            lib/features/settings/sync_screen.dart \
-            test/core/backup \
-            tools/ops/integrate_legacy_backup.py
-          git commit -m 'fix(backup): restore official legacy JSON backups'
-          git push origin HEAD:fix/recovery-org-canonical-compare
-
-      - name: Mark validation green
+      - name: Run full analyzer and persist exact output
         env:
           GH_TOKEN: ${{ github.token }}
+        shell: bash
         run: |
-          printf 'ok=1\nbranch=%s\n' 'fix/recovery-org-canonical-compare' > /tmp/result.txt
-          CONTENT=$(base64 -w0 /tmp/result.txt)
-          URL="/repos/$GITHUB_REPOSITORY/contents/.github/ops/legacy-backup-result.txt"
+          set -uo pipefail
+          flutter pub get > /tmp/pubget.log 2>&1
+          PUB_RC=$?
+          if [ "$PUB_RC" -eq 0 ]; then
+            flutter analyze --no-fatal-infos > /tmp/analyze.log 2>&1
+            RC=$?
+          else
+            RC=$PUB_RC
+            cp /tmp/pubget.log /tmp/analyze.log
+          fi
+
+          {
+            echo "exit=$RC"
+            echo "branch_head=$(git rev-parse HEAD)"
+            echo "--- errors/warnings ---"
+            grep -E 'error •|warning •|^error |^warning ' /tmp/analyze.log || true
+            echo "--- tail ---"
+            tail -n 260 /tmp/analyze.log
+          } > /tmp/report.txt
+          cat /tmp/report.txt
+
+          CONTENT=$(base64 -w0 /tmp/report.txt)
+          URL="/repos/$GITHUB_REPOSITORY/contents/.github/ops/pr241-full-analyze.txt"
           SHA=$(gh api "$URL" --jq .sha 2>/dev/null || true)
-          ARGS=(--method PUT "$URL" -f message='ops(backup): legacy JSON validation green' -f content="$CONTENT" -f branch=main)
+          ARGS=(--method PUT "$URL" -f message='ops(sync): record PR 241 analyzer output' -f content="$CONTENT" -f branch=main)
           if [ -n "$SHA" ]; then ARGS+=( -f sha="$SHA" ); fi
           gh api "${ARGS[@]}" >/dev/null
+
+          exit "$RC"
