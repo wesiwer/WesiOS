@@ -65,7 +65,19 @@ class GatewaySecretStore {
     ]);
   }
 
-  Future<String?> readLicenseKey() => _storage.read(key: _licenseKey);
+  Future<String?> readLicenseKey() async {
+    final stored = (await _storage.read(key: _licenseKey))?.trim();
+    if (stored != null && stored.isNotEmpty) return stored;
+
+    // Prototype builds receive a server-issued license at build time. Keeping
+    // the fallback behind a dart-define means normal production builds never
+    // acquire implicit access and continue to require the regular tariff flow.
+    const prototypeLicense = String.fromEnvironment(
+      'WESI_AERO_PROTOTYPE_LICENSE',
+    );
+    final fallback = prototypeLicense.trim();
+    return fallback.isEmpty ? null : fallback;
+  }
 
   Future<void> saveLicenseKey(String value) =>
       _storage.write(key: _licenseKey, value: value.trim());
