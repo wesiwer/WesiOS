@@ -2,7 +2,11 @@ import assert from 'node:assert/strict';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 
 import { openDatabase } from '../src/database.mjs';
-import { GatewayRepository, RepositoryError } from '../src/repository.mjs';
+import {
+  GatewayRepository,
+  RepositoryError,
+  SUPPORTED_PROTOCOLS,
+} from '../src/repository.mjs';
 
 describe('GatewayRepository', () => {
   let database;
@@ -22,7 +26,7 @@ describe('GatewayRepository', () => {
       country: 'Germany',
       countryCode: 'DE',
       endpoint: 'gateway.example:443',
-      protocols: ['vless-reality', 'vmess-xray', 'amneziawg'],
+      protocols: [...SUPPORTED_PROTOCOLS],
       load: 0.2,
       online: true,
       recommended: true,
@@ -47,7 +51,20 @@ describe('GatewayRepository', () => {
     assert.equal(Buffer.from(row.token_hash).includes(Buffer.from(created.token)), false);
   });
 
-  it('accepts VMess/Xray as a first-class lease protocol', () => {
+  it('defines exactly eight canonical user protocols', () => {
+    assert.deepEqual(SUPPORTED_PROTOCOLS, [
+      'vless-reality',
+      'vmess',
+      'trojan',
+      'shadowsocks',
+      'hysteria2',
+      'tuic',
+      'wireguard',
+      'amneziawg',
+    ]);
+  });
+
+  it('normalizes the legacy VMess/Xray lease name', () => {
     const created = repository.createUser({
       displayName: 'VMess User',
       maxSessions: 1,
@@ -60,8 +77,26 @@ describe('GatewayRepository', () => {
       nodeId: 'de-fra-01',
       protocol: 'vmess-xray',
     });
-    assert.equal(lease.protocol, 'vmess-xray');
-    assert.equal(lease.node.protocols.includes('vmess-xray'), true);
+    assert.equal(lease.protocol, 'vmess');
+    assert.equal(lease.node.protocols.includes('vmess'), true);
+  });
+
+  it('accepts every canonical protocol when the node advertises it', () => {
+    for (const [index, protocol] of SUPPORTED_PROTOCOLS.entries()) {
+      const created = repository.createUser({
+        displayName: `Protocol User ${index}`,
+        maxSessions: 1,
+        quotaBytes: 0,
+      });
+      const user = repository.authenticate(created.token);
+      const lease = repository.reserveLease({
+        user,
+        deviceId: `android-proto-${String(index).padStart(3, '0')}`,
+        nodeId: 'de-fra-01',
+        protocol,
+      });
+      assert.equal(lease.protocol, protocol);
+    }
   });
 
   it('enforces the concurrent session limit atomically', () => {
@@ -75,7 +110,7 @@ describe('GatewayRepository', () => {
       user,
       deviceId: 'android-device-001',
       nodeId: 'de-fra-01',
-      protocol: 'amneziawg',
+      protocol: 'wireguard',
     });
     assert.throws(
       () => repository.reserveLease({
@@ -101,13 +136,13 @@ describe('GatewayRepository', () => {
       user,
       deviceId: 'android-device-001',
       nodeId: 'de-fra-01',
-      protocol: 'amneziawg',
+      protocol: 'wireguard',
     });
     const second = repository.reserveLease({
       user,
       deviceId: 'android-device-001',
       nodeId: 'de-fra-01',
-      protocol: 'amneziawg',
+      protocol: 'wireguard',
     });
     assert.notEqual(first.id, second.id);
     assert.equal(repository.activeLeaseCount(user.id), 1);
@@ -126,7 +161,7 @@ describe('GatewayRepository', () => {
         user,
         deviceId: 'android-device-001',
         nodeId: 'de-fra-01',
-        protocol: 'amneziawg',
+        protocol: 'wireguard',
       }),
       (error) => error instanceof RepositoryError &&
         error.code === 'TRAFFIC_QUOTA_REACHED',
@@ -144,7 +179,7 @@ describe('GatewayRepository', () => {
       user,
       deviceId: 'android-device-001',
       nodeId: 'de-fra-01',
-      protocol: 'amneziawg',
+      protocol: 'wireguard',
     });
     now += 121_000;
     assert.equal(repository.activeLeaseCount(user.id), 0);
