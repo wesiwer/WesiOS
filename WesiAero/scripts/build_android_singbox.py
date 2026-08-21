@@ -11,6 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = ROOT / "android/app/libs/libbox.aar"
 SING_BOX_REPO = "https://github.com/SagerNet/sing-box.git"
 SING_BOX_TAG = "v1.13.18"
+GOMOBILE_VERSION = "v0.1.12"
 EXPECTED_GO_PREFIX = "go1.24."
 
 
@@ -20,6 +21,28 @@ def run(*args: str, cwd: Path | None = None, env: dict[str, str] | None = None) 
 
 def output(*args: str, cwd: Path | None = None) -> str:
     return subprocess.check_output(args, cwd=cwd, text=True).strip()
+
+
+def bootstrap_gomobile(env: dict[str, str]) -> None:
+    gopath = Path(output("go", "env", "GOPATH"))
+    gobin = gopath / "bin"
+    gomobile = gobin / "gomobile"
+    gobind = gobin / "gobind"
+    if not gomobile.is_file() or not gobind.is_file():
+        run(
+            "go",
+            "install",
+            f"github.com/sagernet/gomobile/cmd/gomobile@{GOMOBILE_VERSION}",
+            env=env,
+        )
+        run(
+            "go",
+            "install",
+            f"github.com/sagernet/gomobile/cmd/gobind@{GOMOBILE_VERSION}",
+            env=env,
+        )
+    env["PATH"] = f"{gobin}:{env.get('PATH', '')}"
+    run(str(gomobile), "init", env=env)
 
 
 def main() -> None:
@@ -34,6 +57,10 @@ def main() -> None:
         print(f"Using cached {OUTPUT} ({OUTPUT.stat().st_size} bytes)")
         return
 
+    env = os.environ.copy()
+    env.setdefault("GOTOOLCHAIN", "auto")
+    bootstrap_gomobile(env)
+
     with tempfile.TemporaryDirectory(prefix="wesi-singbox-") as temp_raw:
         source = Path(temp_raw) / "sing-box"
         run(
@@ -45,10 +72,9 @@ def main() -> None:
             SING_BOX_TAG,
             SING_BOX_REPO,
             str(source),
+            env=env,
         )
         bind_target = os.environ.get("WESI_AERO_SINGBOX_TARGET", "android/arm64")
-        env = os.environ.copy()
-        env.setdefault("GOTOOLCHAIN", "auto")
         run(
             "go",
             "run",
