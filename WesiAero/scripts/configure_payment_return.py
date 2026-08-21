@@ -4,7 +4,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from configure_android_wireguard import patch_gradle, write_activity
+from configure_android_wireguard import main as configure_wireguard
 
 
 def configure_manifest(path: Path) -> None:
@@ -52,9 +52,21 @@ if __name__ == "__main__":
     )
     if not manifest.is_file():
         raise SystemExit(f"Android manifest not found: {manifest}")
+
     configure_manifest(manifest)
 
-    # The CI/bootstrap path already calls this script after `flutter create`.
-    # Configure the real native WireGuard backend in the same deterministic step.
-    patch_gradle()
-    write_activity()
+    # CI and local platform bootstrap already invoke this script immediately
+    # after `flutter create`. Keep the real native VPN backend in the exact same
+    # deterministic step so no release APK can accidentally ship the preview
+    # MethodChannel implementation.
+    configure_wireguard()
+
+    gradle = Path("android/app/build.gradle.kts").read_text(encoding="utf-8")
+    activity = Path(
+        "android/app/src/main/kotlin/com/wesi/wesi_aero/MainActivity.kt"
+    ).read_text(encoding="utf-8")
+    if "com.wireguard.android:tunnel:" not in gradle:
+        raise SystemExit("WireGuard Android dependency was not configured")
+    if "GoBackend" not in activity or "VpnService.prepare" not in activity:
+        raise SystemExit("Native Android VPN bridge was not configured")
+    print("Configured Wesi Aero Android VPN bridge and payment return")
