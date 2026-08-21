@@ -82,6 +82,7 @@ jobs:
           python3 scripts/configure_android_xray.py
           python3 scripts/harden_android_xray_datapath.py
           python3 scripts/optimize_flutter_control_plane.py
+          python3 scripts/fix_flutter_perf_compat.py
           for density in mdpi hdpi xhdpi xxhdpi xxxhdpi; do
             cp assets/branding/wesi_aero_mark.png "android/app/src/main/res/mipmap-$density/ic_launcher.png"
           done
@@ -91,6 +92,7 @@ jobs:
           grep -q 'put("outboundTag", "proxy")' android/app/src/main/kotlin/com/wesi/wesi_aero/AeroXrayVpnService.kt
           grep -q 'child: BackdropGroup(' lib/src/screens/app_shell.dart
           grep -q 'Duration(milliseconds: 33)' lib/src/widgets/ambient_background.dart
+          grep -q 'final ValueNotifier<double> phase;' lib/src/widgets/ambient_background.dart
           grep -q 'if (embedded.isNotEmpty) return embedded;' lib/src/services/secret_store.dart
           bash -n server-node/scripts/ensure-prototype-license.sh
           test -s android/app/libs/libv2ray.aar
