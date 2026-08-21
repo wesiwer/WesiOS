@@ -9,6 +9,11 @@ import {
   workspaceSnapshot,
   applySubagentWorkspaceEdits,
 } from './multi_agent_workspace.mjs';
+import {
+  agencyPlannerCatalog,
+  loadAgencyAgentsCatalog,
+  resolveAgencyAgent,
+} from './agency_agents_catalog.mjs';
 import {stepIo} from './step_io.mjs';
 
 function stripLeadingReasoningBlocks(value) {
@@ -117,9 +122,13 @@ export function parseDynamicSubagentToolRequest(value) {
   return name ? {name, arguments: args} : null;
 }
 
-function plannerInput(prepared, policy) {
+function plannerInput(prepared, policy, agencyCandidates = []) {
   const toolNames = Array.isArray(policy.allowedToolNames) ? policy.allowedToolNames.map(String).filter(Boolean).slice(0, 40) : [];
   const maxAgents = Math.max(0, Math.min(MAX_DYNAMIC_SUBAGENTS, Number(policy.maxAgents || 0) || 0));
+  const agencyText = agencyCandidates.length
+    ? `\n[WESI_AI_AGENCY_AGENT_CANDIDATES]\n${JSON.stringify(agencyCandidates)}\n` +
+      'Это отфильтрованный каталог The Agency. Если выбираешь такого специалиста, укажи его поле name в role ТОЧНО, без переименования. Полный профиль будет подгружен только выбранному субагенту. '
+    : '';
   return {
     system: [
       ...(Array.isArray(prepared.systemParts) ? prepared.systemParts : []),
@@ -127,7 +136,9 @@ function plannerInput(prepared, policy) {
         `Ты Lead Coordinator. Реши, нужны ли для текущей задачи временные специалисты. Допустимо от 0 до ${maxAgents} субагентов. ` +
         'Создавай их только когда декомпозиция реально улучшает точность/проверку. Запрещены рекурсивные агенты, скрытые рассуждения, destructive actions и финальный ответ пользователю на этом шаге. ' +
         'Каждому специалисту дай узкую роль и независимую задачу. requestedCapabilities могут содержать только разрешённые read-only tools. ' +
-        `Базовый каталог специалистов: ${BASELINE_SUBAGENT_ROLES.join('; ')}. Предпочитай подходящую роль из каталога, а если ни одна не подходит — создай узкую динамическую роль под задачу. ` +
+        `Базовый каталог специалистов: ${BASELINE_SUBAGENT_ROLES.join('; ')}. ` +
+        'При наличии Agency-кандидатов предпочитай наиболее узкого подходящего специалиста из них; не зови лишних агентов. Если ничего не подходит — используй базовую или узкую динамическую роль. ' +
+        agencyText +
         'writablePaths относятся только к изолированному coordination workspace и НЕ дают доступ к host filesystem. ' +
         'Верни ТОЛЬКО JSON без markdown: {"subagents":[{"role":"...","task":"...","requestedCapabilities":["..."],"readablePaths":["..."],"writablePaths":["..."]}]}.\n' +
         `[WESI_AI_DYNAMIC_ALLOWED_TOOLS]\n${JSON.stringify(toolNames)}`,
@@ -193,15 +204,20 @@ function toolInstruction(policy) {
     JSON.stringify(policy.toolDefinitions);
 }
 
-function subagentInput(spec, policy, toolResults, workspace, finalOnly) {
+function subagentInput(spec, policy, toolResults, workspace, finalOnly, agencyProfile = null) {
   const snapshot = workspaceSnapshot(workspace, spec.workspace.readablePaths);
   const systemParts = [
     '[WESI_AI_DYNAMIC_SUBAGENT_ROLE]\n' +
       `Ты временный specialist: ${spec.role}. Выполни только переданную узкую задачу. Ты не Lead и не формируешь финальный ответ пользователю.`,
+  ];
+  if (agencyProfile?.systemPrompt) {
+    systemParts.push(agencyProfile.systemPrompt);
+  }
+  systemParts.push(
     '[WESI_AI_DYNAMIC_SUBAGENT_SPEC]\n' + JSON.stringify(spec),
     '[WESI_AI_MULTI_AGENT_WORKSPACE_SNAPSHOT]\n' + JSON.stringify(snapshot),
     resultInstruction(spec),
-  ];
+  );
   const toolPart = toolInstruction(policy);
   if (toolPart && !finalOnly) systemParts.push(toolPart);
   if (toolResults.length) systemParts.push('[WESI_AI_VERIFIED_SUBAGENT_TOOL_RESULTS]\n' + JSON.stringify(toolResults));
@@ -216,11 +232,13 @@ function safeToolResult(name, raw) {
   return {...raw, tool: String(raw.tool || name), verified: true};
 }
 
-async function runOneSubagent({spec, policy, workspace, invokeModel, invokeTool, emit, signal, budget}) {
+async function runOneSubagent({spec, policy, workspace, invokeModel, invokeTool, emit, signal, budget, agencyProfile = null}) {
   const send = typeof emit === 'function' ? emit : () => {};
   send(buildDynamicSubagentEvent(spec, 'start', {
     label: `${spec.role} · за работой`,
-    detail: 'Работает отдельно, с урезанными правами и своим бюджетом вызовов.',
+    detail: agencyProfile
+      ? `Профиль The Agency · ${agencyProfile.divisionLabel}. Работает отдельно, с урезанными правами и своим бюджетом вызовов.`
+      : 'Работает отдельно, с урезанными правами и своим бюджетом вызовов.',
   }));
   const toolResults = [];
   const seenCalls = new Set();
@@ -234,7 +252,7 @@ async function runOneSubagent({spec, policy, workspace, invokeModel, invokeTool,
       spec,
       actor: 'subagent',
       phase: finalOnly ? 'final' : `tool-${turn + 1}`,
-      input: subagentInput(spec, policy, toolResults, workspace, finalOnly),
+      input: subagentInput(spec, policy, toolResults, workspace, finalOnly, agencyProfile),
     });
     const toolRequest = parseDynamicSubagentToolRequest(raw);
     if (!toolRequest) break;
@@ -284,7 +302,45 @@ async function runOneSubagent({spec, policy, workspace, invokeModel, invokeTool,
     `Что дал ${spec.role}`,
     visibleResult || 'Независимая проверка завершена; её выводы учту при сборке итогового ответа.',
   ));
-  return {ok: true, spec, result, toolResults, workspaceResult};
+  return {
+    ok: true,
+    spec,
+    result,
+    toolResults,
+    workspaceResult,
+    agency: agencyProfile ? agencyProfile.provenance : null,
+  };
+}
+
+async function loadAgencyRuntime(prepared, send) {
+  const tier = String(prepared?.tier || '').trim().toLowerCase();
+  if (tier !== 'pro' && tier !== 'maximum') return {catalog: [], candidates: []};
+  try {
+    const catalog = await loadAgencyAgentsCatalog();
+    const candidates = agencyPlannerCatalog(catalog, prepared.message, {
+      limit: tier === 'maximum' ? 28 : 20,
+      persona: prepared.persona,
+    });
+    return {catalog, candidates};
+  } catch (error) {
+    send({
+      type: 'activity',
+      kind: 'status',
+      phase: 'fallback',
+      label: 'The Agency временно недоступна',
+      detail: 'Продолжаю с базовыми и динамическими субагентами; основной ответ не блокируется.',
+    });
+    return {catalog: [], candidates: []};
+  }
+}
+
+async function resolveAgencyProfile(spec, catalog) {
+  if (!Array.isArray(catalog) || !catalog.length) return null;
+  try {
+    return await resolveAgencyAgent(spec.role, {catalog});
+  } catch {
+    return null;
+  }
 }
 
 export async function runDynamicSubagents({prepared, invokeModel, invokeTool, emit, signal}) {
@@ -296,6 +352,7 @@ export async function runDynamicSubagents({prepared, invokeModel, invokeTool, em
   const send = typeof emit === 'function' ? emit : () => {};
   const workspace = createConflictSafeWorkspace({workspaceId: `${prepared.requestId}:workspace`, files: policy.workspaceFiles});
   const manualRequest = parseManualSubagentRequest(prepared.message);
+  const agencyRuntime = await loadAgencyRuntime(prepared, send);
   let planRaw = '';
   if (manualRequest) {
     planRaw = JSON.stringify({
@@ -306,15 +363,24 @@ export async function runDynamicSubagents({prepared, invokeModel, invokeTool, em
       }],
     });
   } else {
-    planRaw = await invokeModel({actor: 'lead', phase: 'subagent-plan', input: plannerInput(prepared, policy)});
+    planRaw = await invokeModel({
+      actor: 'lead',
+      phase: 'subagent-plan',
+      input: plannerInput(prepared, policy, agencyRuntime.candidates),
+    });
   }
   const specs = sanitizePlan(planRaw, prepared, policy, workspace);
   if (!specs.length) return {ok: true, skipped: true, reason: 'planner_selected_none', results: [], workspace: workspaceSnapshot(workspace)};
 
+  const agencyProfiles = new Map();
   for (const spec of specs) {
+    const profile = await resolveAgencyProfile(spec, agencyRuntime.catalog);
+    if (profile) agencyProfiles.set(spec.agentId, profile);
     send(buildDynamicSubagentEvent(spec, 'planned', {
       label: `Зову специалиста · ${spec.role}`,
-      detail: `Поручаю: ${visibleSnippet(spec.task, 300)}`,
+      detail: profile
+        ? `The Agency · ${profile.divisionLabel}. Поручаю: ${visibleSnippet(spec.task, 260)}`
+        : `Поручаю: ${visibleSnippet(spec.task, 300)}`,
     }));
     send(reasoningEvent(
       `Зачем нужен ${spec.role}`,
@@ -327,7 +393,17 @@ export async function runDynamicSubagents({prepared, invokeModel, invokeTool, em
   for (const spec of specs) {
     if (signal?.aborted) throw new Error('WAI_SUBAGENT_CANCELLED');
     try {
-      results.push(await runOneSubagent({spec, policy, workspace, invokeModel, invokeTool, emit: send, signal, budget}));
+      results.push(await runOneSubagent({
+        spec,
+        policy,
+        workspace,
+        invokeModel,
+        invokeTool,
+        emit: send,
+        signal,
+        budget,
+        agencyProfile: agencyProfiles.get(spec.agentId) || null,
+      }));
     } catch (error) {
       if (signal?.aborted) throw error;
       send(buildDynamicSubagentEvent(spec, 'fallback', {label: `${spec.role}: недоступен`, detail: 'Lead продолжит без результата этого временного специалиста.'}));
