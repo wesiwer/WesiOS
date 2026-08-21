@@ -12,6 +12,8 @@
   системной маршрутизации;
 - контракт нативного туннельного хоста для Android и Windows;
 - минимальный проверяемый control plane на Node.js 24 + SQLite;
+- тарифы, ключи, device-seat enforcement и платёжные адаптеры;
+- отдельное приложение Wesi Aero Admin для Android и Windows;
 - архитектурные и эксплуатационные документы.
 
 ## Быстрый запуск интерфейса
@@ -83,4 +85,5 @@ UI и control plane являются рабочей базой MVP. Для produ
 
 Подробности: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md),
 [docs/DESIGN_SYSTEM.md](docs/DESIGN_SYSTEM.md) и
-[docs/PRODUCTION_ROADMAP.md](docs/PRODUCTION_ROADMAP.md).
+[docs/PRODUCTION_ROADMAP.md](docs/PRODUCTION_ROADMAP.md). Контракт второго этапа:
+[docs/STAGE2_ADMIN_AND_BILLING.md](docs/STAGE2_ADMIN_AND_BILLING.md).

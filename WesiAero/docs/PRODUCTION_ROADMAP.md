@@ -6,6 +6,8 @@
 - работает безопасный demo engine;
 - реализован control plane с токенами, lease, session limit и quota;
 - control plane покрыт тестами;
+- реализованы тарифы, ключи, лимит устройств, сроки и payment adapters;
+- готовы Wesi Aero Admin и revisioned catalog для клиентской синхронизации;
 - определены Android/Windows host contracts;
 - реальный data plane намеренно не активируется.
 

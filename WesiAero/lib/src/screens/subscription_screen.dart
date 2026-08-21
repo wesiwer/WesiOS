@@ -41,7 +41,7 @@ class SubscriptionScreen extends StatelessWidget {
                         final builder = _PlanBuilder(
                           onPay: () => _choosePayment(context),
                         );
-                        final aside = const _SubscriptionAside();
+                        const aside = _SubscriptionAside();
                         return Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
@@ -59,7 +59,7 @@ class SubscriptionScreen extends StatelessWidget {
                                 children: [
                                   Expanded(flex: 5, child: builder),
                                   const SizedBox(width: GatewayTokens.space16),
-                                  const Expanded(flex: 3, child: aside),
+                                  Expanded(flex: 3, child: aside),
                                 ],
                               )
                             else ...[
