@@ -8,6 +8,7 @@ import 'sync_codec.dart';
 import 'sync_endpoint.dart';
 import 'sync_journal.dart';
 import 'sync_merge.dart';
+import 'sync_recovery_guard.dart';
 import 'sync_transport.dart';
 
 class SyncCollectionReport {
@@ -168,6 +169,10 @@ class SyncEngine {
   }
 
   static Future<void> runOnLaunch() async {
+    if (SyncRecoveryGuard.active) {
+      await prepare();
+      return;
+    }
     if (!SyncEndpoint.enabled) {
       await prepare();
       return;
@@ -325,6 +330,16 @@ class SyncEngine {
     Set<String>? only,
   }) async {
     final at = now ?? SyncClock.now();
+
+    if (SyncRecoveryGuard.active) {
+      return _finish(SyncReport(
+        at: at,
+        failure: const SyncFailure(
+          'RECOVERY_LOCKED',
+          'Обычная синхронизация заблокирована до проверки локальной копии на сервере',
+        ),
+      ));
+    }
 
     if (busy.value) {
       return SyncReport(
