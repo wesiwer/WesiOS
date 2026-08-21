@@ -29,6 +29,28 @@ if [[ -f "$android_gradle" ]]; then
   sed -i 's/minSdk = flutter.minSdkVersion/minSdk = 23/' "$android_gradle"
 fi
 
+android_manifest="$project_root/android/app/src/main/AndroidManifest.xml"
+if [[ -f "$android_manifest" ]] && ! grep -q 'android:scheme="wesi-aero"' "$android_manifest"; then
+  awk '
+    /        <\/activity>/ && !done {
+      print "            <meta-data"
+      print "                android:name=\"flutter_deeplinking_enabled\""
+      print "                android:value=\"false\" />"
+      print "            <intent-filter>"
+      print "                <action android:name=\"android.intent.action.VIEW\" />"
+      print "                <category android:name=\"android.intent.category.DEFAULT\" />"
+      print "                <category android:name=\"android.intent.category.BROWSABLE\" />"
+      print "                <data"
+      print "                    android:scheme=\"wesi-aero\""
+      print "                    android:host=\"payment-return\" />"
+      print "            </intent-filter>"
+      done=1
+    }
+    { print }
+  ' "$android_manifest" > "$android_manifest.tmp"
+  mv "$android_manifest.tmp" "$android_manifest"
+fi
+
 cd "$project_root"
 flutter pub get
 echo "Android and Windows platform scaffolds are ready."
