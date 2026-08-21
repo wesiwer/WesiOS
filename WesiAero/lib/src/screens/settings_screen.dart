@@ -164,7 +164,11 @@ class _ProtocolSelector extends StatelessWidget {
   Widget build(BuildContext context) {
     final controller = GatewayScope.of(context);
     final available = controller.selectedNode?.protocols ??
-        const {GatewayProtocol.vlessReality, GatewayProtocol.amneziaWg};
+        const {
+          GatewayProtocol.vlessReality,
+          GatewayProtocol.vmessXray,
+          GatewayProtocol.amneziaWg,
+        };
     return Wrap(
       spacing: GatewayTokens.space8,
       runSpacing: GatewayTokens.space8,
@@ -176,6 +180,7 @@ class _ProtocolSelector extends StatelessWidget {
             switch (protocol) {
               GatewayProtocol.automatic => Icons.auto_awesome_rounded,
               GatewayProtocol.vlessReality => Icons.visibility_off_outlined,
+              GatewayProtocol.vmessXray => Icons.hub_outlined,
               GatewayProtocol.amneziaWg => Icons.bolt_rounded,
             },
             size: 18,
@@ -433,7 +438,7 @@ class _GatewayConfigImportSheetState extends State<GatewayConfigImportSheet> {
                 autocorrect: false,
                 enableSuggestions: false,
                 decoration: InputDecoration(
-                  hintText: 'vless://… или [Interface] … [Peer]',
+                  hintText: 'vless://… · vmess://… · [Interface] … [Peer]',
                   errorText: _error,
                   alignLabelWithHint: true,
                 ),
@@ -494,27 +499,34 @@ class _GatewayConfigImportSheetState extends State<GatewayConfigImportSheet> {
     } else if (file.path != null) {
       _controller.text = await File(file.path!).readAsString();
     }
-    if (mounted) setState(() => _error = null);
+    if (mounted) {
+      setState(() {
+        _scanner = false;
+        _error = null;
+      });
+    }
   }
 
   Future<void> _import() async {
+    final value = _controller.text.trim();
+    if (value.isEmpty) {
+      setState(() => _error = 'Вставьте конфигурацию или выберите файл.');
+      return;
+    }
     setState(() {
       _busy = true;
       _error = null;
     });
     try {
-      final config = await widget.onImport(_controller.text);
+      await widget.onImport(value);
       if (!mounted) return;
-      Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Профиль «${config.displayName}» импортирован.')),
-      );
+      Navigator.of(context).pop();
     } on FormatException catch (error) {
-      if (mounted) setState(() => _error = error.message.toString());
+      if (!mounted) return;
+      setState(() => _error = error.message);
     } catch (_) {
-      if (mounted) {
-        setState(() => _error = 'Не удалось сохранить конфигурацию.');
-      }
+      if (!mounted) return;
+      setState(() => _error = 'Не удалось сохранить конфигурацию.');
     } finally {
       if (mounted) setState(() => _busy = false);
     }
