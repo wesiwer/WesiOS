@@ -82,8 +82,7 @@ if [[ ! -s "$REALITY_PRIVATE_FILE" || ! -s "$REALITY_PUBLIC_FILE" ]]; then
   reality_private="$(extract_key "$key_output" private)"
   reality_public="$(extract_key "$key_output" public)"
   if [[ -z "$reality_private" || -z "$reality_public" ]]; then
-    echo "Could not parse xray x25519 output:" >&2
-    printf '%s\n' "$key_output" >&2
+    echo "Could not parse xray x25519 output." >&2
     exit 1
   fi
   printf '%s\n' "$reality_private" > "$REALITY_PRIVATE_FILE"
@@ -182,7 +181,7 @@ chmod 600 "$CONFIG_FILE"
 xray run -test -config "$CONFIG_FILE"
 systemctl enable xray
 systemctl restart xray
-systemctl --no-pager --full status xray | sed -n '1,12p'
+systemctl is-active --quiet xray
 
 if need_cmd ufw && ufw status | grep -q '^Status: active'; then
   ufw allow "${XRAY_VLESS_PORT}/tcp"
@@ -202,20 +201,101 @@ mkdir -p "$CLIENT_DIR"
 chmod 700 "$CLIENT_DIR"
 printf '%s\n' "$VLESS_URI" > "$CLIENT_DIR/vless.txt"
 printf '%s\n' "$VMESS_URI" > "$CLIENT_DIR/vmess.txt"
+
+cat > "$CLIENT_DIR/vless-client.json" <<JSON
+{
+  "log": {"loglevel": "warning"},
+  "inbounds": [
+    {
+      "tag": "socks-in",
+      "listen": "127.0.0.1",
+      "port": 10808,
+      "protocol": "socks",
+      "settings": {"udp": true}
+    }
+  ],
+  "outbounds": [
+    {
+      "tag": "proxy",
+      "protocol": "vless",
+      "settings": {
+        "vnext": [
+          {
+            "address": "$PUBLIC_HOST",
+            "port": $XRAY_VLESS_PORT,
+            "users": [
+              {
+                "id": "$VLESS_UUID",
+                "encryption": "none",
+                "flow": "xtls-rprx-vision"
+              }
+            ]
+          }
+        ]
+      },
+      "streamSettings": {
+        "network": "raw",
+        "security": "reality",
+        "realitySettings": {
+          "serverName": "$REALITY_SERVER_NAME",
+          "fingerprint": "chrome",
+          "publicKey": "$REALITY_PUBLIC",
+          "shortId": "$SHORT_ID",
+          "spiderX": ""
+        }
+      }
+    }
+  ]
+}
+JSON
+
+cat > "$CLIENT_DIR/vmess-client.json" <<JSON
+{
+  "log": {"loglevel": "warning"},
+  "inbounds": [
+    {
+      "tag": "socks-in",
+      "listen": "127.0.0.1",
+      "port": 10808,
+      "protocol": "socks",
+      "settings": {"udp": true}
+    }
+  ],
+  "outbounds": [
+    {
+      "tag": "proxy",
+      "protocol": "vmess",
+      "settings": {
+        "vnext": [
+          {
+            "address": "$PUBLIC_HOST",
+            "port": $XRAY_VMESS_PORT,
+            "users": [
+              {
+                "id": "$VMESS_UUID",
+                "alterId": 0,
+                "security": "auto"
+              }
+            ]
+          }
+        ]
+      },
+      "streamSettings": {
+        "network": "raw",
+        "security": "none"
+      }
+    }
+  ]
+}
+JSON
+
 chmod 600 "$CLIENT_DIR"/*
+xray run -test -config "$CLIENT_DIR/vless-client.json"
+xray run -test -config "$CLIENT_DIR/vmess-client.json"
 
 cat <<EOF
-
-Wesi Aero Xray prototype is active.
+Wesi Aero Xray is active.
 Primary: VLESS + REALITY on ${PUBLIC_HOST}:${XRAY_VLESS_PORT}
 Fallback: VMess + Xray on ${PUBLIC_HOST}:${XRAY_VMESS_PORT}
-
-VLESS profile:
-${VLESS_URI}
-
-VMess profile:
-${VMESS_URI}
-
-Profiles are also stored in:
-${CLIENT_DIR}
+Client profiles are stored securely in ${CLIENT_DIR}.
 EOF
