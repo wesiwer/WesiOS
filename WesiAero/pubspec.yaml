@@ -9,8 +9,8 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  file_picker: ^11.0.2
-  flutter_secure_storage: ^11.0.0
+  file_picker: 10.3.10
+  flutter_secure_storage: ^9.0.0
   mobile_scanner: ^7.4.0
   window_manager: ^0.5.2
 
