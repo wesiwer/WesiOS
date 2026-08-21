@@ -66,7 +66,7 @@ class _AmbientBackgroundState extends State<AmbientBackground>
           ),
           child: child,
         ),
-        child: widget.child,
+        child: RepaintBoundary(child: widget.child),
       ),
     );
   }
