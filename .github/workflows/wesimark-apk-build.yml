@@ -6,6 +6,11 @@ on:
       - 'wesimark/apk-build-v2.4.0'
     paths:
       - '.github/workflows/wesimark-apk-build.yml'
+  pull_request:
+    branches:
+      - 'wesimark/apk-build-v2.4.0'
+    paths:
+      - '.wesimark-apk/trigger.txt'
   workflow_dispatch:
 
 permissions:
