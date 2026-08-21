@@ -1,5 +1,5 @@
 name: Validate legacy JSON restore
-# retrigger: legacy-json-v1-support
+# trigger: legacy-json-v1-simple-runner
 
 on:
   push:
@@ -20,169 +20,81 @@ jobs:
           ref: fix/recovery-org-canonical-compare
           fetch-depth: 0
           token: ${{ github.token }}
+
+      - name: Mark runner started
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          printf 'started=1\nsource=%s\n' "$GITHUB_SHA" > /tmp/start.txt
+          CONTENT=$(base64 -w0 /tmp/start.txt)
+          URL="/repos/$GITHUB_REPOSITORY/contents/.github/ops/legacy-backup-started.txt"
+          SHA=$(gh api "$URL" --jq .sha 2>/dev/null || true)
+          ARGS=(--method PUT "$URL" -f message='ops(backup): mark legacy validation started' -f content="$CONTENT" -f branch=main)
+          if [ -n "$SHA" ]; then ARGS+=( -f sha="$SHA" ); fi
+          gh api "${ARGS[@]}" >/dev/null
+
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
           cache: true
-      - name: Integrate, test and commit
-        env:
-          GH_TOKEN: ${{ github.token }}
+
+      - name: Patch and validate
         shell: bash
         run: |
           set -euo pipefail
-          : > /tmp/legacy-backup.log
-          set +e
-          (
-            set -euo pipefail
-            python3 - <<'PY'
-            from pathlib import Path
-
-            p = Path('lib/core/backup/local_backup_service.dart')
-            s = p.read_text(encoding='utf-8')
-            if "import 'legacy_json_backup.dart';" not in s:
-                anchor = "import 'package:hive/hive.dart';\n\n"
-                if anchor not in s:
-                    raise SystemExit('backup import anchor not found')
-                s = s.replace(anchor, anchor + "import 'legacy_json_backup.dart';\n\n", 1)
-
-            needle = "    if (envelopeRaw is! Map || envelopeRaw['format'] != format) {"
-            if needle not in s:
-                raise SystemExit('backup format anchor not found')
-            legacy = """    if (LegacyJsonBackup.looksLike(envelopeRaw)) {
-                  try {
-                    final parsed = LegacyJsonBackup.parse(
-                      Map<dynamic, dynamic>.from(envelopeRaw as Map),
-                    );
-                    return _DecodedBackup(
-                      createdAt: parsed.createdAt,
-                      collections: parsed.collections,
-                      settings: const <String, dynamic>{},
-                    );
-                  } on FormatException catch (error) {
-                    throw LocalBackupException(
-                      'BACKUP_LEGACY_INVALID',
-                      '${error.message}',
-                    );
-                  }
-                }
-            """
-            if 'LegacyJsonBackup.looksLike(envelopeRaw)' not in s:
-                s = s.replace(needle, legacy + needle, 1)
-
-            old = """          final fields = Map<String, dynamic>.from(rawFields);
-                      final accepted = await collection.applyFields(fields);
-            """
-            new = """          final fields = Map<String, dynamic>.from(rawFields);
-                      final decoded = collection.decode(fields);
-                      if (decoded == null) {
-                        throw LocalBackupException(
-                          'BACKUP_ROW_REJECTED',
-                          'Не удалось преобразовать ${entry.key}:$id в текущий формат WesiOS',
-                        );
-                      }
-                      final canonicalFields = Map<String, dynamic>.from(
-                        collection.encode(decoded),
-                      );
-                      final accepted = await collection.applyFields(canonicalFields);
-            """
-            if old not in s:
-                raise SystemExit('restore canonicalization anchor not found')
-            s = s.replace(old, new, 1)
-            old_verify = "_sameValue(collection.encode(restored), fields)"
-            if old_verify not in s:
-                raise SystemExit('restore verify anchor not found')
-            s = s.replace(
-                old_verify,
-                "_sameValue(collection.encode(restored), canonicalFields)",
-                1,
-            )
-            p.write_text(s, encoding='utf-8')
-
-            p = Path('lib/features/settings/sync_screen.dart')
-            s = p.read_text(encoding='utf-8')
-            s = s.replace(
-                "allowedExtensions: const <String>['wesibackup'],",
-                "allowedExtensions: const <String>['wesibackup', 'json'],",
-                1,
-            )
-            old = "Выберите файл .wesibackup, созданный кнопкой экспорта резервной копии. Служебный JSON восстановить здесь нельзя."
-            new = "Выберите резервную копию WesiOS: новый файл .wesibackup или старый JSON-файл экспорта WesiOS."
-            if old not in s:
-                raise SystemExit('sync screen legacy UX anchor not found')
-            s = s.replace(old, new, 1)
-            s = s.replace(
-                "Choose a .wesibackup file created by Backup export. Internal JSON files cannot be restored here.",
-                "Choose a WesiOS backup: a current .wesibackup file or a legacy WesiOS JSON export.",
-                1,
-            )
-            p.write_text(s, encoding='utf-8')
-
-            p = Path('lib/core/constants/app_version.dart')
-            s = p.read_text(encoding='utf-8')
-            s = s.replace("static const String number = '0.22.34';", "static const String number = '0.22.35';")
-            s = s.replace('static const int build = 109;', 'static const int build = 110;')
-            p.write_text(s, encoding='utf-8')
-            PY
-
-            dart format \
-              lib/core/backup/legacy_json_backup.dart \
-              lib/core/backup/local_backup_service.dart \
-              lib/core/constants/app_version.dart \
-              lib/features/settings/sync_screen.dart \
-              test/core/backup/legacy_json_backup_test.dart
-            git diff --check
-
-            grep -q '^version: 0.22.35+110$' pubspec.yaml
-            grep -q "number = '0.22.35'" lib/core/constants/app_version.dart
-            grep -q 'build = 110' lib/core/constants/app_version.dart
-
-            flutter pub get
-            flutter test \
-              test/core/backup/local_backup_service_test.dart \
-              test/core/backup/legacy_json_backup_test.dart \
-              test/core/sync/sync_recovery_test.dart \
-              test/core/sync/organization_sync_hidden_cache_engine_test.dart \
-              test/core/sync/organization_manual_download_used_device_test.dart \
-              test/core/sync/organization_sync_legacy_root_test.dart \
-              test/core/sync/organization_sync_recovery_test.dart \
-              test/core/sync/organization_sync_server_compat_test.dart
-            flutter analyze --no-fatal-infos --no-fatal-warnings \
-              lib/core/backup/legacy_json_backup.dart \
-              lib/core/backup/local_backup_service.dart \
-              lib/core/sync/sync_engine.dart \
-              lib/core/sync/sync_manual_direction.dart \
-              lib/core/sync/sync_recovery.dart \
-              lib/features/settings/sync_screen.dart \
-              test/core/backup/legacy_json_backup_test.dart
-          ) >> /tmp/legacy-backup.log 2>&1
-          RC=$?
-          set -e
-
-          {
-            echo "exit=$RC"
-            echo "branch_head=$(git rev-parse HEAD)"
-            echo '--- last log lines ---'
-            tail -n 240 /tmp/legacy-backup.log
-          } > /tmp/report.txt
-          cat /tmp/report.txt
-
-          CONTENT=$(base64 -w0 /tmp/report.txt)
-          URL="/repos/$GITHUB_REPOSITORY/contents/.github/ops/legacy-backup-result.txt"
-          SHA=$(gh api "$URL" --jq .sha 2>/dev/null || true)
-          ARGS=(--method PUT -H 'Accept: application/vnd.github+json' "$URL" -f message='ops(backup): record legacy restore validation' -f content="$CONTENT" -f branch=main)
-          if [ -n "$SHA" ]; then ARGS+=( -f sha="$SHA" ); fi
-          gh api "${ARGS[@]}" >/dev/null
-          if [ "$RC" -ne 0 ]; then exit "$RC"; fi
-
-          git config user.name 'WesiOS Backup Fix'
-          git config user.email 'actions@users.noreply.github.com'
-          git add \
+          python3 tools/ops/integrate_legacy_backup.py
+          dart format \
             lib/core/backup/legacy_json_backup.dart \
             lib/core/backup/local_backup_service.dart \
             lib/core/constants/app_version.dart \
             lib/features/settings/sync_screen.dart \
             test/core/backup/legacy_json_backup_test.dart
-          if ! git diff --cached --quiet; then
-            git commit -m 'fix(backup): restore official legacy JSON backups'
-          fi
+          git diff --check
+          grep -q '^version: 0.22.35+110$' pubspec.yaml
+          grep -q "number = '0.22.35'" lib/core/constants/app_version.dart
+          grep -q 'build = 110' lib/core/constants/app_version.dart
+          flutter pub get
+          flutter test \
+            test/core/backup/local_backup_service_test.dart \
+            test/core/backup/legacy_json_backup_test.dart \
+            test/core/sync/sync_recovery_test.dart \
+            test/core/sync/organization_sync_hidden_cache_engine_test.dart \
+            test/core/sync/organization_manual_download_used_device_test.dart \
+            test/core/sync/organization_sync_legacy_root_test.dart \
+            test/core/sync/organization_sync_recovery_test.dart \
+            test/core/sync/organization_sync_server_compat_test.dart
+          flutter analyze --no-fatal-infos --no-fatal-warnings \
+            lib/core/backup/legacy_json_backup.dart \
+            lib/core/backup/local_backup_service.dart \
+            lib/core/sync/sync_engine.dart \
+            lib/core/sync/sync_manual_direction.dart \
+            lib/core/sync/sync_recovery.dart \
+            lib/features/settings/sync_screen.dart \
+            test/core/backup/legacy_json_backup_test.dart
+
+      - name: Commit validated fix
+        run: |
+          set -euo pipefail
+          rm -f tools/ops/integrate_legacy_backup.py
+          git config user.name 'WesiOS Backup Fix'
+          git config user.email 'actions@users.noreply.github.com'
+          git add -A \
+            lib/core/backup \
+            lib/core/constants/app_version.dart \
+            lib/features/settings/sync_screen.dart \
+            test/core/backup \
+            tools/ops/integrate_legacy_backup.py
+          git commit -m 'fix(backup): restore official legacy JSON backups'
           git push origin HEAD:fix/recovery-org-canonical-compare
+
+      - name: Mark validation green
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          printf 'ok=1\nbranch=%s\n' 'fix/recovery-org-canonical-compare' > /tmp/result.txt
+          CONTENT=$(base64 -w0 /tmp/result.txt)
+          URL="/repos/$GITHUB_REPOSITORY/contents/.github/ops/legacy-backup-result.txt"
+          SHA=$(gh api "$URL" --jq .sha 2>/dev/null || true)
+          ARGS=(--method PUT "$URL" -f message='ops(backup): legacy JSON validation green' -f content="$CONTENT" -f branch=main)
+          if [ -n "$SHA" ]; then ARGS+=( -f sha="$SHA" ); fi
+          gh api "${ARGS[@]}" >/dev/null
