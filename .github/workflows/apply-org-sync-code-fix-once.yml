@@ -1,4 +1,4 @@
-name: Repair manual server download path once
+name: Diagnose sync repair patch anchors
 
 on:
   push:
@@ -10,251 +10,41 @@ permissions:
   contents: write
 
 jobs:
-  repair:
+  diagnose:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
         with:
           ref: fix/recovery-org-canonical-compare
-          fetch-depth: 0
-          token: ${{ github.token }}
-      - uses: subosito/flutter-action@v2
-        with:
-          channel: stable
-          cache: true
-      - name: Patch engine and manual download
+      - name: Check anchors and persist report
+        env:
+          GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
-          python3 <<'PY'
+          python3 <<'PY' > /tmp/report.txt
           from pathlib import Path
-          import re
-
-          p=Path('lib/core/sync/sync_engine.dart')
-          s=p.read_text(encoding='utf-8')
-
-          # Pass-level journal snapshot: a used phone can have old stamps for
-          # rows currently hidden by a broken organization root.
-          old='''  static bool _localSnapshotStillCurrent(\n    SyncCollection<dynamic> c,\n    String id,\n    SyncRecord? snapshot,\n  ) {\n    final currentStamp = SyncJournal.stampOf(c.name, id);\n    final currentValue = _localValueBySyncId(c, id);\n\n    if (snapshot == null) {\n      // A quarantined row can become visible after its parent/root is\n      // repaired earlier in this same pass. Visibility is not a local edit;\n      // a real Hive edit is journaled and therefore has a fresh stamp.\n      return currentStamp == null;\n    }\n'''
-          new='''  static bool _sameStamp(SyncStamp? a, SyncStamp? b) =>\n      a?.updatedAt == b?.updatedAt && a?.deleted == b?.deleted;\n\n  static bool _localSnapshotStillCurrent(\n    SyncCollection<dynamic> c,\n    String id,\n    SyncRecord? snapshot,\n    SyncStamp? initialStamp,\n  ) {\n    final currentStamp = SyncJournal.stampOf(c.name, id);\n    final currentValue = _localValueBySyncId(c, id);\n\n    if (snapshot == null) {\n      // A quarantined legacy row can already have a journal stamp from an\n      // older failed sync. Only a stamp CHANGE during this pass is a real\n      // concurrent edit.\n      return _sameStamp(currentStamp, initialStamp);\n    }\n'''
-          if old not in s:
-              raise SystemExit('snapshot helper anchor not found')
-          s=s.replace(old,new,1)
-
-          old='''  static Future<SyncReport> run({\n    SyncTransport? transport,\n    DateTime? now,\n    Set<String>? only,\n  }) async {\n    final at = now ?? SyncClock.now();\n\n    if (SyncRecoveryGuard.active) {\n'''
-          new='''  static Future<SyncReport> run({\n    SyncTransport? transport,\n    DateTime? now,\n    Set<String>? only,\n    bool remoteAuthoritative = false,\n  }) async {\n    final at = now ?? SyncClock.now();\n\n    // Explicit manual server -> device passes are allowed while the recovery\n    // lock is active, but never upload local rows.\n    if (SyncRecoveryGuard.active && !remoteAuthoritative) {\n'''
-          if old not in s:
-              raise SystemExit('run signature anchor not found')
-          s=s.replace(old,new,1)
-
-          old='final one = await _runOne(c, t, at, cancelled: cancelled);'
-          new='''final one = await _runOne(\n          c,\n          t,\n          at,\n          cancelled: cancelled,\n          remoteAuthoritative: remoteAuthoritative,\n        );'''
-          if s.count(old) != 1:
-              raise SystemExit(f'runOne call count={s.count(old)}')
-          s=s.replace(old,new,1)
-
-          old='''  static Future<SyncCollectionReport> _runOne(\n    SyncCollection<dynamic> c,\n    SyncTransport t,\n    DateTime at, {\n    required bool Function() cancelled,\n  }) async {\n'''
-          new='''  static Future<SyncCollectionReport> _runOne(\n    SyncCollection<dynamic> c,\n    SyncTransport t,\n    DateTime at, {\n    required bool Function() cancelled,\n    required bool remoteAuthoritative,\n  }) async {\n'''
-          if old not in s:
-              raise SystemExit('runOne signature anchor not found')
-          s=s.replace(old,new,1)
-
-          old='''    final allLocalBefore = localState(c, at);\n    final mergeLocal = firstEverExchange\n        ? _onlyNewTo(allLocalBefore, remote.value!)\n        : allLocalBefore;\n    final plan = SyncMerge.merge(local: mergeLocal, remote: remote.value!);\n'''
-          new='''    final initialStamps = SyncJournal.forCollection(c.name);\n    final allLocalBefore = localState(c, at);\n    final plan = remoteAuthoritative\n        ? SyncPlan(\n            toUpload: const <SyncRecord>[],\n            toApplyLocally: remote.value!.values.toList(growable: false),\n            merged: Map<String, SyncRecord>.from(remote.value!),\n          )\n        : SyncMerge.merge(\n            local: firstEverExchange\n                ? _onlyNewTo(allLocalBefore, remote.value!)\n                : allLocalBefore,\n            remote: remote.value!,\n          );\n'''
-          if old not in s:
-              raise SystemExit('plan anchor not found')
-          s=s.replace(old,new,1)
-
-          # Update every optimistic-concurrency call inside _runOne.
-          s=s.replace(
-            '_localSnapshotStillCurrent(c, r.id, allLocalBefore[r.id])',
-            '_localSnapshotStillCurrent(\n            c, r.id, allLocalBefore[r.id], initialStamps[r.id],\n          )',
-          )
-          s=s.replace(
-            '_localSnapshotStillCurrent(c, id, allLocalBefore[id])',
-            '_localSnapshotStillCurrent(\n          c, id, allLocalBefore[id], initialStamps[id],\n        )',
-          )
-          body=s[s.index('  static Future<SyncCollectionReport> _runOne('):]
-          stale=re.findall(r'_localSnapshotStillCurrent\([^;]+?\)', body, flags=re.S)
-          if any('initialStamps' not in call for call in stale):
-              raise SystemExit('a snapshot check was not upgraded')
-
-          # A one-way server download is not a completed bidirectional exchange.
-          s=s.replace(
-            'if (report.ok && only == null) await SyncEndpoint.markRun(at);',
-            'if (report.ok && only == null && !remoteAuthoritative) {\n        await SyncEndpoint.markRun(at);\n      }',
-            1,
-          )
-          p.write_text(s,encoding='utf-8')
-
-          # Manual download must reuse the corrected engine instead of keeping
-          # its own stale apply/defer implementation.
-          p=Path('lib/core/sync/sync_manual_direction.dart')
-          s=p.read_text(encoding='utf-8')
-          start=s.index('    await SyncJournal.open();\n    var received = 0;\n    try {', s.index('downloadServerAuthoritative'))
-          end=s.index('\n  static Future<void> _persistSafetyBackup(', start)
-          replacement='''    try {\n      final report = await SyncEngine.run(\n        transport: transport,\n        remoteAuthoritative: true,\n      );\n      final problem = report.firstFailure;\n      if (problem != null) {\n        return ManualDirectionalSyncReport(\n          ok: false,\n          upload: false,\n          changed: report.applied,\n          backupRecords: backup.records,\n          failure: problem,\n        );\n      }\n      return ManualDirectionalSyncReport(\n        ok: true,\n        upload: false,\n        changed: report.applied,\n        backupRecords: backup.records,\n      );\n    } finally {\n      if (automaticWasEnabled && !SyncRecoveryGuard.active) {\n        SyncAuto.start();\n      }\n    }\n  }\n'''
-          s=s[:start]+replacement+s[end:]
-          for imp in [
-            "import 'sync_codec.dart';\n",
-            "import 'sync_journal.dart';\n",
-            "import 'sync_merge.dart';\n",
-          ]:
-            s=s.replace(imp,'')
-          p.write_text(s,encoding='utf-8')
-
-          # Existing hidden-root regression now simulates a phone that already
-          # has journal stamps left by prior failed attempts.
-          p=Path('test/core/sync/organization_sync_hidden_cache_engine_test.dart')
-          s=p.read_text(encoding='utf-8')
-          if "sync_journal.dart" not in s:
-            s=s.replace(
-              "import 'package:wesios/core/sync/sync_engine.dart';\n",
-              "import 'package:wesios/core/sync/sync_engine.dart';\nimport 'package:wesios/core/sync/sync_journal.dart';\n",
-              1,
-            )
-          needle='''      expect(OrganizationsSync().local(), isEmpty);\n\n      final serverAt = DateTime.utc(2026, 8, 17, 13, 19, 24, 672);\n'''
-          replacement='''      expect(OrganizationsSync().local(), isEmpty);\n\n      await SyncJournal.open();\n      final staleStamp = SyncStamp(DateTime.utc(2026, 8, 20, 12));\n      for (final id in <String>[\n        OrganizationModel.rootId,\n        OrganizationModel.wesiBeatsId,\n        'org_it',\n      ]) {\n        await SyncJournal.record('organizations', id, staleStamp);\n      }\n\n      final serverAt = DateTime.utc(2026, 8, 17, 13, 19, 24, 672);\n'''
-          if needle not in s:
-              raise SystemExit('used-device test anchor not found')
-          s=s.replace(needle,replacement,1)
-          p.write_text(s,encoding='utf-8')
-
-          # Dedicated regression for the exact Manual Sync -> Download mode.
-          Path('test/core/sync/organization_manual_download_used_device_test.dart').write_text(r'''import 'dart:io';
-
-import 'package:flutter_test/flutter_test.dart';
-import 'package:hive/hive.dart';
-import 'package:wesios/core/sync/sync_codec.dart';
-import 'package:wesios/core/sync/sync_engine.dart';
-import 'package:wesios/core/sync/sync_journal.dart';
-import 'package:wesios/core/sync/sync_merge.dart';
-import 'package:wesios/core/sync/sync_transport.dart';
-import 'package:wesios/features/organizations/models/organization_model.dart';
-import 'package:wesios/features/organizations/services/organization_service.dart';
-
-class _Transport implements SyncTransport {
-  final Map<String, SyncRecord> rows;
-  _Transport(this.rows);
-  @override bool get isSignedIn => true;
-  @override Future<SyncResult<String>> signIn(String login, String password) async => const SyncResult.ok('ok');
-  @override void signOut() {}
-  @override Future<SyncResult<Map<String, SyncRecord>>> fetch(String collection) async =>
-      SyncResult.ok(collection == 'organizations' ? Map<String, SyncRecord>.from(rows) : <String, SyncRecord>{});
-  @override Future<SyncPushResult> push(String collection, List<SyncRecord> records) async =>
-      throw StateError('remote-authoritative download must never upload');
-}
-
-Map<String, dynamic> _payload(String id, String name, String? parentId) => <String, dynamic>{
-  'id': id,
-  'name': name,
-  'parentId': parentId,
-  'isRoot': id == OrganizationModel.rootId,
-  'baseCurrency': 'RUB',
-  'status': 'active',
-  'createdAt': '2026-08-17T13:19:24.672Z',
-  'updatedAt': '2026-08-17T13:19:24.672Z',
-  'createdBy': 'server',
-  'code': null,
-  'description': null,
-  'colorValue': null,
-  'sortOrder': 0,
-};
-
-void main() {
-  late Directory temp;
-  setUpAll(() async {
-    temp = await Directory.systemTemp.createTemp('wesios_manual_org_');
-    Hive.init(temp.path);
-    if (!Hive.isAdapterRegistered(80)) Hive.registerAdapter(OrganizationStatusAdapter());
-    if (!Hive.isAdapterRegistered(81)) Hive.registerAdapter(OrganizationModelAdapter());
-  });
-  setUp(() async {
-    await SyncEngine.reset();
-    final settings = Hive.isBoxOpen('wesios_settings')
-        ? Hive.box<dynamic>('wesios_settings')
-        : await Hive.openBox<dynamic>('wesios_settings');
-    await settings.clear();
-    final box = Hive.isBoxOpen(OrganizationService.boxName)
-        ? Hive.box<OrganizationModel>(OrganizationService.boxName)
-        : await Hive.openBox<OrganizationModel>(OrganizationService.boxName);
-    await box.clear();
-  });
-  tearDownAll(() async {
-    await SyncEngine.reset();
-    await Hive.close();
-    if (await temp.exists()) await temp.delete(recursive: true);
-  });
-
-  test('manual remote-authoritative repair works with stale stamps', () async {
-    final box = Hive.box<OrganizationModel>(OrganizationService.boxName);
-    final old = DateTime.utc(2026, 8, 1);
-    for (final row in <OrganizationModel>[
-      OrganizationModel(id: OrganizationModel.rootId, name: 'bad root', parentId: 'legacy', isRoot: false, baseCurrency: 'RUB', createdAt: old, updatedAt: old, createdBy: 'legacy'),
-      OrganizationModel(id: OrganizationModel.wesiBeatsId, name: 'Wesi Beats', parentId: OrganizationModel.rootId, isRoot: false, baseCurrency: 'RUB', createdAt: old, updatedAt: old, createdBy: 'legacy'),
-      OrganizationModel(id: 'org_it', name: 'IT', parentId: OrganizationModel.rootId, isRoot: false, baseCurrency: 'RUB', createdAt: old, updatedAt: old, createdBy: 'legacy'),
-    ]) {
-      await box.put(row.id, row);
-    }
-    expect(OrganizationsSync().local(), isEmpty);
-    await SyncJournal.open();
-    final stale = SyncStamp(DateTime.utc(2026, 8, 20, 12));
-    for (final id in <String>[OrganizationModel.rootId, OrganizationModel.wesiBeatsId, 'org_it']) {
-      await SyncJournal.record('organizations', id, stale);
-    }
-    final at = DateTime.utc(2026, 8, 17, 13, 19, 24, 672);
-    final transport = _Transport(<String, SyncRecord>{
-      OrganizationModel.rootId: SyncRecord(id: OrganizationModel.rootId, updatedAt: at, fields: _payload(OrganizationModel.rootId, 'Wesi Inc', null)),
-      OrganizationModel.wesiBeatsId: SyncRecord(id: OrganizationModel.wesiBeatsId, updatedAt: at, fields: _payload(OrganizationModel.wesiBeatsId, 'Wesi Beats', OrganizationModel.rootId)),
-      'org_it': SyncRecord(id: 'org_it', updatedAt: at, fields: _payload('org_it', 'IT', OrganizationModel.rootId)),
-    });
-    final report = await SyncEngine.run(
-      transport: transport,
-      now: DateTime.utc(2026, 8, 22),
-      only: const <String>{'organizations'},
-      remoteAuthoritative: true,
-    );
-    expect(report.ok, isTrue, reason: report.describe());
-    expect(report.uploaded, 0);
-    expect(report.applied, 3);
-    final root = box.get(OrganizationModel.rootId)!;
-    expect(root.isRoot, isTrue);
-    expect(root.parentId, isNull);
-    expect(OrganizationsSync().local().length, 3);
-  });
-}
-''', encoding='utf-8')
+          e=Path('lib/core/sync/sync_engine.dart').read_text(encoding='utf-8')
+          m=Path('lib/core/sync/sync_manual_direction.dart').read_text(encoding='utf-8')
+          t=Path('test/core/sync/organization_sync_hidden_cache_engine_test.dart').read_text(encoding='utf-8')
+          checks={
+            'snapshot_anchor': "return currentStamp == null;" in e,
+            'run_guard_anchor': "if (SyncRecoveryGuard.active) {" in e,
+            'runone_call': "final one = await _runOne(c, t, at, cancelled: cancelled);" in e,
+            'runone_signature': "required bool Function() cancelled," in e,
+            'plan_anchor': "final mergeLocal = firstEverExchange" in e,
+            'snapshot_r_calls': e.count("_localSnapshotStillCurrent(c, r.id, allLocalBefore[r.id])"),
+            'snapshot_id_calls': e.count("_localSnapshotStillCurrent(c, id, allLocalBefore[id])"),
+            'manual_loop': "await SyncJournal.open();\n    var received = 0;\n    try {" in m,
+            'test_anchor': "expect(OrganizationsSync().local(), isEmpty);\n\n      final serverAt" in t,
+          }
+          for k,v in checks.items(): print(f'{k}={v}')
           PY
-          dart format \
-            lib/core/sync/sync_engine.dart \
-            lib/core/sync/sync_manual_direction.dart \
-            test/core/sync/organization_sync_hidden_cache_engine_test.dart \
-            test/core/sync/organization_manual_download_used_device_test.dart
-          git diff --check
-      - name: Test and analyze
-        shell: bash
-        run: |
-          set -euo pipefail
-          flutter pub get
-          flutter test \
-            test/core/sync/organization_sync_hidden_cache_engine_test.dart \
-            test/core/sync/organization_manual_download_used_device_test.dart \
-            test/core/sync/organization_sync_legacy_root_test.dart \
-            test/core/sync/organization_sync_recovery_test.dart
-          flutter analyze --no-fatal-infos \
-            lib/core/sync/sync_engine.dart \
-            lib/core/sync/sync_manual_direction.dart \
-            test/core/sync/organization_sync_hidden_cache_engine_test.dart \
-            test/core/sync/organization_manual_download_used_device_test.dart
-      - name: Commit green patch
-        shell: bash
-        run: |
-          set -euo pipefail
-          git config user.name 'WesiOS Sync Fix'
-          git config user.email 'actions@users.noreply.github.com'
-          git add lib/core/sync/sync_engine.dart lib/core/sync/sync_manual_direction.dart \
-            test/core/sync/organization_sync_hidden_cache_engine_test.dart \
-            test/core/sync/organization_manual_download_used_device_test.dart
-          git commit -m 'fix(sync): reuse repaired engine for manual server download'
-          git push origin HEAD:fix/recovery-org-canonical-compare
+          cat /tmp/report.txt
+          CONTENT=$(base64 -w0 /tmp/report.txt)
+          URL="/repos/$GITHUB_REPOSITORY/contents/.github/ops/sync-repair-anchor-report.txt"
+          SHA=$(gh api "$URL" --jq .sha 2>/dev/null || true)
+          ARGS=(--method PUT -H 'Accept: application/vnd.github+json' "$URL" -f message='ops(sync): record patch anchor report' -f content="$CONTENT" -f branch=main)
+          if [ -n "$SHA" ]; then ARGS+=( -f sha="$SHA" ); fi
+          gh api "${ARGS[@]}"
