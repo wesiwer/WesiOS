@@ -1,4 +1,4 @@
-name: Dispatch Release 0.22.33 Once
+name: Dispatch Release 0.22.34 Once
 
 on:
   push:
@@ -21,9 +21,9 @@ jobs:
           gh workflow run release-app.yml \
             --repo "$GITHUB_REPOSITORY" \
             --ref main \
-            -f notes='Исправлена синхронизация организаций и восстановление дерева организаций.' \
-            -f deploy_to_server=true
-          echo 'Release workflow dispatched for 0.22.33+108'
+            -f notes='Исправлена повторяющаяся ошибка organizations:org_wesi_inc (+2). Добавлена безопасная ручная синхронизация с выбором направления, защищённый перенос данных телефона на сервер и экспорт/восстановление резервной копии.' \
+            -f deploy_to_server=false
+          echo 'Release workflow dispatched for 0.22.34+109'
 
       - name: Record successful dispatch
         env:
@@ -31,13 +31,13 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p .github/ops
-          printf 'release=0.22.33+108\ndispatched_at=%s\nsource_sha=%s\n' \
+          printf 'release=0.22.34+109\ndispatched_at=%s\nsource_sha=%s\ndeploy_to_server=false\n' \
             "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$GITHUB_SHA" > /tmp/release-dispatched.txt
           CONTENT=$(base64 -w0 /tmp/release-dispatched.txt)
           gh api \
             --method PUT \
             -H 'Accept: application/vnd.github+json' \
-            "/repos/$GITHUB_REPOSITORY/contents/.github/ops/release-0.22.33-dispatched.txt" \
-            -f message='ops(release): record 0.22.33 dispatch' \
+            "/repos/$GITHUB_REPOSITORY/contents/.github/ops/release-0.22.34-dispatched.txt" \
+            -f message='ops(release): record 0.22.34 dispatch' \
             -f content="$CONTENT" \
             -f branch='main'
