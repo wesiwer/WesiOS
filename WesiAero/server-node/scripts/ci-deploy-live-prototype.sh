@@ -90,18 +90,18 @@ sudo bash "$WORK/install-xray.sh" install --without-geodata >/dev/null
 sudo systemctl stop xray 2>/dev/null || true
 
 probe_xray() {
-  local name="$1" config="$2" trace="$WORK/$1-trace" log="$WORK/$1.log"
+  local name="$1" config="$2" result="$WORK/$1-ip" log="$WORK/$1.log"
   xray run -config "$config" >"$log" 2>&1 &
   local pid=$!
   for _ in $(seq 1 30); do
-    if curl -fsS --max-time 2 --socks5-hostname 127.0.0.1:10808 \
-      https://www.cloudflare.com/cdn-cgi/trace >"$trace" 2>/dev/null; then
+    if curl -fsS --max-time 3 --socks5-hostname 127.0.0.1:10808 \
+      https://v4.ident.me >"$result" 2>/dev/null; then
       break
     fi
     sleep 0.5
   done
   local ip
-  ip="$(awk -F= '$1=="ip" {print $2}' "$trace" 2>/dev/null || true)"
+  ip="$(tr -d '[:space:]' < "$result" 2>/dev/null || true)"
   kill "$pid" 2>/dev/null || true
   wait "$pid" 2>/dev/null || true
   if [[ "$ip" != "$EXPECTED_RELAY_IP" ]]; then
@@ -162,7 +162,7 @@ trap - EXIT
 
 curl -fsS --max-time 20 "https://$AERO_HOST/healthz" | jq -e '.status == "ok"' >/dev/null
 curl -fsS --max-time 20 "https://$AERO_HOST/v1/catalog" \
-  | jq -e '.servers[] | select(.id == "wesi-relay") | (.protocols | index("vless-reality")) != null and (.protocols | index("vmess-xray")) != null and (.protocols | index("amneziawg")) != null' >/dev/null
+  | jq -e '(.paymentMethods | length) == 0 and (.servers[] | select(.id == "wesi-relay") | (.protocols | index("vless-reality")) != null and (.protocols | index("vmess-xray")) != null and (.protocols | index("amneziawg")) != null)' >/dev/null
 curl -fsS --max-time 20 "https://$AI_HOST/health" >/dev/null
 
 rm -rf "$WORK"
