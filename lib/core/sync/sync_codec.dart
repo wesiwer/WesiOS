@@ -182,17 +182,28 @@ class OrganizationsSync extends SyncCollection<OrganizationModel> {
   OrganizationModel? decode(Map<String, dynamic> fields) {
     final id = _strOrNull(fields['id']);
     final name = _strOrNull(fields['name']);
-    final createdAt = _date(fields['createdAt']);
+    // Legacy PocketBase callbacks used created/updated and could send
+    // stale root metadata. The immutable root id is authoritative.
+    final createdAt =
+        _date(fields['createdAt']) ??
+        _date(fields['created']) ??
+        _date(fields['updatedAt']) ??
+        _date(fields['updated']);
     if (id == null ||
         name == null ||
         name.trim().isEmpty ||
         createdAt == null) {
       return null;
     }
-    final isRoot = fields['isRoot'] == true;
-    final parentId = _strOrNull(fields['parentId']);
-    if (isRoot != (id == OrganizationModel.rootId)) return null;
-    if (isRoot && parentId != null) return null;
+    final canonicalRoot = id == OrganizationModel.rootId;
+    // A non-root row may never elevate itself. The canonical root,
+    // however, is repaired locally even if a stale server callback
+    // still sends isRoot=false or an obsolete parentId.
+    if (!canonicalRoot && fields['isRoot'] == true) return null;
+    final isRoot = canonicalRoot;
+    final parentId = isRoot
+        ? null
+        : (_strOrNull(fields['parentId']) ?? _strOrNull(fields['parent']));
     return OrganizationModel(
       id: id,
       name: name.trim(),
@@ -231,9 +242,11 @@ class OrganizationsSync extends SyncCollection<OrganizationModel> {
 
   @override
   Future<bool> applyFields(Map<String, dynamic> fields) async {
-    final b = box();
+    // A lifecycle transition must not turn a closed Hive box into a
+    // fake REMOTE_APPLY_INCOMPLETE data error.
+    final b = box() ?? await ensureBox();
     final incoming = decode(fields);
-    if (b == null || incoming == null) return false;
+    if (incoming == null) return false;
     final byId = <String, OrganizationModel>{
       for (final row in b.values)
         if (row.id != incoming.id) row.id: row,
