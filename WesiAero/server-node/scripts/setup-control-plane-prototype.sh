@@ -40,18 +40,23 @@ install_node24() {
     return
   fi
 
-  local version arch tmp
-  version="$(curl -fsSL https://nodejs.org/dist/latest-v24.x/SHASUMS256.txt | awk '/linux-x64.tar.xz$/ {sub(/node-/,"",$2); sub(/-linux-x64.tar.xz/,"",$2); print $2; exit}')"
+  local version package_arch archive tmp
+  case "$(uname -m)" in
+    x86_64|amd64) package_arch=x64 ;;
+    aarch64|arm64) package_arch=arm64 ;;
+    *) echo "Unsupported CPU architecture for Node.js 24: $(uname -m)" >&2; exit 1 ;;
+  esac
+  version="$(curl -fsSL https://nodejs.org/dist/latest-v24.x/SHASUMS256.txt | awk -v arch="linux-${package_arch}.tar.xz" '$2 ~ arch"$" {sub(/node-/,"",$2); sub("-"arch,"",$2); print $2; exit}')"
   [[ "$version" =~ ^v24\.[0-9]+\.[0-9]+$ ]] || {
     echo "Unable to resolve latest Node.js 24 release." >&2
     exit 1
   }
-  arch="node-${version}-linux-x64"
+  archive="node-${version}-linux-${package_arch}"
   tmp="$(mktemp -d)"
   trap 'rm -rf "$tmp"' RETURN
-  curl -fsSL --retry 3 "https://nodejs.org/dist/${version}/${arch}.tar.xz" -o "$tmp/node.tar.xz"
+  curl -fsSL --retry 3 "https://nodejs.org/dist/${version}/${archive}.tar.xz" -o "$tmp/node.tar.xz"
   tar -xJf "$tmp/node.tar.xz" -C "$tmp"
-  cp -a "$tmp/$arch/." /usr/local/
+  cp -a "$tmp/$archive/." /usr/local/
   hash -r
   node --version | grep -q '^v24\.'
 }
@@ -60,7 +65,7 @@ install_base_dependencies
 install_node24
 
 if ! id "$SERVICE_USER" >/dev/null 2>&1; then
-  useradd --system --home-dir "$STATE_DIR" --create-home --shell /usr/sbin/nologin "$SERVICE_USER"
+  useradd --system --home-dir "$STATE_DIR" --shell /usr/sbin/nologin "$SERVICE_USER"
 fi
 
 install -d -m 755 "$INSTALL_DIR" "$ENV_DIR"
@@ -162,14 +167,29 @@ if ! curl -fsS --max-time 5 http://127.0.0.1:8790/healthz | jq -e '.status == "o
   exit 1
 fi
 
+set -a
+# shellcheck disable=SC1090
+source "$ENV_FILE"
+set +a
+
+# Payment is intentionally absent from the working VPN prototype. Disable every
+# catalog payment method, including the seed mock provider, while keeping the
+# implementation available for the later billing stage.
+for provider in mock yookassa crypto_pay; do
+  label="Disabled in VPN prototype"
+  curl -fsS \
+    -X PUT \
+    -H "authorization: Bearer $WESI_AERO_ADMIN_TOKEN" \
+    -H 'content-type: application/json' \
+    --data "{\"enabled\":false,\"testMode\":true,\"publicConfig\":{\"label\":\"$label\"}}" \
+    "http://127.0.0.1:8790/v1/admin/payment-settings/$provider" \
+    >/dev/null
+done
+
 # Create one long-lived prototype license without printing the secret. This is
-# deliberately server-side only; payment remains disabled for the prototype.
+# server-side only and replaces the payment step for the current prototype.
 PROTOTYPE_LICENSE_FILE="$STATE_DIR/prototype-license.key"
 if [[ ! -s "$PROTOTYPE_LICENSE_FILE" ]]; then
-  set -a
-  # shellcheck disable=SC1090
-  source "$ENV_FILE"
-  set +a
   response="$(curl -fsS \
     -H "authorization: Bearer $WESI_AERO_ADMIN_TOKEN" \
     -H 'content-type: application/json' \
@@ -185,9 +205,9 @@ if [[ ! -s "$PROTOTYPE_LICENSE_FILE" ]]; then
 fi
 
 curl -fsS --max-time 5 http://127.0.0.1:8790/v1/catalog \
-  | jq -e '.servers[] | select(.id == "wesi-relay") | (.protocols | index("vless-reality")) != null and (.protocols | index("vmess-xray")) != null and (.protocols | index("amneziawg")) != null' \
+  | jq -e '(.paymentMethods | length) == 0 and (.servers[] | select(.id == "wesi-relay") | (.protocols | index("vless-reality")) != null and (.protocols | index("vmess-xray")) != null and (.protocols | index("amneziawg")) != null)' \
   >/dev/null
 
 echo "Wesi Aero control plane is active on 127.0.0.1:8790."
 echo "Public facade target: https://$PUBLIC_HOST"
-echo "Prototype payment providers remain disabled."
+echo "Payment providers are disabled for the VPN prototype."
