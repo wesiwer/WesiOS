@@ -28,6 +28,7 @@ abstract interface class GatewayEngine {
   Future<void> connect({
     required GatewayNode node,
     required GatewayProtocol protocol,
+    required TunnelEngine engine,
     required SplitMode splitMode,
     required List<RoutingRule> rules,
     required bool killSwitch,
@@ -83,6 +84,7 @@ class PlatformGatewayEngine implements GatewayEngine {
   Future<void> connect({
     required GatewayNode node,
     required GatewayProtocol protocol,
+    required TunnelEngine engine,
     required SplitMode splitMode,
     required List<RoutingRule> rules,
     required bool killSwitch,
@@ -92,12 +94,14 @@ class PlatformGatewayEngine implements GatewayEngine {
     }
 
     final resolvedProtocol = _preferredProtocol(node, protocol);
+    final resolvedEngine = _preferredEngine(resolvedProtocol, engine);
     await _provisionProfile(node: node, protocol: resolvedProtocol);
 
     try {
       await _methods.invokeMethod<void>('connect', {
         'nodeId': node.id,
         'protocol': resolvedProtocol.wireName,
+        'engine': resolvedEngine.wireName,
         'splitMode': splitMode.name,
         'killSwitch': killSwitch,
         'rules': rules
@@ -199,19 +203,45 @@ class PlatformGatewayEngine implements GatewayEngine {
       }
       return requested;
     }
-    if (node.protocols.contains(GatewayProtocol.vlessReality)) {
-      return GatewayProtocol.vlessReality;
-    }
-    if (node.protocols.contains(GatewayProtocol.vmessXray)) {
-      return GatewayProtocol.vmessXray;
-    }
-    if (node.protocols.contains(GatewayProtocol.amneziaWg)) {
-      return GatewayProtocol.amneziaWg;
+    const priority = [
+      GatewayProtocol.vlessReality,
+      GatewayProtocol.hysteria2,
+      GatewayProtocol.tuic,
+      GatewayProtocol.vmess,
+      GatewayProtocol.trojan,
+      GatewayProtocol.shadowsocks,
+      GatewayProtocol.amneziaWg,
+      GatewayProtocol.wireGuard,
+    ];
+    for (final candidate in priority) {
+      if (node.protocols.contains(candidate)) return candidate;
     }
     throw const AeroApiException(
       'PROTOCOL_UNAVAILABLE',
       'На сервере нет поддерживаемого протокола.',
     );
+  }
+
+  TunnelEngine _preferredEngine(
+    GatewayProtocol protocol,
+    TunnelEngine requested,
+  ) {
+    if (requested != TunnelEngine.automatic) {
+      if (!protocol.supportsEngine(requested)) {
+        throw AeroApiException(
+          'ENGINE_UNAVAILABLE',
+          '${requested.title} не поддерживает ${protocol.title}.',
+        );
+      }
+      return requested;
+    }
+    if (protocol.supportsEngine(TunnelEngine.singBox)) {
+      return TunnelEngine.singBox;
+    }
+    if (protocol.supportsEngine(TunnelEngine.xray)) {
+      return TunnelEngine.xray;
+    }
+    return TunnelEngine.native;
   }
 
   void _startLeaseHeartbeat() {
@@ -240,8 +270,7 @@ class PlatformGatewayEngine implements GatewayEngine {
         },
       );
     } catch (_) {
-      // The tunnel should not be torn down because of one transient heartbeat
-      // failure. The next tick retries while the actual VPN remains active.
+      // One control-plane heartbeat must never tear down a healthy data plane.
     }
   }
 
@@ -295,10 +324,20 @@ class PlatformGatewayEngine implements GatewayEngine {
   ) {
     return previous.status != next.status ||
         previous.protocol != next.protocol ||
+        previous.engine != next.engine ||
         previous.node?.id != next.node?.id ||
         previous.errorMessage != next.errorMessage ||
         previous.isDemo != next.isDemo ||
         previous.stats.connectedAt != next.stats.connectedAt;
+  }
+
+  static GatewayProtocol _decodeProtocol(Object? raw) {
+    final name = raw?.toString();
+    if (name == 'vmess-xray') return GatewayProtocol.vmess;
+    return GatewayProtocol.values.firstWhere(
+      (value) => value.wireName == name,
+      orElse: () => GatewayProtocol.automatic,
+    );
   }
 
   static GatewaySnapshot _decodeSnapshot(Map<Object?, Object?> raw) {
@@ -306,14 +345,16 @@ class PlatformGatewayEngine implements GatewayEngine {
       (value) => value.name == raw['status'],
       orElse: () => TunnelStatus.error,
     );
-    final protocol = GatewayProtocol.values.firstWhere(
-      (value) => value.wireName == raw['protocol'],
-      orElse: () => GatewayProtocol.automatic,
+    final protocol = _decodeProtocol(raw['protocol']);
+    final engine = TunnelEngine.values.firstWhere(
+      (value) => value.wireName == raw['engine'],
+      orElse: () => TunnelEngine.automatic,
     );
     final nodeRaw = raw['node'];
     return GatewaySnapshot(
       status: status,
       protocol: protocol,
+      engine: engine,
       node: nodeRaw is Map<Object?, Object?> ? _decodeNode(nodeRaw) : null,
       errorMessage: raw['error'] as String?,
       stats: SessionStats(
@@ -334,12 +375,7 @@ class PlatformGatewayEngine implements GatewayEngine {
     final protocols = rawProtocols is List
         ? rawProtocols
             .whereType<String>()
-            .map(
-              (name) => GatewayProtocol.values.firstWhere(
-                (value) => value.wireName == name,
-                orElse: () => GatewayProtocol.automatic,
-              ),
-            )
+            .map(_decodeProtocol)
             .where((value) => value != GatewayProtocol.automatic)
             .toSet()
         : <GatewayProtocol>{};
@@ -375,9 +411,7 @@ class PreviewGatewayEngine implements GatewayEngine {
       GatewayNode(
         id: 'wesi-foreign-relay-candidate',
         city: 'Wesi Relay',
-        country: AeroInfrastructure.tunnelProvisioned
-            ? 'Aero node'
-            : 'Demo target',
+        country: AeroInfrastructure.tunnelProvisioned ? 'Aero node' : 'Demo target',
         countryCode: '',
         endpoint:
             '${AeroInfrastructure.relayPublicHost}:${AeroInfrastructure.candidateRealityPort}',
@@ -385,47 +419,15 @@ class PreviewGatewayEngine implements GatewayEngine {
         load: 0.24,
         protocols: {
           GatewayProtocol.vlessReality,
-          GatewayProtocol.vmessXray,
+          GatewayProtocol.vmess,
+          GatewayProtocol.trojan,
+          GatewayProtocol.shadowsocks,
+          GatewayProtocol.hysteria2,
+          GatewayProtocol.tuic,
+          GatewayProtocol.wireGuard,
           GatewayProtocol.amneziaWg,
         },
         recommended: true,
-      ),
-      GatewayNode(
-        id: 'nl-ams-01',
-        city: 'Amsterdam',
-        country: 'Netherlands',
-        countryCode: 'NL',
-        endpoint: 'ams-01.example.net:443',
-        pingMs: 31,
-        load: 0.47,
-        protocols: {
-          GatewayProtocol.vlessReality,
-          GatewayProtocol.vmessXray,
-          GatewayProtocol.amneziaWg,
-        },
-      ),
-      GatewayNode(
-        id: 'fi-hel-01',
-        city: 'Helsinki',
-        country: 'Finland',
-        countryCode: 'FI',
-        endpoint: 'hel-01.example.net:443',
-        pingMs: 46,
-        load: 0.22,
-        protocols: {GatewayProtocol.amneziaWg},
-      ),
-      GatewayNode(
-        id: 'us-nyc-01',
-        city: 'New York',
-        country: 'United States',
-        countryCode: 'US',
-        endpoint: 'nyc-01.example.net:443',
-        pingMs: 104,
-        load: 0.64,
-        protocols: {
-          GatewayProtocol.vlessReality,
-          GatewayProtocol.vmessXray,
-        },
       ),
     ];
   }
@@ -434,6 +436,7 @@ class PreviewGatewayEngine implements GatewayEngine {
   Future<void> connect({
     required GatewayNode node,
     required GatewayProtocol protocol,
+    required TunnelEngine engine,
     required SplitMode splitMode,
     required List<RoutingRule> rules,
     required bool killSwitch,
@@ -442,27 +445,31 @@ class PreviewGatewayEngine implements GatewayEngine {
     final resolvedProtocol = protocol == GatewayProtocol.automatic
         ? _preferredProtocol(node.protocols)
         : protocol;
+    final resolvedEngine = engine == TunnelEngine.automatic
+        ? (resolvedProtocol.supportsEngine(TunnelEngine.singBox)
+            ? TunnelEngine.singBox
+            : TunnelEngine.native)
+        : engine;
     _emit(
       GatewaySnapshot(
         status: TunnelStatus.connecting,
         stats: const SessionStats(),
         node: node,
         protocol: resolvedProtocol,
+        engine: resolvedEngine,
         isDemo: true,
       ),
     );
-    await Future<void>.delayed(const Duration(milliseconds: 1250));
+    await Future<void>.delayed(const Duration(milliseconds: 900));
 
     final connectedAt = DateTime.now();
     _emit(
       GatewaySnapshot(
         status: TunnelStatus.connected,
-        stats: SessionStats(
-          connectedAt: connectedAt,
-          pingMs: node.pingMs,
-        ),
+        stats: SessionStats(connectedAt: connectedAt, pingMs: node.pingMs),
         node: node,
         protocol: resolvedProtocol,
+        engine: resolvedEngine,
         isDemo: true,
       ),
     );
@@ -487,14 +494,18 @@ class PreviewGatewayEngine implements GatewayEngine {
   }
 
   GatewayProtocol _preferredProtocol(Set<GatewayProtocol> protocols) {
-    if (protocols.contains(GatewayProtocol.vlessReality)) {
-      return GatewayProtocol.vlessReality;
-    }
-    if (protocols.contains(GatewayProtocol.vmessXray)) {
-      return GatewayProtocol.vmessXray;
-    }
-    if (protocols.contains(GatewayProtocol.amneziaWg)) {
-      return GatewayProtocol.amneziaWg;
+    const priority = [
+      GatewayProtocol.vlessReality,
+      GatewayProtocol.hysteria2,
+      GatewayProtocol.tuic,
+      GatewayProtocol.vmess,
+      GatewayProtocol.trojan,
+      GatewayProtocol.shadowsocks,
+      GatewayProtocol.amneziaWg,
+      GatewayProtocol.wireGuard,
+    ];
+    for (final candidate in priority) {
+      if (protocols.contains(candidate)) return candidate;
     }
     throw StateError('У сервера нет поддерживаемого протокола.');
   }
@@ -503,20 +514,21 @@ class PreviewGatewayEngine implements GatewayEngine {
   Future<void> disconnect() async {
     _ticker?.cancel();
     _emit(_current.copyWith(status: TunnelStatus.disconnecting));
-    await Future<void>.delayed(const Duration(milliseconds: 540));
+    await Future<void>.delayed(const Duration(milliseconds: 420));
     _emit(const GatewaySnapshot.disconnected(isDemo: true));
   }
 
   @override
   Future<void> importConfig(ImportedGatewayConfig config) async {
-    await Future<void>.delayed(const Duration(milliseconds: 380));
+    await Future<void>.delayed(const Duration(milliseconds: 200));
   }
 
   void _emit(GatewaySnapshot snapshot) {
     _current = snapshot;
     GatewayTelemetry.publish(snapshot.stats);
     final previous = _lastPublished;
-    if (previous == null || PlatformGatewayEngine._structureChanged(previous, snapshot)) {
+    if (previous == null ||
+        PlatformGatewayEngine._structureChanged(previous, snapshot)) {
       _lastPublished = snapshot;
       if (!_controller.isClosed) _controller.add(snapshot);
     }
