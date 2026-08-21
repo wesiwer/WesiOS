@@ -89,6 +89,8 @@ jobs:
           set -euo pipefail
           sed -i 's/minSdk = flutter.minSdkVersion/minSdk = 23/' android/app/build.gradle.kts
           sed -i 's/android:label="wesi_aero"/android:label="Wesi Aero"/' android/app/src/main/AndroidManifest.xml
+          python3 scripts/configure_payment_return.py
+          grep -q 'android:scheme="wesi-aero"' android/app/src/main/AndroidManifest.xml
           for density in mdpi hdpi xhdpi xxhdpi xxxhdpi; do
             cp assets/branding/wesi_aero_mark.png "android/app/src/main/res/mipmap-$density/ic_launcher.png"
           done
