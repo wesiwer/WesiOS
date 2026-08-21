@@ -83,13 +83,16 @@ export class PaymentOrchestrator {
         Math.abs(this.now() - requestDate) > 10 * 60 * 1000) {
       throw new PaymentError('STALE_WEBHOOK', 'Crypto Pay webhook timestamp is stale', 401);
     }
-    const eventId = String(update.update_id ?? '');
-    if (!this.commerce.consumeWebhook('crypto_pay', eventId)) {
-      return { duplicate: true };
-    }
     if (update.update_type !== 'invoice_paid') return { ignored: true };
     const invoice = update.payload;
     const externalId = String(invoice?.invoice_id ?? '');
+    if (!externalId) {
+      throw new PaymentError('INVALID_WEBHOOK', 'Crypto Pay invoice id is missing', 400);
+    }
+    const eventId = `${update.update_type}:${externalId}:${String(update.update_id ?? '')}`;
+    if (!this.commerce.consumeWebhook('crypto_pay', eventId)) {
+      return { duplicate: true };
+    }
     const payment = this.commerce.getPaymentByExternal('crypto_pay', externalId);
     if (!payment) throw new PaymentError('PAYMENT_NOT_FOUND', 'Payment not found', 404);
     if (invoice.status !== 'paid') {
