@@ -32,61 +32,85 @@ class _ServersScreenState extends State<ServersScreen> {
           node.endpoint.toLowerCase().contains(query);
     }).toList(growable: false);
 
-    return SingleChildScrollView(
+    final bodyCount = controller.loadingNodes || nodes.isEmpty ? 1 : nodes.length;
+
+    // Build only visible server cards. A Column inside SingleChildScrollView
+    // eagerly instantiated every glass/blur card, which scales poorly as the
+    // fleet grows. ListView.builder keeps the exact card visuals while
+    // virtualising off-screen nodes.
+    return ListView.builder(
       padding: const EdgeInsets.fromLTRB(
         GatewayTokens.space16,
         GatewayTokens.space24,
         GatewayTokens.space16,
         GatewayTokens.space32,
       ),
-      child: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 920),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const SectionHeading(
-                title: 'Серверные узлы',
-                subtitle: 'Выберите маршрут вручную или оставьте рекомендованный.',
-              ),
-              const SizedBox(height: GatewayTokens.space24),
-              TextField(
-                controller: _search,
-                onChanged: (_) => setState(() {}),
-                decoration: const InputDecoration(
-                  hintText: 'Город, страна или адрес',
-                  prefixIcon: Icon(Icons.search_rounded),
-                ),
-              ),
-              const SizedBox(height: GatewayTokens.space16),
-              if (controller.loadingNodes)
-                const Center(
-                  child: Padding(
-                    padding: EdgeInsets.all(GatewayTokens.space48),
-                    child: CircularProgressIndicator(),
+      itemCount: 1 + bodyCount,
+      itemBuilder: (context, index) {
+        if (index == 0) {
+          return Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 920),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const SectionHeading(
+                    title: 'Серверные узлы',
+                    subtitle: 'Выберите маршрут вручную или оставьте рекомендованный.',
                   ),
-                )
-              else if (nodes.isEmpty)
-                const _EmptyServers()
-              else
-                ...nodes.map(
-                  (node) => Padding(
-                    padding: const EdgeInsets.only(bottom: GatewayTokens.space12),
-                    child: _NodeCard(
-                      node: node,
-                      selected: controller.selectedNode?.id == node.id,
-                      enabled: !controller.isConnected && !controller.isBusy,
-                      onSelect: () {
-                        controller.selectNode(node);
-                        controller.selectNavigation(0);
-                      },
+                  const SizedBox(height: GatewayTokens.space24),
+                  TextField(
+                    controller: _search,
+                    onChanged: (_) => setState(() {}),
+                    decoration: const InputDecoration(
+                      hintText: 'Город, страна или адрес',
+                      prefixIcon: Icon(Icons.search_rounded),
                     ),
                   ),
-                ),
-            ],
+                  const SizedBox(height: GatewayTokens.space16),
+                ],
+              ),
+            ),
+          );
+        }
+
+        if (controller.loadingNodes) {
+          return const Center(
+            child: Padding(
+              padding: EdgeInsets.all(GatewayTokens.space48),
+              child: CircularProgressIndicator(),
+            ),
+          );
+        }
+
+        if (nodes.isEmpty) {
+          return const Center(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: 920),
+              child: _EmptyServers(),
+            ),
+          );
+        }
+
+        final node = nodes[index - 1];
+        return Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 920),
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: GatewayTokens.space12),
+              child: _NodeCard(
+                node: node,
+                selected: controller.selectedNode?.id == node.id,
+                enabled: !controller.isConnected && !controller.isBusy,
+                onSelect: () {
+                  controller.selectNode(node);
+                  controller.selectNavigation(0);
+                },
+              ),
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 }
@@ -208,7 +232,11 @@ class _NodeCard extends StatelessWidget {
                 ),
               ),
               child: selected
-                  ? Icon(Icons.check_rounded, size: 18, color: palette.accentForeground)
+                  ? Icon(
+                      Icons.check_rounded,
+                      size: 18,
+                      color: palette.accentForeground,
+                    )
                   : null,
             ),
           ],
@@ -248,9 +276,16 @@ class _EmptyServers extends StatelessWidget {
         child: Center(
           child: Column(
             children: [
-              Icon(Icons.public_off_rounded, size: 34, color: context.palette.textMuted),
+              Icon(
+                Icons.public_off_rounded,
+                size: 34,
+                color: context.palette.textMuted,
+              ),
               const SizedBox(height: GatewayTokens.space12),
-              Text('Узлы не найдены', style: Theme.of(context).textTheme.titleMedium),
+              Text(
+                'Узлы не найдены',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
               const SizedBox(height: GatewayTokens.space4),
               Text(
                 'Измените запрос или проверьте доступ к control plane.',
