@@ -7,13 +7,14 @@ on:
       - '.github/workflows/apply-org-sync-code-fix-once.yml'
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   diagnose:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      - uses: actions/checkout@v4
       - name: Prepare SSH
         env:
           KEY: ${{ secrets.WESI_SERVER_SSH_KEY }}
@@ -39,19 +40,15 @@ jobs:
         run: |
           set -euo pipefail
           SSH="ssh -i $HOME/.ssh/id_deploy -o BatchMode=yes"
-          $SSH "$USER@$HOST" 'python3 - <<'"'"'PY'"'"'
+          $SSH "$USER@$HOST" 'python3 - <<'"'"'PY'"'"'' > /tmp/prod-org-structure.jsonl
           import json, sqlite3, os
-          candidates=[
-            "/opt/pocketbase/pb_data/data.db",
-            "/opt/pocketbase/pb_data/data.db-wal",
-          ]
-          db=next((p for p in candidates if p.endswith("data.db") and os.path.exists(p)), None)
-          if not db:
+          db="/opt/pocketbase/pb_data/data.db"
+          if not os.path.exists(db):
             raise SystemExit("PocketBase data.db not found")
           con=sqlite3.connect(f"file:{db}?mode=ro", uri=True)
           rows=con.execute("SELECT rid, stamp, deleted, payload FROM wesios_records WHERE coll='organizations' ORDER BY rid").fetchall()
-          keep=("id","name","parentId","isRoot","baseCurrency","status","createdAt","updatedAt","createdBy","code","sortOrder","archived","created","updated")
-          print("COUNT", len(rows))
+          keep=("id","parentId","isRoot","baseCurrency","status","createdAt","updatedAt","createdBy","code","sortOrder","archived","created","updated")
+          print(json.dumps({"count":len(rows)}))
           for rid,stamp,deleted,payload in rows:
             try:
               p=json.loads(payload) if isinstance(payload,str) else payload
@@ -60,4 +57,21 @@ jobs:
             if not isinstance(p,dict): p={"_payload_type":type(p).__name__}
             safe={k:p.get(k) for k in keep if k in p}
             print(json.dumps({"rid":rid,"stamp":stamp,"deleted":bool(deleted),"payload":safe},ensure_ascii=False,sort_keys=True))
-          PY'
+          PY
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          lines=[json.loads(x) for x in Path('/tmp/prod-org-structure.jsonl').read_text(encoding='utf-8').splitlines() if x.strip()]
+          Path('/tmp/prod-org-structure.json').write_text(json.dumps(lines,ensure_ascii=False,indent=2),encoding='utf-8')
+          PY
+      - name: Persist temporary diagnostic
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          CONTENT=$(base64 -w0 /tmp/prod-org-structure.json)
+          URL="/repos/$GITHUB_REPOSITORY/contents/.github/ops/prod-org-structure-temp.json"
+          SHA=$(gh api "$URL" --jq .sha 2>/dev/null || true)
+          ARGS=(--method PUT -H 'Accept: application/vnd.github+json' "$URL" -f message='ops(sync): record temporary production org structure' -f content="$CONTENT" -f branch=main)
+          if [ -n "$SHA" ]; then ARGS+=( -f sha="$SHA" ); fi
+          gh api "${ARGS[@]}"
