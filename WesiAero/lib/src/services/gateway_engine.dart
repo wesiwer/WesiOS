@@ -183,6 +183,7 @@ class PreviewGatewayEngine implements GatewayEngine {
         load: 0.24,
         protocols: {
           GatewayProtocol.vlessReality,
+          GatewayProtocol.vmessXray,
           GatewayProtocol.amneziaWg,
         },
         recommended: true,
@@ -197,6 +198,7 @@ class PreviewGatewayEngine implements GatewayEngine {
         load: 0.47,
         protocols: {
           GatewayProtocol.vlessReality,
+          GatewayProtocol.vmessXray,
           GatewayProtocol.amneziaWg,
         },
       ),
@@ -218,7 +220,10 @@ class PreviewGatewayEngine implements GatewayEngine {
         endpoint: 'nyc-01.example.net:443',
         pingMs: 104,
         load: 0.64,
-        protocols: {GatewayProtocol.vlessReality},
+        protocols: {
+          GatewayProtocol.vlessReality,
+          GatewayProtocol.vmessXray,
+        },
       ),
     ];
   }
@@ -233,9 +238,7 @@ class PreviewGatewayEngine implements GatewayEngine {
   }) async {
     _ticker?.cancel();
     final resolvedProtocol = protocol == GatewayProtocol.automatic
-        ? (node.protocols.contains(GatewayProtocol.amneziaWg)
-            ? GatewayProtocol.amneziaWg
-            : node.protocols.first)
+        ? _preferredProtocol(node.protocols)
         : protocol;
     _emit(
       GatewaySnapshot(
@@ -279,6 +282,19 @@ class PreviewGatewayEngine implements GatewayEngine {
         ),
       );
     });
+  }
+
+  GatewayProtocol _preferredProtocol(Set<GatewayProtocol> protocols) {
+    if (protocols.contains(GatewayProtocol.vlessReality)) {
+      return GatewayProtocol.vlessReality;
+    }
+    if (protocols.contains(GatewayProtocol.vmessXray)) {
+      return GatewayProtocol.vmessXray;
+    }
+    if (protocols.contains(GatewayProtocol.amneziaWg)) {
+      return GatewayProtocol.amneziaWg;
+    }
+    throw StateError('У сервера нет поддерживаемого протокола.');
   }
 
   @override
