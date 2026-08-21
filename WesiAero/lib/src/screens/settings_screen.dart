@@ -33,12 +33,21 @@ class SettingsScreen extends StatelessWidget {
             children: [
               const SectionHeading(
                 title: 'Настройки',
-                subtitle: 'Протокол, защита от утечек и конфигурации.',
+                subtitle: 'Протокол, движок, защита от утечек и конфигурации.',
               ),
               const SizedBox(height: GatewayTokens.space24),
               Text('Протокол', style: Theme.of(context).textTheme.titleLarge),
               const SizedBox(height: GatewayTokens.space12),
               _ProtocolSelector(enabled: !locked),
+              const SizedBox(height: GatewayTokens.space16),
+              Text('Движок', style: Theme.of(context).textTheme.titleLarge),
+              const SizedBox(height: GatewayTokens.space4),
+              Text(
+                'Авто предпочитает sing-box и переключается на Xray/Native, если протокол этого требует.',
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+              const SizedBox(height: GatewayTokens.space12),
+              _EngineSelector(enabled: !locked),
               const SizedBox(height: GatewayTokens.space24),
               Text('Соединение', style: Theme.of(context).textTheme.titleLarge),
               const SizedBox(height: GatewayTokens.space12),
@@ -166,7 +175,12 @@ class _ProtocolSelector extends StatelessWidget {
     final available = controller.selectedNode?.protocols ??
         const {
           GatewayProtocol.vlessReality,
-          GatewayProtocol.vmessXray,
+          GatewayProtocol.vmess,
+          GatewayProtocol.trojan,
+          GatewayProtocol.shadowsocks,
+          GatewayProtocol.hysteria2,
+          GatewayProtocol.tuic,
+          GatewayProtocol.wireGuard,
           GatewayProtocol.amneziaWg,
         };
     return Wrap(
@@ -176,19 +190,65 @@ class _ProtocolSelector extends StatelessWidget {
         final supported = protocol == GatewayProtocol.automatic ||
             available.contains(protocol);
         return ChoiceChip(
-          avatar: Icon(
-            switch (protocol) {
-              GatewayProtocol.automatic => Icons.auto_awesome_rounded,
-              GatewayProtocol.vlessReality => Icons.visibility_off_outlined,
-              GatewayProtocol.vmessXray => Icons.hub_outlined,
-              GatewayProtocol.amneziaWg => Icons.bolt_rounded,
-            },
-            size: 18,
-          ),
+          avatar: Icon(_protocolIcon(protocol), size: 18),
           label: Text(protocol.title),
           selected: controller.protocol == protocol,
           onSelected: enabled && supported
               ? (_) => controller.setProtocol(protocol)
+              : null,
+        );
+      }).toList(growable: false),
+    );
+  }
+
+  IconData _protocolIcon(GatewayProtocol protocol) => switch (protocol) {
+        GatewayProtocol.automatic => Icons.auto_awesome_rounded,
+        GatewayProtocol.vlessReality => Icons.visibility_off_outlined,
+        GatewayProtocol.vmess => Icons.hub_outlined,
+        GatewayProtocol.trojan => Icons.security_rounded,
+        GatewayProtocol.shadowsocks => Icons.blur_on_rounded,
+        GatewayProtocol.hysteria2 => Icons.speed_rounded,
+        GatewayProtocol.tuic => Icons.bolt_rounded,
+        GatewayProtocol.wireGuard => Icons.vpn_lock_outlined,
+        GatewayProtocol.amneziaWg => Icons.shield_moon_outlined,
+      };
+}
+
+class _EngineSelector extends StatelessWidget {
+  const _EngineSelector({required this.enabled});
+
+  final bool enabled;
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = GatewayScope.of(context);
+    final protocol = controller.protocol;
+    return Wrap(
+      spacing: GatewayTokens.space8,
+      runSpacing: GatewayTokens.space8,
+      children: TunnelEngine.values.map((engine) {
+        final supported = protocol == GatewayProtocol.automatic ||
+            protocol.supportsEngine(engine);
+        final subtitle = switch (engine) {
+          TunnelEngine.automatic => 'Рекомендованный',
+          TunnelEngine.singBox => 'Основной',
+          TunnelEngine.xray => 'Резервный',
+          TunnelEngine.native => 'WG / AWG',
+        };
+        return ChoiceChip(
+          avatar: Icon(
+            switch (engine) {
+              TunnelEngine.automatic => Icons.auto_fix_high_rounded,
+              TunnelEngine.singBox => Icons.dns_outlined,
+              TunnelEngine.xray => Icons.hub_outlined,
+              TunnelEngine.native => Icons.memory_rounded,
+            },
+            size: 18,
+          ),
+          label: Text('${engine.title} · $subtitle'),
+          selected: controller.engine == engine,
+          onSelected: enabled && supported
+              ? (_) => controller.setEngine(engine)
               : null,
         );
       }).toList(growable: false),
@@ -438,7 +498,8 @@ class _GatewayConfigImportSheetState extends State<GatewayConfigImportSheet> {
                 autocorrect: false,
                 enableSuggestions: false,
                 decoration: InputDecoration(
-                  hintText: 'vless://… · vmess://… · [Interface] … [Peer]',
+                  hintText:
+                      'vless:// · vmess:// · trojan:// · ss:// · hysteria2:// · tuic:// · [Interface]/[Peer]',
                   errorText: _error,
                   alignLabelWithHint: true,
                 ),
