@@ -1,0 +1,169 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+: "${AERO_HOST:?AERO_HOST is required}"
+: "${AI_HOST:?AI_HOST is required}"
+: "${EXPECTED_RELAY_IP:?EXPECTED_RELAY_IP is required}"
+: "${RELAY_SSH_HOST:?RELAY_SSH_HOST is required}"
+: "${RELAY_SSH_USER:?RELAY_SSH_USER is required}"
+: "${RELAY_SSH_KEY:?RELAY_SSH_KEY is required}"
+
+WORK=/tmp/wesi-aero-live-probe
+rm -rf "$WORK"
+mkdir -p "$WORK" "$HOME/.ssh"
+chmod 700 "$WORK" "$HOME/.ssh"
+printf '%s\n' "$RELAY_SSH_KEY" > "$HOME/.ssh/wesi_aero_relay"
+chmod 600 "$HOME/.ssh/wesi_aero_relay"
+if [[ -n "${RELAY_SSH_KNOWN_HOSTS:-}" ]]; then
+  printf '%s\n' "$RELAY_SSH_KNOWN_HOSTS" > "$HOME/.ssh/wesi_aero_known_hosts"
+else
+  ssh-keyscan -H "$RELAY_SSH_HOST" > "$HOME/.ssh/wesi_aero_known_hosts" 2>/dev/null
+fi
+chmod 600 "$HOME/.ssh/wesi_aero_known_hosts"
+SSH=(-i "$HOME/.ssh/wesi_aero_relay" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/wesi_aero_known_hosts")
+
+resolved="$(getent ahostsv4 "$AERO_HOST" | awk '{print $1; exit}')"
+[[ "$resolved" == "$EXPECTED_RELAY_IP" ]] || {
+  echo "Aero DNS mismatch: $resolved != $EXPECTED_RELAY_IP" >&2
+  exit 1
+}
+curl -fsS --max-time 15 "https://$AI_HOST/health" >/dev/null
+
+REMOTE="/tmp/wesi-aero-live-${GITHUB_RUN_ID:-manual}"
+ssh "${SSH[@]}" "$RELAY_SSH_USER@$RELAY_SSH_HOST" "rm -rf '$REMOTE' && mkdir -p '$REMOTE'"
+scp -r "${SSH[@]}" WesiAero/server-node "$RELAY_SSH_USER@$RELAY_SSH_HOST:$REMOTE/"
+
+ssh "${SSH[@]}" "$RELAY_SSH_USER@$RELAY_SSH_HOST" \
+  "REMOTE='$REMOTE' AERO_HOST='$AERO_HOST' bash -s" <<'REMOTE_SCRIPT'
+set -Eeuo pipefail
+if [[ "$(id -u)" -eq 0 ]]; then SUDO=(); else SUDO=(sudo -n); fi
+chmod +x "$REMOTE/server-node/scripts/"*.sh
+
+"${SUDO[@]}" env \
+  WESI_AERO_PUBLIC_HOST="$AERO_HOST" \
+  WESI_AERO_REALITY_PORT=8443 \
+  WESI_AERO_VMESS_PORT=8444 \
+  bash "$REMOTE/server-node/scripts/setup-xray-prototype.sh"
+
+"${SUDO[@]}" env \
+  WG_ENDPOINT_HOST="$AERO_HOST" \
+  WG_ENDPOINT_PORT=51820 \
+  WG_CLIENT_CONFIG=/root/wesi-aero-client.conf \
+  bash "$REMOTE/server-node/scripts/setup-wireguard-prototype.sh"
+
+"${SUDO[@]}" env \
+  WESI_AERO_PUBLIC_HOST="$AERO_HOST" \
+  WESI_AERO_RELAY_PUBLIC_HOST="$AERO_HOST" \
+  bash "$REMOTE/server-node/scripts/setup-control-plane-prototype.sh" "$REMOTE/server-node"
+
+"${SUDO[@]}" env WESI_AERO_PUBLIC_HOST="$AERO_HOST" \
+  bash "$REMOTE/server-node/scripts/configure-control-plane-https.sh" "$AERO_HOST"
+
+systemctl is-active --quiet xray
+systemctl is-active --quiet wg-quick@wg0
+systemctl is-active --quiet wesi-aero-control
+ss -ltn | grep -q ':8443 '
+ss -ltn | grep -q ':8444 '
+ss -lun | grep -q ':51820 '
+curl -fsS --max-time 10 http://127.0.0.1:8790/healthz >/dev/null
+curl -fsS --max-time 20 "https://$AERO_HOST/healthz" >/dev/null
+REMOTE_SCRIPT
+
+scp "${SSH[@]}" \
+  "$RELAY_SSH_USER@$RELAY_SSH_HOST:/var/lib/wesi-aero/xray/clients/vless-client.json" \
+  "$WORK/vless-client.json"
+scp "${SSH[@]}" \
+  "$RELAY_SSH_USER@$RELAY_SSH_HOST:/var/lib/wesi-aero/xray/clients/vmess-client.json" \
+  "$WORK/vmess-client.json"
+ssh "${SSH[@]}" "$RELAY_SSH_USER@$RELAY_SSH_HOST" \
+  'if [[ "$(id -u)" -eq 0 ]]; then cat /root/wesi-aero-client.conf; else sudo -n cat /root/wesi-aero-client.conf; fi' \
+  > "$WORK/wireguard.conf"
+chmod 600 "$WORK"/*
+
+sudo apt-get update -y >/dev/null
+sudo apt-get install -y wireguard-tools curl ca-certificates >/dev/null
+curl -fsSL --retry 3 \
+  https://github.com/XTLS/Xray-install/raw/main/install-release.sh \
+  -o "$WORK/install-xray.sh"
+chmod 700 "$WORK/install-xray.sh"
+sudo bash "$WORK/install-xray.sh" install --without-geodata >/dev/null
+sudo systemctl stop xray 2>/dev/null || true
+
+probe_xray() {
+  local name="$1" config="$2" trace="$WORK/$1-trace" log="$WORK/$1.log"
+  xray run -config "$config" >"$log" 2>&1 &
+  local pid=$!
+  for _ in $(seq 1 30); do
+    if curl -fsS --max-time 2 --socks5-hostname 127.0.0.1:10808 \
+      https://www.cloudflare.com/cdn-cgi/trace >"$trace" 2>/dev/null; then
+      break
+    fi
+    sleep 0.5
+  done
+  local ip
+  ip="$(awk -F= '$1=="ip" {print $2}' "$trace" 2>/dev/null || true)"
+  kill "$pid" 2>/dev/null || true
+  wait "$pid" 2>/dev/null || true
+  if [[ "$ip" != "$EXPECTED_RELAY_IP" ]]; then
+    tail -n 80 "$log" >&2 || true
+    echo "$name egress mismatch: $ip != $EXPECTED_RELAY_IP" >&2
+    return 1
+  fi
+}
+
+probe_xray vless "$WORK/vless-client.json"
+probe_xray vmess "$WORK/vmess-client.json"
+
+CONF="$WORK/wireguard.conf"
+PRIVATE_FILE="$WORK/wg.private"
+awk -F' = ' '/^PrivateKey/ {print $2; exit}' "$CONF" > "$PRIVATE_FILE"
+chmod 600 "$PRIVATE_FILE"
+SERVER_PUBLIC="$(awk -F' = ' '/^PublicKey/ {print $2; exit}' "$CONF")"
+ENDPOINT="$(awk -F' = ' '/^Endpoint/ {print $2; exit}' "$CONF")"
+CLIENT_ADDRESS="$(awk -F' = ' '/^Address/ {print $2; exit}' "$CONF")"
+[[ -n "$SERVER_PUBLIC" && -n "$ENDPOINT" && -n "$CLIENT_ADDRESS" ]]
+
+cleanup_wg() {
+  sudo ip route del 1.1.1.1/32 dev wesiwg 2>/dev/null || true
+  sudo ip route del 10.77.0.1/32 dev wesiwg 2>/dev/null || true
+  sudo ip link del wesiwg 2>/dev/null || true
+}
+trap cleanup_wg EXIT
+cleanup_wg
+sudo ip link add dev wesiwg type wireguard
+sudo ip address add "$CLIENT_ADDRESS" dev wesiwg
+sudo wg set wesiwg \
+  private-key "$PRIVATE_FILE" \
+  peer "$SERVER_PUBLIC" \
+  endpoint "$ENDPOINT" \
+  allowed-ips 10.77.0.1/32,1.1.1.1/32 \
+  persistent-keepalive 25
+sudo ip link set up dev wesiwg
+sudo ip route replace 10.77.0.1/32 dev wesiwg
+sudo ip route replace 1.1.1.1/32 dev wesiwg
+ping -c 2 -W 3 10.77.0.1 >/dev/null
+handshake=0
+for _ in $(seq 1 10); do
+  handshake="$(sudo wg show wesiwg latest-handshakes | awk '{print $2; exit}')"
+  [[ "${handshake:-0}" -gt 0 ]] && break
+  sleep 1
+done
+[[ "${handshake:-0}" -gt 0 ]] || { echo 'WireGuard handshake missing' >&2; exit 1; }
+curl -fsS --max-time 15 \
+  --connect-to one.one.one.one:443:1.1.1.1:443 \
+  https://one.one.one.one/cdn-cgi/trace > "$WORK/wg-trace"
+wg_ip="$(awk -F= '$1=="ip" {print $2}' "$WORK/wg-trace")"
+[[ "$wg_ip" == "$EXPECTED_RELAY_IP" ]] || {
+  echo "WireGuard egress mismatch: $wg_ip != $EXPECTED_RELAY_IP" >&2
+  exit 1
+}
+cleanup_wg
+trap - EXIT
+
+curl -fsS --max-time 20 "https://$AERO_HOST/healthz" | jq -e '.status == "ok"' >/dev/null
+curl -fsS --max-time 20 "https://$AERO_HOST/v1/catalog" \
+  | jq -e '.servers[] | select(.id == "wesi-relay") | (.protocols | index("vless-reality")) != null and (.protocols | index("vmess-xray")) != null and (.protocols | index("amneziawg")) != null' >/dev/null
+curl -fsS --max-time 20 "https://$AI_HOST/health" >/dev/null
+
+rm -rf "$WORK"
+echo "Wesi Aero live VPN prototype verified: VLESS, VMess, WireGuard and HTTPS control plane."
