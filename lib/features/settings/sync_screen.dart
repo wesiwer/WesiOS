@@ -1,7 +1,12 @@
 import 'dart:async';
+import 'dart:typed_data';
 
+import 'package:cross_file/cross_file.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:share_plus/share_plus.dart';
 
+import '../../core/backup/local_backup_service.dart';
 import '../../core/localization/wesi_locale.dart';
 import '../../core/sync/sync_auto.dart';
 import '../../core/sync/sync_codec.dart';
@@ -79,6 +84,111 @@ class _SyncScreenState extends State<SyncScreen> {
     if (!mounted) return;
     setState(() => _busy = false);
     Navigator.of(context).pushNamedAndRemoveUntil('/login', (_) => false);
+  }
+
+  Future<void> _exportLocalBackup() async {
+    if (_busy || TeamService.current?.isOwner != true) return;
+    setState(() => _busy = true);
+    try {
+      final backup = await LocalBackupService.create();
+      await Share.shareXFiles(
+        <XFile>[
+          XFile.fromData(
+            backup.bytes,
+            mimeType: 'application/octet-stream',
+            name: backup.fileName,
+          ),
+        ],
+        subject: _ru ? 'Резервная копия WesiOS' : 'WesiOS backup',
+      );
+      if (!mounted) return;
+      _say(
+        _ru
+            ? 'Резервная копия подготовлена: ${backup.records} записей и ${backup.settingsCount} бизнес-настроек. Сохраните файл в «Файлы» или другое надёжное место.'
+            : 'Backup prepared: ${backup.records} records and ${backup.settingsCount} business settings. Save the file to Files or another safe location.',
+      );
+    } catch (error) {
+      _say(
+        _ru
+            ? 'Не удалось создать резервную копию: $error'
+            : 'Could not create backup: $error',
+        error: true,
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _restoreLocalBackup() async {
+    if (_busy || TeamService.current?.isOwner != true) return;
+    final picked = await FilePicker.platform.pickFiles(
+      allowMultiple: false,
+      type: FileType.custom,
+      allowedExtensions: const <String>['wesibackup', 'json'],
+      withData: true,
+    );
+    if (picked == null || picked.files.isEmpty || !mounted) return;
+    final raw = picked.files.single.bytes;
+    if (raw == null) {
+      _say(
+        _ru
+            ? 'Не удалось прочитать выбранный файл.'
+            : 'Could not read the selected file.',
+        error: true,
+      );
+      return;
+    }
+    final bytes = Uint8List.fromList(raw);
+
+    LocalBackupInspection inspection;
+    try {
+      inspection = LocalBackupService.inspect(bytes);
+    } catch (error) {
+      _say(
+        _ru
+            ? 'Этот файл нельзя восстановить: $error'
+            : 'This file cannot be restored: $error',
+        error: true,
+      );
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(_ru ? 'Восстановить локальные данные?' : 'Restore local data?'),
+        content: Text(
+          _ru
+              ? 'Копия от ${_when(inspection.createdAt)}. В ней ${inspection.records} записей в ${inspection.counts.length} разделах и ${inspection.settingsCount} бизнес-настроек.\n\nСовпадающие записи на телефоне будут заменены данными из копии. Остальные локальные записи не удаляются. Перед записью обычная синхронизация будет заблокирована, а при ошибке приложение попытается вернуть исходное локальное состояние.'
+              : 'Backup from ${_when(inspection.createdAt)}. It contains ${inspection.records} records in ${inspection.counts.length} sections and ${inspection.settingsCount} business settings.\n\nMatching local records will be replaced by the backup. Other local records are not deleted. Normal sync will be locked before writing and the app will attempt to roll back the local state if restoration fails.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: Text(_ru ? 'Отмена' : 'Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text(_ru ? 'Восстановить' : 'Restore'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _busy = true);
+    final report = await LocalBackupService.restore(bytes);
+    if (!mounted) return;
+    setState(() => _busy = false);
+    _say(
+      report.ok
+          ? (_ru
+                ? 'Восстановлено ${report.restored} записей. Они помечены как свежие локальные изменения. Обычная синхронизация пока заблокирована — сначала создайте проверенную серверную копию.'
+                : 'Restored ${report.restored} records. They are marked as fresh local changes. Normal sync remains locked until you create a verified server copy.')
+          : (report.message ??
+                (_ru ? 'Восстановление не выполнено.' : 'Restore failed.')),
+      error: !report.ok,
+    );
   }
 
   Future<void> _runRecovery() async {
@@ -187,6 +297,7 @@ class _SyncScreenState extends State<SyncScreen> {
       valueListenable: SyncEndpoint.revision,
       builder: (context, _, __) {
         final signedIn = _signedIn;
+        final owner = TeamService.current?.isOwner == true;
         final recoveryLocked = SyncRecoveryGuard.active;
         _scheduleExpiryRefresh();
         return Scaffold(
@@ -239,7 +350,7 @@ class _SyncScreenState extends State<SyncScreen> {
                             : _syncNow,
                         filled: true,
                       ),
-                      if (signedIn && TeamService.current?.isOwner == true) ...[
+                      if (signedIn && owner) ...[
                         const SizedBox(height: 10),
                         _button(
                           label: recoveryLocked
@@ -258,6 +369,23 @@ class _SyncScreenState extends State<SyncScreen> {
                               : (recoveryLocked && SyncRecovery.verified
                                     ? _releaseRecoveryLock
                                     : _runRecovery),
+                        ),
+                      ],
+                      if (owner) ...[
+                        const SizedBox(height: 10),
+                        _button(
+                          label: _ru
+                              ? 'Экспортировать локальную резервную копию'
+                              : 'Export local backup',
+                          onTap: _busy ? null : _exportLocalBackup,
+                        ),
+                        const SizedBox(height: 10),
+                        _button(
+                          label: _ru
+                              ? 'Восстановить из локальной копии'
+                              : 'Restore local backup',
+                          onTap: _busy ? null : _restoreLocalBackup,
+                          muted: true,
                         ),
                       ],
                       if (recoveryLocked) ...[
