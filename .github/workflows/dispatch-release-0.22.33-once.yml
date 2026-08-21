@@ -1,0 +1,63 @@
+name: Verify Release 0.22.34 Once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/dispatch-release-0.22.33-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  verify-release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Wait for published manifest and assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          ok=0
+          for i in $(seq 1 60); do
+            rm -rf /tmp/wesi-release && mkdir -p /tmp/wesi-release
+            if gh release download app-latest --repo "$GITHUB_REPOSITORY" --pattern 'app-manifest.json' --dir /tmp/wesi-release >/dev/null 2>&1; then
+              python3 - <<'PY' && ok=1 || ok=0
+          import json
+          from pathlib import Path
+          p=Path('/tmp/wesi-release/app-manifest.json')
+          d=json.loads(p.read_text(encoding='utf-8'))
+          assert d.get('version') == '0.22.34', d
+          assert int(d.get('build', -1)) == 109, d
+          assert d.get('android',{}).get('asset') == 'wesios-android.apk', d
+          assert d.get('windows',{}).get('asset') == 'wesios-windows-x64.zip', d
+          print(json.dumps(d, ensure_ascii=False, indent=2))
+          PY
+              if [ "$ok" = 1 ]; then
+                assets=$(gh release view app-latest --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name')
+                grep -qx 'wesios-android.apk' <<<"$assets"
+                grep -qx 'wesios-windows-x64.zip' <<<"$assets"
+                grep -qx 'app-manifest.json' <<<"$assets"
+                break
+              fi
+            fi
+            echo "Waiting for 0.22.34+109 publication ($i/60)..."
+            sleep 20
+          done
+          test "$ok" = 1
+
+      - name: Record verified publication
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf 'release=0.22.34+109\nverified_at=%s\nandroid=wesios-android.apk\nwindows=wesios-windows-x64.zip\nmanifest=app-manifest.json\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > /tmp/release-verified.txt
+          CONTENT=$(base64 -w0 /tmp/release-verified.txt)
+          gh api --method PUT -H 'Accept: application/vnd.github+json' \
+            "/repos/$GITHUB_REPOSITORY/contents/.github/ops/release-0.22.34-verified.txt" \
+            -f message='ops(release): verify 0.22.34 publication' \
+            -f content="$CONTENT" \
+            -f branch='main'
