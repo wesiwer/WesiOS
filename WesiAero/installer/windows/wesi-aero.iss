@@ -30,7 +30,7 @@ SetupIconFile=..\..\assets\branding\wesi_aero_mark.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
 CloseApplications=force
 RestartApplications=no
-ChangesAssociations=no
+ChangesAssociations=yes
 UsePreviousAppDir=yes
 UsePreviousTasks=yes
 
@@ -47,6 +47,12 @@ Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs 
 [Icons]
 Name: "{autoprograms}\Wesi Aero"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"
 Name: "{autodesktop}\Wesi Aero"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"; Tasks: desktopicon
+
+[Registry]
+Root: HKA; Subkey: "Software\Classes\wesi-aero"; ValueType: string; ValueData: "URL:Wesi Aero Protocol"; Flags: uninsdeletekey
+Root: HKA; Subkey: "Software\Classes\wesi-aero"; ValueType: string; ValueName: "URL Protocol"; ValueData: ""
+Root: HKA; Subkey: "Software\Classes\wesi-aero\DefaultIcon"; ValueType: string; ValueData: "{app}\{#MyAppExeName},0"
+Root: HKA; Subkey: "Software\Classes\wesi-aero\shell\open\command"; ValueType: string; ValueData: """{app}\{#MyAppExeName}"" ""%1"""
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "Запустить Wesi Aero"; Flags: nowait postinstall skipifsilent
