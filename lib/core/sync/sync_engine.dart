@@ -194,8 +194,9 @@ class SyncEngine {
       out[id] = SyncRecord(
         id: id,
         fields: c.encode(value),
-        updatedAt:
-            (stamp != null && !stamp.deleted) ? stamp.updatedAt : safeFallback,
+        updatedAt: (stamp != null && !stamp.deleted)
+            ? stamp.updatedAt
+            : safeFallback,
       );
     });
 
@@ -212,25 +213,15 @@ class SyncEngine {
   static Map<String, SyncRecord> _onlyNewTo(
     Map<String, SyncRecord> local,
     Map<String, SyncRecord> remote,
-  ) =>
-      {
-        for (final e in local.entries)
-          if (!remote.containsKey(e.key)) e.key: e.value,
-      };
+  ) => {
+    for (final e in local.entries)
+      if (!remote.containsKey(e.key)) e.key: e.value,
+  };
 
-  static dynamic _localValueBySyncId(
-    SyncCollection<dynamic> c,
-    String id,
-  ) {
-    final box = c.box();
-    if (box != null) {
-      try {
-        final direct = box.get(id);
-        if (direct != null && c.shouldSync(direct) && c.idOf(direct) == id) {
-          return direct;
-        }
-      } catch (_) {}
-    }
+  static dynamic _localValueBySyncId(SyncCollection<dynamic> c, String id) {
+    // The collection projection is authoritative. Structurally invalid
+    // raw Hive rows may be quarantined by a codec and must not look like
+    // concurrent user edits that block authoritative server repair.
     try {
       return c.local()[id];
     } catch (_) {
@@ -254,9 +245,8 @@ class SyncEngine {
         if (!matches) {
           try {
             final value = box.get(key);
-            matches = value != null &&
-                c.shouldSync(value) &&
-                c.idOf(value) == id;
+            matches =
+                value != null && c.shouldSync(value) && c.idOf(value) == id;
           } catch (_) {}
         }
 
@@ -285,10 +275,7 @@ class SyncEngine {
     return value;
   }
 
-  static bool _sameFields(
-    Map<String, dynamic> a,
-    Map<String, dynamic> b,
-  ) {
+  static bool _sameFields(Map<String, dynamic> a, Map<String, dynamic> b) {
     try {
       return jsonEncode(_canonical(a)) == jsonEncode(_canonical(b));
     } catch (_) {
@@ -305,7 +292,10 @@ class SyncEngine {
     final currentValue = _localValueBySyncId(c, id);
 
     if (snapshot == null) {
-      return currentValue == null && currentStamp == null;
+      // A quarantined row can become visible after its parent/root is
+      // repaired earlier in this same pass. Visibility is not a local edit;
+      // a real Hive edit is journaled and therefore has a fresh stamp.
+      return currentStamp == null;
     }
 
     if (currentStamp == null ||
@@ -332,13 +322,15 @@ class SyncEngine {
     final at = now ?? SyncClock.now();
 
     if (SyncRecoveryGuard.active) {
-      return _finish(SyncReport(
-        at: at,
-        failure: const SyncFailure(
-          'RECOVERY_LOCKED',
-          'Обычная синхронизация заблокирована до проверки локальной копии на сервере',
+      return _finish(
+        SyncReport(
+          at: at,
+          failure: const SyncFailure(
+            'RECOVERY_LOCKED',
+            'Обычная синхронизация заблокирована до проверки локальной копии на сервере',
+          ),
         ),
-      ));
+      );
     }
 
     if (busy.value) {
@@ -355,14 +347,15 @@ class SyncEngine {
 
     final generation = _runGeneration;
     final productionSession = transport == null ? _sessionFingerprint() : null;
-    bool cancelled() => generation != _runGeneration ||
+    bool cancelled() =>
+        generation != _runGeneration ||
         (productionSession != null &&
             productionSession != _sessionFingerprint());
 
     SyncFailure cancelledFailure() => const SyncFailure(
-          'SESSION_CHANGED',
-          'Сеанс изменился во время синхронизации',
-        );
+      'SESSION_CHANGED',
+      'Сеанс изменился во время синхронизации',
+    );
 
     busy.value = true;
     try {
@@ -375,20 +368,24 @@ class SyncEngine {
       for (final c in SyncCodec.collections) {
         if (only != null && !only.contains(c.name)) continue;
         if (cancelled()) {
-          return _finish(SyncReport(
-            at: at,
-            collections: reports,
-            failure: cancelledFailure(),
-          ));
+          return _finish(
+            SyncReport(
+              at: at,
+              collections: reports,
+              failure: cancelledFailure(),
+            ),
+          );
         }
         final one = await _runOne(c, t, at, cancelled: cancelled);
         reports.add(one);
         if (cancelled() || one.failure?.code == 'SESSION_CHANGED') {
-          return _finish(SyncReport(
-            at: at,
-            collections: reports,
-            failure: cancelledFailure(),
-          ));
+          return _finish(
+            SyncReport(
+              at: at,
+              collections: reports,
+              failure: cancelledFailure(),
+            ),
+          );
         }
         if (_fatalTransportFailure(one.failure?.code)) {
           final report = SyncReport(at: at, collections: reports);
@@ -401,20 +398,16 @@ class SyncEngine {
       }
 
       if (cancelled()) {
-        return _finish(SyncReport(
-          at: at,
-          collections: reports,
-          failure: cancelledFailure(),
-        ));
+        return _finish(
+          SyncReport(at: at, collections: reports, failure: cancelledFailure()),
+        );
       }
 
       await SyncJournal.pruneTombstones(at);
       if (cancelled()) {
-        return _finish(SyncReport(
-          at: at,
-          collections: reports,
-          failure: cancelledFailure(),
-        ));
+        return _finish(
+          SyncReport(at: at, collections: reports, failure: cancelledFailure()),
+        );
       }
       SyncJournal.pruneExpectations();
 
@@ -505,10 +498,7 @@ class SyncEngine {
     final mergeLocal = firstEverExchange
         ? _onlyNewTo(allLocalBefore, remote.value!)
         : allLocalBefore;
-    final plan = SyncMerge.merge(
-      local: mergeLocal,
-      remote: remote.value!,
-    );
+    final plan = SyncMerge.merge(local: mergeLocal, remote: remote.value!);
 
     var applied = 0;
     SyncFailure? applyFailure;
@@ -611,8 +601,8 @@ class SyncEngine {
     SyncFailure? reconciliationFailure;
     var reconciliationApplied = 0;
     Map<String, SyncRecord> refreshedRemote = remote.value!;
-    final needsRefresh = pushed.forbiddenIds.isNotEmpty ||
-        pushed.authoritativeIds.isNotEmpty;
+    final needsRefresh =
+        pushed.forbiddenIds.isNotEmpty || pushed.authoritativeIds.isNotEmpty;
     var refreshSucceeded = true;
 
     if (needsRefresh) {
@@ -630,7 +620,8 @@ class SyncEngine {
         // second GET had a transient network failure; surface the real failure
         // and retry later.
         if (pushed.authoritativeIds.isNotEmpty) {
-          reconciliationFailure ??= refreshed.failure ??
+          reconciliationFailure ??=
+              refreshed.failure ??
               const SyncFailure(
                 'AUTHORITATIVE_REFRESH_FAILED',
                 'Не удалось перечитать серверную версию после отклонённой записи',
@@ -740,11 +731,7 @@ class SyncEngine {
         continue;
       }
 
-      SyncJournal.expect(
-        c.name,
-        id,
-        SyncStamp(_epoch, deleted: true),
-      );
+      SyncJournal.expect(c.name, id, SyncStamp(_epoch, deleted: true));
       try {
         final purged = await _purgeLocalCacheBySyncId(c, id);
         if (cancelled()) {
@@ -752,11 +739,7 @@ class SyncEngine {
           return cancelledReport(applied: applied + reconciliationApplied);
         }
         if (!purged) throw StateError('cache still contains $id');
-        await SyncJournal.record(
-          c.name,
-          id,
-          SyncStamp(_epoch, deleted: true),
-        );
+        await SyncJournal.record(c.name, id, SyncStamp(_epoch, deleted: true));
         reconciliationApplied++;
       } catch (_) {
         SyncJournal.forget(c.name, id);
@@ -778,7 +761,8 @@ class SyncEngine {
         if (source == null) continue;
 
         final current = SyncJournal.stampOf(c.name, id);
-        final unchangedSincePlan = current != null &&
+        final unchangedSincePlan =
+            current != null &&
             current.updatedAt == source.updatedAt &&
             current.deleted == source.deleted;
         if (!unchangedSincePlan) continue;

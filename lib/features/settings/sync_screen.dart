@@ -11,6 +11,7 @@ import '../../core/localization/wesi_locale.dart';
 import '../../core/sync/sync_auto.dart';
 import '../../core/sync/sync_codec.dart';
 import '../../core/sync/sync_endpoint.dart';
+import '../../core/sync/sync_manual_direction.dart';
 import '../../core/sync/sync_recovery.dart';
 import '../../core/sync/sync_recovery_guard.dart';
 import '../../core/theme/app_theme.dart';
@@ -91,16 +92,13 @@ class _SyncScreenState extends State<SyncScreen> {
     setState(() => _busy = true);
     try {
       final backup = await LocalBackupService.create();
-      await Share.shareXFiles(
-        <XFile>[
-          XFile.fromData(
-            backup.bytes,
-            mimeType: 'application/octet-stream',
-            name: backup.fileName,
-          ),
-        ],
-        subject: _ru ? 'Резервная копия WesiOS' : 'WesiOS backup',
-      );
+      await Share.shareXFiles(<XFile>[
+        XFile.fromData(
+          backup.bytes,
+          mimeType: 'application/octet-stream',
+          name: backup.fileName,
+        ),
+      ], subject: _ru ? 'Резервная копия WesiOS' : 'WesiOS backup');
       if (!mounted) return;
       _say(
         _ru
@@ -156,7 +154,9 @@ class _SyncScreenState extends State<SyncScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: Text(_ru ? 'Восстановить локальные данные?' : 'Restore local data?'),
+        title: Text(
+          _ru ? 'Восстановить локальные данные?' : 'Restore local data?',
+        ),
         content: Text(
           _ru
               ? 'Копия от ${_when(inspection.createdAt)}. В ней ${inspection.records} записей в ${inspection.counts.length} разделах и ${inspection.settingsCount} бизнес-настроек.\n\nСовпадающие записи на телефоне будут заменены данными из копии. Остальные локальные записи не удаляются. Перед записью обычная синхронизация будет заблокирована, а при ошибке приложение попытается вернуть исходное локальное состояние.'
@@ -209,7 +209,9 @@ class _SyncScreenState extends State<SyncScreen> {
           ),
           FilledButton(
             onPressed: () => Navigator.pop(dialogContext, true),
-            child: Text(_ru ? 'Создать копию и перенести' : 'Back up and upload'),
+            child: Text(
+              _ru ? 'Создать копию и перенести' : 'Back up and upload',
+            ),
           ),
         ],
       ),
@@ -258,37 +260,113 @@ class _SyncScreenState extends State<SyncScreen> {
     );
   }
 
+  Future<void> _manualUploadDevice() async {
+    if (_busy || !_signedIn || TeamService.current?.isOwner != true) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(
+          _ru ? 'Отправить данные с устройства?' : 'Upload device data?',
+        ),
+        content: Text(
+          _ru
+              ? 'Телефон станет источником истины для бизнес-данных. Перед отправкой WesiOS создаст резервную копию, затем отправит локальные записи на сервер без скачивания серверных данных и проверит их обратным чтением. После успешной проверки можно использовать обычную автоматическую синхронизацию.'
+              : 'This device becomes authoritative for business data. WesiOS creates a backup first, uploads local rows without downloading server data, then verifies them by reading them back. Normal automatic sync can be used after verification.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: Text(_ru ? 'Отмена' : 'Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text(_ru ? 'Отправить с устройства' : 'Upload device'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() => _busy = true);
+    final report = await SyncManualDirection.uploadDeviceAuthoritative();
+    if (!mounted) return;
+    setState(() => _busy = false);
+    _say(report.describe(russian: _ru), error: !report.ok);
+  }
+
+  Future<void> _manualDownloadServer() async {
+    if (_busy || !_signedIn) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(
+          _ru ? 'Принять данные с сервера?' : 'Download server data?',
+        ),
+        content: Text(
+          _ru
+              ? 'WesiOS сначала сохранит защитную локальную копию. Затем серверные записи будут применены на устройстве без отправки локальных данных на сервер. Совпадающие записи могут быть заменены серверной версией; локальные записи, которых на сервере нет, автоматически не удаляются.'
+              : 'WesiOS saves a local safety backup first. Server rows are then applied to this device without uploading local data. Matching rows may be replaced by the server version; local rows absent from the server are not automatically deleted.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: Text(_ru ? 'Отмена' : 'Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text(_ru ? 'Принять с сервера' : 'Download server'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() => _busy = true);
+    final report = await SyncManualDirection.downloadServerAuthoritative();
+    if (!mounted) return;
+    setState(() => _busy = false);
+    _say(report.describe(russian: _ru), error: !report.ok);
+  }
+
   Future<void> _syncNow() async {
     if (_busy) return;
     if (!_signedIn) {
       _say(
         _ru
-            ? 'Сеанс WesiOS завершён. Войдите заново, затем синхронизация продолжится автоматически.'
-            : 'Your WesiOS session has ended. Sign in again to resume sync.',
-        error: true,
-      );
-      await _goToLogin();
-      return;
-    }
-
-    setState(() => _busy = true);
-    final report = await SyncAuto.now();
-    if (!mounted) return;
-
-    if (report.firstFailure?.code == 'NOT_SIGNED_IN') {
-      setState(() => _busy = false);
-      _say(
-        _ru
-            ? 'Сеанс WesiOS завершён. Требуется повторный вход.'
+            ? 'Сеанс WesiOS завершён. Войдите заново.'
             : 'Your WesiOS session has ended. Sign in again.',
         error: true,
       );
       await _goToLogin();
       return;
     }
-
-    setState(() => _busy = false);
-    _say(report.describe(russian: _ru), error: !report.ok);
+    final choice = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(_ru ? 'Ручная синхронизация' : 'Manual sync'),
+        content: Text(
+          _ru
+              ? 'Выберите, какая сторона сейчас является источником данных.'
+              : 'Choose which side is the data source for this pass.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: Text(_ru ? 'Отмена' : 'Cancel'),
+          ),
+          OutlinedButton(
+            onPressed: () => Navigator.pop(dialogContext, 'download'),
+            child: Text(_ru ? 'Принять с сервера' : 'Download server'),
+          ),
+          if (TeamService.current?.isOwner == true)
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, 'upload'),
+              child: Text(_ru ? 'Отправить с устройства' : 'Upload device'),
+            ),
+        ],
+      ),
+    );
+    if (!mounted) return;
+    if (choice == 'upload') await _manualUploadDevice();
+    if (choice == 'download') await _manualDownloadServer();
   }
 
   @override
@@ -342,12 +420,8 @@ class _SyncScreenState extends State<SyncScreen> {
                       _sessionCard(signedIn),
                       const SizedBox(height: 14),
                       _button(
-                        label: _ru
-                            ? 'Синхронизировать сейчас'
-                            : 'Synchronise now',
-                        onTap: (_busy || !signedIn || recoveryLocked)
-                            ? null
-                            : _syncNow,
+                        label: _ru ? 'Ручная синхронизация' : 'Manual sync',
+                        onTap: (_busy || !signedIn) ? null : _syncNow,
                         filled: true,
                       ),
                       if (signedIn && owner) ...[

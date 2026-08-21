@@ -259,7 +259,30 @@ class LocalBackupService {
       }
     }
 
-    if (manageSafety) {
+
+  // Legacy builds kept the server session in ordinary Hive settings.
+  // Portable business backups must never preserve or resurrect those
+  // plaintext credentials. The active v2 session lives in secure
+  // storage, so removing sync_session* here does not log the user out.
+  try {
+    final settings = Hive.isBoxOpen('wesios_settings')
+        ? Hive.box<dynamic>('wesios_settings')
+        : await Hive.openBox<dynamic>('wesios_settings');
+    for (final key in settings.keys.toList(growable: false)) {
+      final name = '$key';
+      if (name == 'sync_session' || name.startsWith('sync_session_')) {
+        await settings.delete(key);
+      }
+    }
+  } catch (error) {
+    return LocalRestoreReport(
+      ok: false,
+      errorCode: 'BACKUP_SECRET_PURGE_FAILED',
+      message: 'Не удалось удалить устаревшие локальные данные сеанса: $error',
+    );
+  }
+
+  if (manageSafety) {
       final previousEnabled = SyncRecoveryGuard.active
           ? SyncRecoveryGuard.previousEnabled
           : SyncEndpoint.enabled;

@@ -10,6 +10,7 @@ import 'sync_codec.dart';
 import 'sync_endpoint.dart';
 import 'sync_engine.dart';
 import 'sync_journal.dart';
+import 'sync_merge.dart';
 import 'sync_recovery.dart';
 import 'sync_recovery_guard.dart';
 import 'sync_transport.dart';
@@ -95,7 +96,8 @@ class SyncManualDirection {
         ok: false,
         upload: true,
         backupRecords: backup.records,
-        failure: recovery.firstFailure ??
+        failure:
+            recovery.firstFailure ??
             const SyncFailure(
               'MANUAL_UPLOAD_FAILED',
               'Не удалось проверить серверную копию после отправки',
@@ -123,7 +125,8 @@ class SyncManualDirection {
     );
   }
 
-  static Future<ManualDirectionalSyncReport> downloadServerAuthoritative() async {
+  static Future<ManualDirectionalSyncReport>
+  downloadServerAuthoritative() async {
     if (TeamService.current == null || !SyncEndpoint.isConnected) {
       return const ManualDirectionalSyncReport(
         ok: false,
@@ -197,10 +200,7 @@ class SyncManualDirection {
           final deferred = <SyncRecord>[];
 
           for (final record in pending) {
-            final stamp = SyncStamp(
-              record.updatedAt,
-              deleted: record.deleted,
-            );
+            final stamp = SyncStamp(record.updatedAt, deleted: record.deleted);
             SyncJournal.expect(collection.name, record.id, stamp);
 
             var accepted = false;
@@ -266,7 +266,10 @@ class SyncManualDirection {
         ? Hive.box<dynamic>(safetyBackupBoxName)
         : await Hive.openBox<dynamic>(safetyBackupBoxName);
     await box.put('latest_bytes', base64Encode(backup.bytes));
-    await box.put('latest_created_at', backup.createdAt.toUtc().toIso8601String());
+    await box.put(
+      'latest_created_at',
+      backup.createdAt.toUtc().toIso8601String(),
+    );
     await box.put('latest_reason', reason);
     await box.put('latest_records', backup.records);
   }

@@ -79,14 +79,11 @@ class _RecoverySnapshot {
 
   const _RecoverySnapshot(this.collections);
 
-  int get count => collections.values.fold(
-        0,
-        (sum, rows) => sum + rows.length,
-      );
+  int get count => collections.values.fold(0, (sum, rows) => sum + rows.length);
 
   Map<String, int> get counts => <String, int>{
-        for (final entry in collections.entries) entry.key: entry.value.length,
-      };
+    for (final entry in collections.entries) entry.key: entry.value.length,
+  };
 }
 
 /// One-way, fail-closed migration for installations that accumulated business
@@ -165,6 +162,13 @@ class SyncRecovery {
   static Future<void> armMigrationIfNeeded() async {
     if (SyncRecoveryGuard.active || SyncRecoveryGuard.migrationChecked) return;
 
+    final current = TeamService.current;
+    if (current == null) return;
+    if (!current.isOwner) {
+      await SyncRecoveryGuard.markMigrationChecked();
+      return;
+    }
+
     var hasMeaningfulData = false;
     for (final name in _meaningfulCollections) {
       final collection = SyncCodec.byName(name);
@@ -206,26 +210,30 @@ class SyncRecovery {
     final reports = <SyncRecoveryCollectionReport>[];
 
     SyncRecoveryReport failed(SyncFailure failure) => SyncRecoveryReport(
-          runId: runId,
-          startedAt: startedAt,
-          finishedAt: DateTime.now(),
-          collections: List.unmodifiable(reports),
-          failure: failure,
-        );
+      runId: runId,
+      startedAt: startedAt,
+      finishedAt: DateTime.now(),
+      collections: List.unmodifiable(reports),
+      failure: failure,
+    );
 
     if (requireOwner && TeamService.current?.isOwner != true) {
-      return failed(const SyncFailure(
-        'RECOVERY_OWNER_REQUIRED',
-        'Безопасный перенос локального источника доступен только владельцу WesiOS',
-      ));
+      return failed(
+        const SyncFailure(
+          'RECOVERY_OWNER_REQUIRED',
+          'Безопасный перенос локального источника доступен только владельцу WesiOS',
+        ),
+      );
     }
 
     final target = collections ?? _resolveProtectedCollections();
     if (target == null) {
-      return failed(const SyncFailure(
-        'RECOVERY_CODEC_MISSING',
-        'Не все защищаемые разделы зарегистрированы в движке синхронизации',
-      ));
+      return failed(
+        const SyncFailure(
+          'RECOVERY_CODEC_MISSING',
+          'Не все защищаемые разделы зарегистрированы в движке синхронизации',
+        ),
+      );
     }
 
     final t = transport ?? PocketBaseTransport.fromSettings();
@@ -248,11 +256,15 @@ class SyncRecovery {
         await Future<void>.delayed(const Duration(milliseconds: 50));
       }
       if (SyncEngine.busy.value) {
-        final report = failed(const SyncFailure(
-          'RECOVERY_SYNC_BUSY',
-          'Предыдущий проход синхронизации не остановился',
-        ));
-        await SyncRecoveryGuard.markFailed(message: report.firstFailure!.message);
+        final report = failed(
+          const SyncFailure(
+            'RECOVERY_SYNC_BUSY',
+            'Предыдущий проход синхронизации не остановился',
+          ),
+        );
+        await SyncRecoveryGuard.markFailed(
+          message: report.firstFailure!.message,
+        );
         return report;
       }
     }
@@ -262,12 +274,16 @@ class SyncRecovery {
       before = await _capture(target);
       await _persistBackup(runId, startedAt, before);
     } catch (error) {
-      final report = failed(SyncFailure(
-        'RECOVERY_BACKUP_FAILED',
-        'Не удалось создать локальную резервную копию: $error',
-      ));
+      final report = failed(
+        SyncFailure(
+          'RECOVERY_BACKUP_FAILED',
+          'Не удалось создать локальную резервную копию: $error',
+        ),
+      );
       if (manageSafety) {
-        await SyncRecoveryGuard.markFailed(message: report.firstFailure!.message);
+        await SyncRecoveryGuard.markFailed(
+          message: report.firstFailure!.message,
+        );
       }
       return report;
     }
@@ -285,10 +301,13 @@ class SyncRecovery {
       final one = await _uploadAndVerify(collection, localRows, t);
       reports.add(one);
       if (!one.ok) {
-        final report = failed(one.failure ?? const SyncFailure(
-          'RECOVERY_VERIFY_FAILED',
-          'Серверная копия не совпала с локальной',
-        ));
+        final report = failed(
+          one.failure ??
+              const SyncFailure(
+                'RECOVERY_VERIFY_FAILED',
+                'Серверная копия не совпала с локальной',
+              ),
+        );
         if (manageSafety) {
           await SyncRecoveryGuard.markFailed(
             message: report.firstFailure!.message,
@@ -301,10 +320,12 @@ class SyncRecovery {
     try {
       final after = await _capture(target);
       if (!_sameSnapshot(before, after)) {
-        final report = failed(const SyncFailure(
-          'LOCAL_CHANGED_DURING_RECOVERY',
-          'Локальные данные изменились во время переноса; созданная копия сохранена, запустите безопасный перенос ещё раз',
-        ));
+        final report = failed(
+          const SyncFailure(
+            'LOCAL_CHANGED_DURING_RECOVERY',
+            'Локальные данные изменились во время переноса; созданная копия сохранена, запустите безопасный перенос ещё раз',
+          ),
+        );
         if (manageSafety) {
           await SyncRecoveryGuard.markFailed(
             message: report.firstFailure!.message,
@@ -313,12 +334,16 @@ class SyncRecovery {
         return report;
       }
     } catch (error) {
-      final report = failed(SyncFailure(
-        'RECOVERY_LOCAL_RECHECK_FAILED',
-        'Не удалось повторно проверить локальные данные: $error',
-      ));
+      final report = failed(
+        SyncFailure(
+          'RECOVERY_LOCAL_RECHECK_FAILED',
+          'Не удалось повторно проверить локальные данные: $error',
+        ),
+      );
       if (manageSafety) {
-        await SyncRecoveryGuard.markFailed(message: report.firstFailure!.message);
+        await SyncRecoveryGuard.markFailed(
+          message: report.firstFailure!.message,
+        );
       }
       return report;
     }
@@ -373,9 +398,13 @@ class SyncRecovery {
         if (id.isEmpty) {
           throw StateError('${collection.name}: empty sync id');
         }
-        final encoded = Map<String, dynamic>.from(collection.encode(entry.value));
+        final encoded = Map<String, dynamic>.from(
+          collection.encode(entry.value),
+        );
         if (encoded.isEmpty) {
-          throw StateError('${collection.name}:$id encoded to an empty payload');
+          throw StateError(
+            '${collection.name}:$id encoded to an empty payload',
+          );
         }
         if (encoded['id'] != null && '${encoded['id']}' != id) {
           throw StateError('${collection.name}:$id payload id mismatch');
@@ -448,7 +477,9 @@ class SyncRecovery {
 
     final remoteBefore = before.value!;
     final serverNow = DateTime.now().add(SyncClock.offset).toUtc();
-    final maxSafeFuture = serverNow.add(const Duration(minutes: 4, seconds: 30));
+    final maxSafeFuture = serverNow.add(
+      const Duration(minutes: 4, seconds: 30),
+    );
     var logicalMs = serverNow.millisecondsSinceEpoch;
     final toPush = <SyncRecord>[];
 
@@ -480,12 +511,14 @@ class SyncRecovery {
         );
       }
       logicalMs = desiredMs;
-      toPush.add(SyncRecord(
-        id: entry.key,
-        fields: entry.value,
-        updatedAt: desired,
-        deleted: false,
-      ));
+      toPush.add(
+        SyncRecord(
+          id: entry.key,
+          fields: entry.value,
+          updatedAt: desired,
+          deleted: false,
+        ),
+      );
     }
 
     SyncPushResult pushed = const SyncPushResult();
@@ -558,7 +591,8 @@ class SyncRecovery {
     if (a.collections.length != b.collections.length) return false;
     for (final collection in a.collections.entries) {
       final other = b.collections[collection.key];
-      if (other == null || other.length != collection.value.length) return false;
+      if (other == null || other.length != collection.value.length)
+        return false;
       for (final row in collection.value.entries) {
         final otherFields = other[row.key];
         if (otherFields == null || !_sameValue(row.value, otherFields)) {
