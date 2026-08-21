@@ -1,0 +1,323 @@
+name: Hotfix organization hidden cache once
+
+on:
+  push:
+    branches:
+      - fix/org-sync-hidden-local-cache
+    paths:
+      - '.github/workflows/hotfix-org-sync-hidden-cache-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch-test-commit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/org-sync-hidden-local-cache
+          fetch-depth: 1
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Patch sync projection safety
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+          path = Path('lib/core/sync/sync_engine.dart')
+          text = path.read_text()
+          old_lookup = '''  static dynamic _localValueBySyncId(
+    SyncCollection<dynamic> c,
+    String id,
+  ) {
+    final box = c.box();
+    if (box != null) {
+      try {
+        final direct = box.get(id);
+        if (direct != null && c.shouldSync(direct) && c.idOf(direct) == id) {
+          return direct;
+        }
+      } catch (_) {}
+    }
+    try {
+      return c.local()[id];
+    } catch (_) {
+      return null;
+    }
+  }
+'''
+          new_lookup = '''  static dynamic _localValueBySyncId(
+    SyncCollection<dynamic> c,
+    String id,
+  ) {
+    // The collection projection is authoritative. Some codecs deliberately
+    // quarantine raw Hive rows that are structurally invalid or local-only.
+    // Reading the box directly here bypassed that projection and made an old
+    // quarantined row look like a concurrent user edit, permanently blocking
+    // authoritative server repair.
+    try {
+      return c.local()[id];
+    } catch (_) {
+      return null;
+    }
+  }
+'''
+          if old_lookup not in text:
+              raise SystemExit('expected _localValueBySyncId block not found')
+          text = text.replace(old_lookup, new_lookup, 1)
+
+          old_snapshot = '''    if (snapshot == null) {
+      return currentValue == null && currentStamp == null;
+    }
+'''
+          new_snapshot = '''    if (snapshot == null) {
+      // A previously quarantined row may become visible in c.local() after a
+      // related authoritative row (for example the organization root) is
+      // repaired earlier in the same pass. Visibility alone is not a local
+      // edit. A genuine Hive edit is journaled, so only a new stamp cancels
+      // the authoritative apply.
+      return currentStamp == null;
+    }
+'''
+          if old_snapshot not in text:
+              raise SystemExit('expected null-snapshot block not found')
+          text = text.replace(old_snapshot, new_snapshot, 1)
+          path.write_text(text)
+          PY
+
+      - name: Add full-engine regression
+        run: |
+          cat > test/core/sync/organization_sync_hidden_cache_engine_test.dart <<'DART'
+          import 'dart:io';
+
+          import 'package:flutter_test/flutter_test.dart';
+          import 'package:hive/hive.dart';
+          import 'package:wesios/core/sync/sync_codec.dart';
+          import 'package:wesios/core/sync/sync_engine.dart';
+          import 'package:wesios/core/sync/sync_merge.dart';
+          import 'package:wesios/core/sync/sync_transport.dart';
+          import 'package:wesios/features/organizations/models/organization_model.dart';
+          import 'package:wesios/features/organizations/services/organization_service.dart';
+
+          class _MemoryTransport implements SyncTransport {
+            _MemoryTransport(this.organizations);
+
+            final Map<String, SyncRecord> organizations;
+
+            @override
+            bool get isSignedIn => true;
+
+            @override
+            Future<SyncResult<String>> signIn(String login, String password) async =>
+                const SyncResult.ok('test-token');
+
+            @override
+            void signOut() {}
+
+            @override
+            Future<SyncResult<Map<String, SyncRecord>>> fetch(String collection) async =>
+                SyncResult.ok(
+                  collection == 'organizations'
+                      ? Map<String, SyncRecord>.from(organizations)
+                      : <String, SyncRecord>{},
+                );
+
+            @override
+            Future<SyncPushResult> push(
+              String collection,
+              List<SyncRecord> records,
+            ) async =>
+                const SyncPushResult();
+          }
+
+          Map<String, dynamic> _payload({
+            required String id,
+            required String name,
+            String? parentId,
+            bool isRoot = false,
+          }) =>
+              <String, dynamic>{
+                'id': id,
+                'name': name,
+                'parentId': parentId,
+                'isRoot': isRoot,
+                'baseCurrency': 'RUB',
+                'status': 'active',
+                'createdAt': '2026-08-17T13:19:24.672Z',
+                'updatedAt': '2026-08-17T13:19:24.672Z',
+                'createdBy': 'server',
+                'code': null,
+                'description': null,
+                'colorValue': null,
+                'sortOrder': 0,
+              };
+
+          void main() {
+            late Directory tempDir;
+
+            setUpAll(() async {
+              tempDir = await Directory.systemTemp.createTemp('wesios_org_engine_');
+              Hive.init(tempDir.path);
+              if (!Hive.isAdapterRegistered(80)) {
+                Hive.registerAdapter(OrganizationStatusAdapter());
+              }
+              if (!Hive.isAdapterRegistered(81)) {
+                Hive.registerAdapter(OrganizationModelAdapter());
+              }
+            });
+
+            setUp(() async {
+              await SyncEngine.reset();
+              final box = Hive.isBoxOpen(OrganizationService.boxName)
+                  ? Hive.box<OrganizationModel>(OrganizationService.boxName)
+                  : await Hive.openBox<OrganizationModel>(OrganizationService.boxName);
+              await box.clear();
+            });
+
+            tearDownAll(() async {
+              await SyncEngine.reset();
+              await Hive.close();
+              if (await tempDir.exists()) await tempDir.delete(recursive: true);
+            });
+
+            test('full engine repairs hidden legacy tree without false concurrent edit',
+                () async {
+              final box = Hive.box<OrganizationModel>(OrganizationService.boxName);
+              final oldAt = DateTime.utc(2026, 8, 1);
+
+              // This is the important pre-existing phone state: all three raw
+              // rows are still in Hive, but the stale root metadata makes the
+              // entire tree disappear from OrganizationsSync.local().
+              await box.put(
+                OrganizationModel.rootId,
+                OrganizationModel(
+                  id: OrganizationModel.rootId,
+                  name: 'Wesi Inc old cache',
+                  parentId: 'legacy_parent',
+                  isRoot: false,
+                  baseCurrency: 'RUB',
+                  createdAt: oldAt,
+                  updatedAt: oldAt,
+                  createdBy: 'legacy-cache',
+                ),
+              );
+              await box.put(
+                OrganizationModel.wesiBeatsId,
+                OrganizationModel(
+                  id: OrganizationModel.wesiBeatsId,
+                  name: 'Wesi Beats',
+                  parentId: OrganizationModel.rootId,
+                  isRoot: false,
+                  baseCurrency: 'RUB',
+                  createdAt: oldAt,
+                  updatedAt: oldAt,
+                  createdBy: 'legacy-cache',
+                ),
+              );
+              await box.put(
+                'org_it',
+                OrganizationModel(
+                  id: 'org_it',
+                  name: "Wesi Inc IT Studio's",
+                  parentId: OrganizationModel.rootId,
+                  isRoot: false,
+                  baseCurrency: 'RUB',
+                  createdAt: oldAt,
+                  updatedAt: oldAt,
+                  createdBy: 'legacy-cache',
+                ),
+              );
+
+              expect(OrganizationsSync().local(), isEmpty);
+
+              final serverAt = DateTime.utc(2026, 8, 17, 13, 19, 24, 672);
+              final transport = _MemoryTransport(<String, SyncRecord>{
+                // Child first on purpose: the engine must defer it, repair the
+                // root, then retry instead of reporting REMOTE_APPLY_INCOMPLETE.
+                OrganizationModel.wesiBeatsId: SyncRecord(
+                  id: OrganizationModel.wesiBeatsId,
+                  updatedAt: serverAt,
+                  fields: _payload(
+                    id: OrganizationModel.wesiBeatsId,
+                    name: 'Wesi Beats',
+                    parentId: OrganizationModel.rootId,
+                  ),
+                ),
+                OrganizationModel.rootId: SyncRecord(
+                  id: OrganizationModel.rootId,
+                  updatedAt: serverAt,
+                  fields: _payload(
+                    id: OrganizationModel.rootId,
+                    name: 'Wesi Inc',
+                    // Legacy server metadata is intentionally stale. Decoder
+                    // must canonicalize the immutable root id.
+                    parentId: 'legacy_parent',
+                    isRoot: false,
+                  ),
+                ),
+                'org_it': SyncRecord(
+                  id: 'org_it',
+                  updatedAt: serverAt,
+                  fields: _payload(
+                    id: 'org_it',
+                    name: "Wesi Inc IT Studio's",
+                    parentId: OrganizationModel.rootId,
+                  ),
+                ),
+              });
+
+              final report = await SyncEngine.run(
+                transport: transport,
+                now: DateTime.utc(2026, 8, 21, 13),
+                only: const <String>{'organizations'},
+              );
+
+              expect(report.ok, isTrue, reason: report.describe());
+              expect(report.applied, 3);
+
+              final root = box.get(OrganizationModel.rootId)!;
+              expect(root.isRoot, isTrue);
+              expect(root.parentId, isNull);
+              expect(root.name, 'Wesi Inc');
+              expect(
+                OrganizationsSync().local().keys,
+                containsAll(<String>[
+                  OrganizationModel.rootId,
+                  OrganizationModel.wesiBeatsId,
+                  'org_it',
+                ]),
+              );
+            });
+          }
+          DART
+
+      - name: Format
+        run: dart format lib/core/sync/sync_engine.dart test/core/sync/organization_sync_hidden_cache_engine_test.dart
+
+      - name: Dependencies
+        run: flutter pub get
+
+      - name: Focused organization sync tests
+        run: |
+          flutter test \
+            test/core/sync/organization_sync_legacy_root_test.dart \
+            test/core/sync/organization_sync_recovery_test.dart \
+            test/core/sync/organization_sync_server_compat_test.dart \
+            test/core/sync/organization_sync_hidden_cache_engine_test.dart
+
+      - name: Focused analyzer
+        run: flutter analyze --no-fatal-infos lib/core/sync/sync_engine.dart test/core/sync/organization_sync_hidden_cache_engine_test.dart
+
+      - name: Commit tested hotfix and remove one-shot workflow
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm .github/workflows/hotfix-org-sync-hidden-cache-once.yml
+          git add lib/core/sync/sync_engine.dart test/core/sync/organization_sync_hidden_cache_engine_test.dart
+          git commit -m 'fix(sync): repair hidden legacy organization cache'
+          git push origin HEAD:fix/org-sync-hidden-local-cache
