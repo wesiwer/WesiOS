@@ -37,7 +37,8 @@ class ServersScreen extends StatelessWidget {
               else
                 ...servers.map(
                   (server) => Padding(
-                    padding: const EdgeInsets.only(bottom: GatewayTokens.space12),
+                    padding:
+                        const EdgeInsets.only(bottom: GatewayTokens.space12),
                     child: _ServerCard(
                       server: server,
                       onEdit: () => _edit(context, server),
@@ -64,10 +65,18 @@ class ServersScreen extends StatelessWidget {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Удалить сервер?'),
-        content: Text('${server.displayName} исчезнет у клиентов после синхронизации.'),
+        content: Text(
+          '${server.displayName} исчезнет у клиентов после синхронизации.',
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Отмена')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Удалить')),
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Отмена'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Удалить'),
+          ),
         ],
       ),
     );
@@ -119,8 +128,12 @@ class _ServerCard extends StatelessWidget {
                   spacing: GatewayTokens.space8,
                   crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
-                    Text(server.displayName, style: Theme.of(context).textTheme.titleMedium),
-                    if (server.recommended) const Chip(label: Text('Рекомендуемый')),
+                    Text(
+                      server.displayName,
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    if (server.recommended)
+                      const Chip(label: Text('Рекомендуемый')),
                   ],
                 ),
                 const SizedBox(height: 3),
@@ -132,8 +145,16 @@ class _ServerCard extends StatelessWidget {
               ],
             ),
           ),
-          IconButton(tooltip: 'Изменить', onPressed: onEdit, icon: const Icon(Icons.edit_outlined)),
-          IconButton(tooltip: 'Удалить', onPressed: onDelete, icon: const Icon(Icons.delete_outline_rounded)),
+          IconButton(
+            tooltip: 'Изменить',
+            onPressed: onEdit,
+            icon: const Icon(Icons.edit_outlined),
+          ),
+          IconButton(
+            tooltip: 'Удалить',
+            onPressed: onDelete,
+            icon: const Icon(Icons.delete_outline_rounded),
+          ),
         ],
       ),
     );
@@ -165,6 +186,7 @@ class _ServerEditorState extends State<_ServerEditor> {
   late bool _online;
   late bool _recommended;
   late bool _vless;
+  late bool _vmess;
   late bool _amnezia;
   bool _busy = false;
   String? _jsonError;
@@ -184,11 +206,13 @@ class _ServerEditorState extends State<_ServerEditor> {
     _tags = TextEditingController(text: server?.tags.join(', ') ?? '');
     _notes = TextEditingController(text: server?.notes ?? '');
     _transport = TextEditingController(
-      text: const JsonEncoder.withIndent('  ').convert(server?.transportConfig ?? {}),
+      text: const JsonEncoder.withIndent('  ')
+          .convert(server?.transportConfig ?? {}),
     );
     _online = server?.online ?? true;
     _recommended = server?.recommended ?? false;
     _vless = server?.protocols.contains('vless-reality') ?? true;
+    _vmess = server?.protocols.contains('vmess-xray') ?? true;
     _amnezia = server?.protocols.contains('amneziawg') ?? true;
   }
 
@@ -223,11 +247,17 @@ class _ServerEditorState extends State<_ServerEditor> {
           child: SingleChildScrollView(
             child: Column(
               children: [
-                _two(_field(_id, 'ID', enabled: widget.server == null), _field(_name, 'Название')),
+                _two(
+                  _field(_id, 'ID', enabled: widget.server == null),
+                  _field(_name, 'Название'),
+                ),
                 const SizedBox(height: 12),
                 _two(_field(_city, 'Город'), _field(_country, 'Страна')),
                 const SizedBox(height: 12),
-                _two(_field(_code, 'Код страны'), _field(_endpoint, 'Endpoint host:port')),
+                _two(
+                  _field(_code, 'Код страны'),
+                  _field(_endpoint, 'Endpoint host:port'),
+                ),
                 const SizedBox(height: 12),
                 _two(
                   _field(_capacity, 'Ёмкость', number: true),
@@ -236,36 +266,61 @@ class _ServerEditorState extends State<_ServerEditor> {
                 const SizedBox(height: 12),
                 _field(_tags, 'Теги через запятую'),
                 const SizedBox(height: 12),
-                Row(
+                Wrap(
+                  spacing: 12,
+                  runSpacing: 4,
                   children: [
-                    Expanded(child: CheckboxListTile(
-                      value: _vless,
-                      onChanged: (value) => setState(() => _vless = value ?? false),
-                      title: const Text('VLESS · REALITY'),
-                      contentPadding: EdgeInsets.zero,
-                    )),
-                    Expanded(child: CheckboxListTile(
-                      value: _amnezia,
-                      onChanged: (value) => setState(() => _amnezia = value ?? false),
-                      title: const Text('AmneziaWG'),
-                      contentPadding: EdgeInsets.zero,
-                    )),
+                    SizedBox(
+                      width: 210,
+                      child: CheckboxListTile(
+                        value: _vless,
+                        onChanged: (value) =>
+                            setState(() => _vless = value ?? false),
+                        title: const Text('VLESS · REALITY'),
+                        contentPadding: EdgeInsets.zero,
+                      ),
+                    ),
+                    SizedBox(
+                      width: 190,
+                      child: CheckboxListTile(
+                        value: _vmess,
+                        onChanged: (value) =>
+                            setState(() => _vmess = value ?? false),
+                        title: const Text('VMess · Xray'),
+                        contentPadding: EdgeInsets.zero,
+                      ),
+                    ),
+                    SizedBox(
+                      width: 180,
+                      child: CheckboxListTile(
+                        value: _amnezia,
+                        onChanged: (value) =>
+                            setState(() => _amnezia = value ?? false),
+                        title: const Text('AmneziaWG'),
+                        contentPadding: EdgeInsets.zero,
+                      ),
+                    ),
                   ],
                 ),
                 Row(
                   children: [
-                    Expanded(child: SwitchListTile(
-                      value: _online,
-                      onChanged: (value) => setState(() => _online = value),
-                      title: const Text('Онлайн'),
-                      contentPadding: EdgeInsets.zero,
-                    )),
-                    Expanded(child: SwitchListTile(
-                      value: _recommended,
-                      onChanged: (value) => setState(() => _recommended = value),
-                      title: const Text('Рекомендуемый'),
-                      contentPadding: EdgeInsets.zero,
-                    )),
+                    Expanded(
+                      child: SwitchListTile(
+                        value: _online,
+                        onChanged: (value) => setState(() => _online = value),
+                        title: const Text('Онлайн'),
+                        contentPadding: EdgeInsets.zero,
+                      ),
+                    ),
+                    Expanded(
+                      child: SwitchListTile(
+                        value: _recommended,
+                        onChanged: (value) =>
+                            setState(() => _recommended = value),
+                        title: const Text('Рекомендуемый'),
+                        contentPadding: EdgeInsets.zero,
+                      ),
+                    ),
                   ],
                 ),
                 _field(_notes, 'Заметки', lines: 2, mandatory: false),
@@ -285,8 +340,14 @@ class _ServerEditorState extends State<_ServerEditor> {
         ),
       ),
       actions: [
-        TextButton(onPressed: _busy ? null : () => Navigator.pop(context), child: const Text('Отмена')),
-        FilledButton(onPressed: _busy ? null : _save, child: Text(_busy ? 'Сохраняем…' : 'Сохранить')),
+        TextButton(
+          onPressed: _busy ? null : () => Navigator.pop(context),
+          child: const Text('Отмена'),
+        ),
+        FilledButton(
+          onPressed: _busy ? null : _save,
+          child: Text(_busy ? 'Сохраняем…' : 'Сохранить'),
+        ),
       ],
     );
   }
@@ -315,12 +376,17 @@ class _ServerEditorState extends State<_ServerEditor> {
         maxLines: lines,
         decoration: InputDecoration(labelText: label),
         validator: mandatory
-            ? (value) => value == null || value.trim().isEmpty ? 'Обязательное поле' : null
+            ? (value) => value == null || value.trim().isEmpty
+                ? 'Обязательное поле'
+                : null
             : null,
       );
 
   Future<void> _save() async {
-    if (_formKey.currentState?.validate() != true || (!_vless && !_amnezia)) return;
+    if (_formKey.currentState?.validate() != true ||
+        (!_vless && !_vmess && !_amnezia)) {
+      return;
+    }
     Map<String, dynamic> transport;
     try {
       transport = jsonDecode(_transport.text) as Map<String, dynamic>;
@@ -340,12 +406,20 @@ class _ServerEditorState extends State<_ServerEditor> {
         'country': _country.text.trim(),
         'countryCode': _code.text.trim(),
         'endpoint': _endpoint.text.trim(),
-        'protocols': [if (_vless) 'vless-reality', if (_amnezia) 'amneziawg'],
+        'protocols': [
+          if (_vless) 'vless-reality',
+          if (_vmess) 'vmess-xray',
+          if (_amnezia) 'amneziawg',
+        ],
         'load': double.tryParse(_load.text) ?? 0,
         'online': _online,
         'recommended': _recommended,
         'capacity': int.tryParse(_capacity.text) ?? 0,
-        'tags': _tags.text.split(',').map((value) => value.trim()).where((value) => value.isNotEmpty).toList(),
+        'tags': _tags.text
+            .split(',')
+            .map((value) => value.trim())
+            .where((value) => value.isNotEmpty)
+            .toList(),
         'notes': _notes.text.trim(),
         'transportConfig': transport,
       }, id: widget.server?.id);
@@ -359,6 +433,10 @@ class _ServerEditorState extends State<_ServerEditor> {
 
 void _showError(BuildContext context) {
   ScaffoldMessenger.of(context).showSnackBar(
-    SnackBar(content: Text(AdminScope.read(context).error ?? 'Операция не выполнена.')),
+    SnackBar(
+      content: Text(
+        AdminScope.read(context).error ?? 'Операция не выполнена.',
+      ),
+    ),
   );
 }
