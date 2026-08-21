@@ -30,7 +30,7 @@ if (process.env.WESI_AERO_SEED_DEMO === 'true') {
     displayName: 'Wesi Relay',
     city: 'Wesi Relay',
     country: 'Foreign VPS',
-    countryCode: '',
+    countryCode: 'XX',
     endpoint: `${relayHost}:8443`,
     protocols: ['vless-reality', 'vmess-xray', 'amneziawg'],
     load: 0.05,
