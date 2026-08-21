@@ -29,6 +29,17 @@ resolved="$(getent ahostsv4 "$AERO_HOST" | awk '{print $1; exit}')"
 }
 curl -fsS --max-time 15 "https://$AI_HOST/health" >/dev/null
 
+# Some VPS providers use a different IPv4 address for outbound NAT than the
+# public address accepting inbound connections. A tunnel is correct when its
+# egress matches the egress observed directly from this VPS.
+RELAY_EGRESS_IP="$(ssh "${SSH[@]}" "$RELAY_SSH_USER@$RELAY_SSH_HOST" \
+  "curl -4fsS --max-time 10 https://v4.ident.me | tr -d '[:space:]'")"
+[[ "$RELAY_EGRESS_IP" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]] || {
+  echo "Unable to determine Relay IPv4 egress: $RELAY_EGRESS_IP" >&2
+  exit 1
+}
+echo "Relay ingress: $EXPECTED_RELAY_IP; observed IPv4 egress: $RELAY_EGRESS_IP"
+
 REMOTE="/tmp/wesi-aero-live-${GITHUB_RUN_ID:-manual}"
 ssh "${SSH[@]}" "$RELAY_SSH_USER@$RELAY_SSH_HOST" "rm -rf '$REMOTE' && mkdir -p '$REMOTE'"
 scp -r "${SSH[@]}" WesiAero/server-node "$RELAY_SSH_USER@$RELAY_SSH_HOST:$REMOTE/"
@@ -104,11 +115,12 @@ probe_xray() {
   ip="$(tr -d '[:space:]' < "$result" 2>/dev/null || true)"
   kill "$pid" 2>/dev/null || true
   wait "$pid" 2>/dev/null || true
-  if [[ "$ip" != "$EXPECTED_RELAY_IP" ]]; then
+  if [[ "$ip" != "$RELAY_EGRESS_IP" ]]; then
     tail -n 80 "$log" >&2 || true
-    echo "$name egress mismatch: $ip != $EXPECTED_RELAY_IP" >&2
+    echo "$name egress mismatch: $ip != VPS egress $RELAY_EGRESS_IP" >&2
     return 1
   fi
+  echo "$name external egress verified through VPS: $ip"
 }
 
 probe_xray vless "$WORK/vless-client.json"
@@ -153,10 +165,11 @@ curl -fsS --max-time 15 \
   --connect-to one.one.one.one:443:1.1.1.1:443 \
   https://one.one.one.one/cdn-cgi/trace > "$WORK/wg-trace"
 wg_ip="$(awk -F= '$1=="ip" {print $2}' "$WORK/wg-trace")"
-[[ "$wg_ip" == "$EXPECTED_RELAY_IP" ]] || {
-  echo "WireGuard egress mismatch: $wg_ip != $EXPECTED_RELAY_IP" >&2
+[[ "$wg_ip" == "$RELAY_EGRESS_IP" ]] || {
+  echo "WireGuard egress mismatch: $wg_ip != VPS egress $RELAY_EGRESS_IP" >&2
   exit 1
 }
+echo "WireGuard handshake and external egress verified through VPS: $wg_ip"
 cleanup_wg
 trap - EXIT
 
