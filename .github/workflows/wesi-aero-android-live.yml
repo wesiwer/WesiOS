@@ -7,6 +7,7 @@ on:
     paths:
       - 'WesiAero/lib/**'
       - 'WesiAero/scripts/**'
+      - 'WesiAero/server-node/scripts/ensure-prototype-license.sh'
       - 'WesiAero/pubspec.yaml'
       - '.github/workflows/wesi-aero-android-live.yml'
   workflow_dispatch:
@@ -75,7 +76,7 @@ jobs:
           flutter create --platforms=android --org com.wesi --project-name wesi_aero .
           rm -f test/widget_test.dart
 
-      - name: Apply Wesi Aero metadata and native VPN runtime
+      - name: Apply Wesi Aero metadata, native VPN runtime and render optimizations
         run: |
           set -euo pipefail
           sed -i 's/minSdk = flutter.minSdkVersion/minSdk = 23/' android/app/build.gradle.kts
@@ -92,17 +93,20 @@ jobs:
           grep -q 'android:scheme="wesi-aero"' android/app/src/main/AndroidManifest.xml
           grep -q 'android:name=".AeroXrayVpnService"' android/app/src/main/AndroidManifest.xml
           grep -q 'android.permission.BIND_VPN_SERVICE' android/app/src/main/AndroidManifest.xml
-          grep -q 'com.wesi.aero/gateway' android/app/src/main/kotlin/com/wesi/wesi_aero/MainActivity.kt
-          grep -q 'com.wesi.aero/gateway-events' android/app/src/main/kotlin/com/wesi/wesi_aero/MainActivity.kt
           grep -q 'setUnderlyingNetworks(arrayOf(network))' android/app/src/main/kotlin/com/wesi/wesi_aero/AeroXrayVpnService.kt
           grep -q 'NET_CAPABILITY_NOT_VPN' android/app/src/main/kotlin/com/wesi/wesi_aero/AeroXrayVpnService.kt
           grep -q 'measureDelay("https://cp.cloudflare.com/generate_204")' android/app/src/main/kotlin/com/wesi/wesi_aero/AeroXrayVpnService.kt
           grep -q 'put("outboundTag", "proxy")' android/app/src/main/kotlin/com/wesi/wesi_aero/AeroXrayVpnService.kt
           grep -q 'Duration(seconds: 60)' lib/src/state/gateway_controller.dart
           grep -q 'if (changed || clearedError) notifyListeners();' lib/src/state/gateway_controller.dart
+          grep -q 'enum _MetricKind { download, upload, total, ping }' lib/src/screens/dashboard_screen.dart
+          grep -q 'child: BackdropGroup(' lib/src/screens/app_shell.dart
+          grep -q 'Duration(milliseconds: 33)' lib/src/widgets/ambient_background.dart
+          grep -q 'if (embedded.isNotEmpty) return embedded;' lib/src/services/secret_store.dart
+          bash -n server-node/scripts/ensure-prototype-license.sh
           test -s android/app/libs/libv2ray.aar
 
-      - name: Load prototype license from Wesi Relay
+      - name: Verify and load current prototype license from Wesi Relay
         shell: bash
         run: |
           set -euo pipefail
@@ -129,10 +133,11 @@ jobs:
             -o BatchMode=yes \
             -o UserKnownHostsFile="$knownhosts" \
             "$RELAY_SSH_USER@$RELAY_SSH_HOST" \
-            'if [ "$(id -u)" -eq 0 ]; then cat /var/lib/wesi-aero/prototype-license.key; else sudo -n cat /var/lib/wesi-aero/prototype-license.key; fi' \
+            'if [ "$(id -u)" -eq 0 ]; then bash -s; else sudo -n bash -s; fi' \
+            < server-node/scripts/ensure-prototype-license.sh \
             | tr -d '\r\n')"
-          if ! printf '%s' "$prototype_license" | grep -q '^WA1-'; then
-            echo '::error::Relay did not return a valid Wesi Aero prototype license'
+          if ! printf '%s' "$prototype_license" | grep -Eq '^WA1-[0-9A-Fa-f]{32}-[A-Za-z0-9_-]{24,64}$'; then
+            echo '::error::Relay did not return a server-verified Wesi Aero prototype license'
             exit 1
           fi
           echo "::add-mask::$prototype_license"
@@ -186,13 +191,13 @@ jobs:
             --dart-define=WESI_AERO_DEMO=false \
             --dart-define=WESI_AERO_CONTROL_URL="$AERO_CONTROL_URL" \
             --dart-define=WESI_AERO_PROTOTYPE_LICENSE="$WESI_AERO_PROTOTYPE_LICENSE"
-          cp build/app/outputs/flutter-apk/app-release.apk Wesi-Aero-Android-Live-0.2.2+4.apk
-          test -s Wesi-Aero-Android-Live-0.2.2+4.apk
+          cp build/app/outputs/flutter-apk/app-release.apk Wesi-Aero-Android-Live-0.2.3+5.apk
+          test -s Wesi-Aero-Android-Live-0.2.3+5.apk
 
       - uses: actions/upload-artifact@v4
         with:
           name: Wesi-Aero-Android-Live
-          path: WesiAero/Wesi-Aero-Android-Live-0.2.2+4.apk
+          path: WesiAero/Wesi-Aero-Android-Live-0.2.3+5.apk
           retention-days: 7
           if-no-files-found: error
 
