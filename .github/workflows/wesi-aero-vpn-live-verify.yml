@@ -8,6 +8,7 @@ on:
       - '.github/workflows/wesi-aero-vpn-live-verify.yml'
       - '.github/wesi-aero-vpn-live-verify.trigger'
       - 'WesiAero/server-node/scripts/ci-deploy-live-prototype.sh'
+      - 'WesiAero/server-node/scripts/setup-wireguard-prototype.sh'
 
 permissions:
   contents: write
@@ -66,8 +67,7 @@ jobs:
         id: live
         run: |
           set -euo pipefail
-          chmod +x WesiAero/server-node/scripts/ci-deploy-live-prototype.sh
-          WesiAero/server-node/scripts/ci-deploy-live-prototype.sh
+          bash WesiAero/server-node/scripts/ci-deploy-live-prototype.sh
 
       - name: Write success marker
         if: success()
