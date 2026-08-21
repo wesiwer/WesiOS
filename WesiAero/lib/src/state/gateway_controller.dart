@@ -437,7 +437,8 @@ class GatewayController extends ChangeNotifier {
   void toggleRule(String id, bool enabled) {
     if (isConnected || isBusy) return;
     rules = rules
-        .map((rule) => rule.id == id ? rule.copyWith(enabled: enabled))
+        .map((rule) =>
+            rule.id == id ? rule.copyWith(enabled: enabled) : rule)
         .toList(growable: false);
     notifyListeners();
   }
