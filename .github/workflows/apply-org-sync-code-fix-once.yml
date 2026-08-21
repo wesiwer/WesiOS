@@ -1,5 +1,5 @@
 name: Diagnose PR 241 full analyze
-# trigger: pr241-analyze-v1
+# trigger: pr241-analyze-v2
 
 on:
   push:
