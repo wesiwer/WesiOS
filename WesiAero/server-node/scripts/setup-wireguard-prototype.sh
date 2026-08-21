@@ -66,6 +66,12 @@ net.ipv4.ip_forward=1
 SYSCTL
 sysctl --system >/dev/null
 
+# Open WireGuard explicitly on hosts using UFW. The wg-quick PostUp rule below
+# also handles hosts that filter INPUT directly through iptables/nftables.
+if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q '^Status: active'; then
+  ufw allow "$WG_ENDPOINT_PORT/udp" comment 'Wesi Aero WireGuard' >/dev/null
+fi
+
 SERVER_CONFIG="$WG_CONFIG_DIR/${WG_INTERFACE}.conf"
 if systemctl is-active --quiet "wg-quick@${WG_INTERFACE}.service" 2>/dev/null; then
   systemctl stop "wg-quick@${WG_INTERFACE}.service"
@@ -78,8 +84,8 @@ cat >"$SERVER_CONFIG" <<EOF
 Address = $WG_SERVER_ADDRESS
 ListenPort = $WG_ENDPOINT_PORT
 PrivateKey = $SERVER_PRIVATE_KEY
-PostUp = iptables -A FORWARD -i %i -j ACCEPT; iptables -A FORWARD -o %i -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT; iptables -t nat -A POSTROUTING -o $WAN_INTERFACE -j MASQUERADE
-PostDown = iptables -D FORWARD -i %i -j ACCEPT; iptables -D FORWARD -o %i -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT; iptables -t nat -D POSTROUTING -o $WAN_INTERFACE -j MASQUERADE
+PostUp = iptables -I INPUT -p udp --dport $WG_ENDPOINT_PORT -j ACCEPT; iptables -A FORWARD -i %i -j ACCEPT; iptables -A FORWARD -o %i -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT; iptables -t nat -A POSTROUTING -o $WAN_INTERFACE -j MASQUERADE
+PostDown = iptables -D INPUT -p udp --dport $WG_ENDPOINT_PORT -j ACCEPT; iptables -D FORWARD -i %i -j ACCEPT; iptables -D FORWARD -o %i -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT; iptables -t nat -D POSTROUTING -o $WAN_INTERFACE -j MASQUERADE
 
 [Peer]
 PublicKey = $CLIENT_PUBLIC_KEY
@@ -115,6 +121,11 @@ if ! wg show "$WG_INTERFACE" >/dev/null 2>&1; then
   echo "WireGuard interface is not available after startup." >&2
   exit 1
 fi
+
+iptables -C INPUT -p udp --dport "$WG_ENDPOINT_PORT" -j ACCEPT >/dev/null 2>&1 || {
+  echo "WireGuard UDP firewall rule is missing after startup." >&2
+  exit 1
+}
 
 echo "Wesi Aero WireGuard gateway is active."
 echo "Interface: $WG_INTERFACE"
