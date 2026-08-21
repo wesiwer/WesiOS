@@ -1,5 +1,6 @@
 name: WesiMark 2.4 Final Correct APK
 
+# Verification rerun: release signing + original launcher icon required.
 on:
   workflow_dispatch:
   push:
