@@ -21,10 +21,6 @@ class PrototypeGatewayController extends GatewayController {
   Future<void> initialize() async {
     await super.initialize();
 
-    // Live prototype builds carry a server-issued key. Never replace a real
-    // redeemed license with a synthetic local license: PlatformGatewayEngine
-    // provisions every lease through the control plane and therefore needs the
-    // exact same server-backed credential.
     final embeddedKey = _embeddedPrototypeLicense.trim();
     if (embeddedKey.isEmpty) {
       license = null;
@@ -52,8 +48,8 @@ class PrototypeGatewayController extends GatewayController {
         load: 0,
         protocols: {
           GatewayProtocol.vlessReality,
-          GatewayProtocol.vmessXray,
-          GatewayProtocol.amneziaWg,
+          GatewayProtocol.vmess,
+          GatewayProtocol.wireGuard,
         },
         recommended: true,
       );
@@ -64,6 +60,7 @@ class PrototypeGatewayController extends GatewayController {
     final node = selectedNode;
     if (node != null && node.protocols.contains(GatewayProtocol.vlessReality)) {
       protocol = GatewayProtocol.vlessReality;
+      engine = TunnelEngine.automatic;
     }
 
     final profile = await _prototypeStore.readProfile();
@@ -71,6 +68,7 @@ class PrototypeGatewayController extends GatewayController {
       try {
         await importConfig(profile.rawValue);
         protocol = profile.protocol;
+        if (!protocol.supportsEngine(engine)) engine = TunnelEngine.automatic;
         importProfileName = profile.displayName;
       } catch (error) {
         commerceError = 'Не удалось восстановить VPN-профиль: $error';
@@ -83,8 +81,6 @@ class PrototypeGatewayController extends GatewayController {
 
   @override
   Future<void> removeLicense() async {
-    // Prototype access is build-managed. Re-assert the embedded server key
-    // instead of leaving the engine with a synthetic/local-only license.
     final embeddedKey = _embeddedPrototypeLicense.trim();
     if (embeddedKey.isEmpty) {
       license = null;
