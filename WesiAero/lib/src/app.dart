@@ -62,7 +62,7 @@ class _WesiAeroAppState extends State<WesiAeroApp> {
         themeAnimationDuration: GatewayTokens.expressive,
         themeAnimationCurve: Curves.easeOutCubic,
         home: BackdropGroup(
-          child: Scaffold(body: const _RootGate()),
+          child: const Scaffold(body: _RootGate()),
         ),
       ),
     );
