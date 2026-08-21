@@ -1,11 +1,19 @@
 import 'dart:async';
+import 'dart:typed_data';
 
+import 'package:cross_file/cross_file.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:share_plus/share_plus.dart';
 
+import '../../core/backup/local_backup_service.dart';
 import '../../core/localization/wesi_locale.dart';
 import '../../core/sync/sync_auto.dart';
 import '../../core/sync/sync_codec.dart';
 import '../../core/sync/sync_endpoint.dart';
+import '../../core/sync/sync_manual_direction.dart';
+import '../../core/sync/sync_recovery.dart';
+import '../../core/sync/sync_recovery_guard.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/wesi_wordmark.dart';
 import '../../core/widgets/window_controls.dart';
@@ -79,37 +87,286 @@ class _SyncScreenState extends State<SyncScreen> {
     Navigator.of(context).pushNamedAndRemoveUntil('/login', (_) => false);
   }
 
+  Future<void> _exportLocalBackup() async {
+    if (_busy || TeamService.current?.isOwner != true) return;
+    setState(() => _busy = true);
+    try {
+      final backup = await LocalBackupService.create();
+      await Share.shareXFiles(<XFile>[
+        XFile.fromData(
+          backup.bytes,
+          mimeType: 'application/octet-stream',
+          name: backup.fileName,
+        ),
+      ], subject: _ru ? 'Резервная копия WesiOS' : 'WesiOS backup');
+      if (!mounted) return;
+      _say(
+        _ru
+            ? 'Резервная копия подготовлена: ${backup.records} записей и ${backup.settingsCount} бизнес-настроек. Сохраните файл в «Файлы» или другое надёжное место.'
+            : 'Backup prepared: ${backup.records} records and ${backup.settingsCount} business settings. Save the file to Files or another safe location.',
+      );
+    } catch (error) {
+      _say(
+        _ru
+            ? 'Не удалось создать резервную копию: $error'
+            : 'Could not create backup: $error',
+        error: true,
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _restoreLocalBackup() async {
+    if (_busy || TeamService.current?.isOwner != true) return;
+    final picked = await FilePicker.platform.pickFiles(
+      allowMultiple: false,
+      type: FileType.custom,
+      allowedExtensions: const <String>['wesibackup', 'json'],
+      withData: true,
+    );
+    if (picked == null || picked.files.isEmpty || !mounted) return;
+    final raw = picked.files.single.bytes;
+    if (raw == null) {
+      _say(
+        _ru
+            ? 'Не удалось прочитать выбранный файл.'
+            : 'Could not read the selected file.',
+        error: true,
+      );
+      return;
+    }
+    final bytes = Uint8List.fromList(raw);
+
+    LocalBackupInspection inspection;
+    try {
+      inspection = LocalBackupService.inspect(bytes);
+    } catch (error) {
+      _say(
+        _ru
+            ? 'Этот файл нельзя восстановить: $error'
+            : 'This file cannot be restored: $error',
+        error: true,
+      );
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(
+          _ru ? 'Восстановить локальные данные?' : 'Restore local data?',
+        ),
+        content: Text(
+          _ru
+              ? 'Копия от ${_when(inspection.createdAt)}. В ней ${inspection.records} записей в ${inspection.counts.length} разделах и ${inspection.settingsCount} бизнес-настроек.\n\nСовпадающие записи на телефоне будут заменены данными из копии. Остальные локальные записи не удаляются. Перед записью обычная синхронизация будет заблокирована, а при ошибке приложение попытается вернуть исходное локальное состояние.'
+              : 'Backup from ${_when(inspection.createdAt)}. It contains ${inspection.records} records in ${inspection.counts.length} sections and ${inspection.settingsCount} business settings.\n\nMatching local records will be replaced by the backup. Other local records are not deleted. Normal sync will be locked before writing and the app will attempt to roll back the local state if restoration fails.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: Text(_ru ? 'Отмена' : 'Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text(_ru ? 'Восстановить' : 'Restore'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _busy = true);
+    final report = await LocalBackupService.restore(bytes);
+    if (!mounted) return;
+    setState(() => _busy = false);
+    _say(
+      report.ok
+          ? (_ru
+                ? 'Восстановлено ${report.restored} записей. Они помечены как свежие локальные изменения. Обычная синхронизация пока заблокирована — сначала создайте проверенную серверную копию.'
+                : 'Restored ${report.restored} records. They are marked as fresh local changes. Normal sync remains locked until you create a verified server copy.')
+          : (report.message ??
+                (_ru ? 'Восстановление не выполнено.' : 'Restore failed.')),
+      error: !report.ok,
+    );
+  }
+
+  Future<void> _runRecovery() async {
+    if (_busy || !_signedIn) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(_ru ? 'Безопасный перенос' : 'Protected local upload'),
+        content: Text(
+          _ru
+              ? 'Сначала будет создана отдельная локальная резервная копия. Затем данные этого устройства отправятся на сервер без скачивания серверных записей и без удаления локальных данных. Обычная синхронизация останется заблокированной до полной проверки.'
+              : 'A separate local backup will be created first. This device will then upload its business data without pulling server rows or deleting local data. Normal sync stays locked until verification completes.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: Text(_ru ? 'Отмена' : 'Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text(
+              _ru ? 'Создать копию и перенести' : 'Back up and upload',
+            ),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _busy = true);
+    final report = await SyncRecovery.run();
+    if (!mounted) return;
+    setState(() => _busy = false);
+    _say(report.describe(russian: _ru), error: !report.ok);
+  }
+
+  Future<void> _releaseRecoveryLock() async {
+    if (_busy || !SyncRecovery.verified) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(_ru ? 'Серверная копия проверена' : 'Server copy verified'),
+        content: Text(
+          _ru
+              ? 'Все локальные записи из защитного снимка совпали с сервером. Снять блокировку обычной синхронизации? Автосинхронизация останется выключенной, пока вы сами её не включите.'
+              : 'Every local row in the protected snapshot matches the server. Release the normal-sync lock? Automatic sync will remain off until you enable it yourself.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: Text(_ru ? 'Оставить защиту' : 'Keep locked'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text(_ru ? 'Снять блокировку' : 'Release lock'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() => _busy = true);
+    await SyncRecovery.releaseVerifiedSafetyLock();
+    if (!mounted) return;
+    setState(() => _busy = false);
+    _say(
+      _ru
+          ? 'Защитная блокировка снята. Автоматическая синхронизация всё ещё выключена.'
+          : 'Recovery lock released. Automatic sync is still disabled.',
+    );
+  }
+
+  Future<void> _manualUploadDevice() async {
+    if (_busy || !_signedIn || TeamService.current?.isOwner != true) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(
+          _ru ? 'Отправить данные с устройства?' : 'Upload device data?',
+        ),
+        content: Text(
+          _ru
+              ? 'Телефон станет источником истины для бизнес-данных. Перед отправкой WesiOS создаст резервную копию, затем отправит локальные записи на сервер без скачивания серверных данных и проверит их обратным чтением. После успешной проверки можно использовать обычную автоматическую синхронизацию.'
+              : 'This device becomes authoritative for business data. WesiOS creates a backup first, uploads local rows without downloading server data, then verifies them by reading them back. Normal automatic sync can be used after verification.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: Text(_ru ? 'Отмена' : 'Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text(_ru ? 'Отправить с устройства' : 'Upload device'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() => _busy = true);
+    final report = await SyncManualDirection.uploadDeviceAuthoritative();
+    if (!mounted) return;
+    setState(() => _busy = false);
+    _say(report.describe(russian: _ru), error: !report.ok);
+  }
+
+  Future<void> _manualDownloadServer() async {
+    if (_busy || !_signedIn) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(
+          _ru ? 'Принять данные с сервера?' : 'Download server data?',
+        ),
+        content: Text(
+          _ru
+              ? 'WesiOS сначала сохранит защитную локальную копию. Затем серверные записи будут применены на устройстве без отправки локальных данных на сервер. Совпадающие записи могут быть заменены серверной версией; локальные записи, которых на сервере нет, автоматически не удаляются.'
+              : 'WesiOS saves a local safety backup first. Server rows are then applied to this device without uploading local data. Matching rows may be replaced by the server version; local rows absent from the server are not automatically deleted.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: Text(_ru ? 'Отмена' : 'Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text(_ru ? 'Принять с сервера' : 'Download server'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() => _busy = true);
+    final report = await SyncManualDirection.downloadServerAuthoritative();
+    if (!mounted) return;
+    setState(() => _busy = false);
+    _say(report.describe(russian: _ru), error: !report.ok);
+  }
+
   Future<void> _syncNow() async {
     if (_busy) return;
     if (!_signedIn) {
       _say(
         _ru
-            ? 'Сеанс WesiOS завершён. Войдите заново, затем синхронизация продолжится автоматически.'
-            : 'Your WesiOS session has ended. Sign in again to resume sync.',
-        error: true,
-      );
-      await _goToLogin();
-      return;
-    }
-
-    setState(() => _busy = true);
-    final report = await SyncAuto.now();
-    if (!mounted) return;
-
-    if (report.firstFailure?.code == 'NOT_SIGNED_IN') {
-      setState(() => _busy = false);
-      _say(
-        _ru
-            ? 'Сеанс WesiOS завершён. Требуется повторный вход.'
+            ? 'Сеанс WesiOS завершён. Войдите заново.'
             : 'Your WesiOS session has ended. Sign in again.',
         error: true,
       );
       await _goToLogin();
       return;
     }
-
-    setState(() => _busy = false);
-    _say(report.describe(russian: _ru), error: !report.ok);
+    final choice = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(_ru ? 'Ручная синхронизация' : 'Manual sync'),
+        content: Text(
+          _ru
+              ? 'Выберите, какая сторона сейчас является источником данных.'
+              : 'Choose which side is the data source for this pass.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: Text(_ru ? 'Отмена' : 'Cancel'),
+          ),
+          OutlinedButton(
+            onPressed: () => Navigator.pop(dialogContext, 'download'),
+            child: Text(_ru ? 'Принять с сервера' : 'Download server'),
+          ),
+          if (TeamService.current?.isOwner == true)
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, 'upload'),
+              child: Text(_ru ? 'Отправить с устройства' : 'Upload device'),
+            ),
+        ],
+      ),
+    );
+    if (!mounted) return;
+    if (choice == 'upload') await _manualUploadDevice();
+    if (choice == 'download') await _manualDownloadServer();
   }
 
   @override
@@ -118,6 +375,8 @@ class _SyncScreenState extends State<SyncScreen> {
       valueListenable: SyncEndpoint.revision,
       builder: (context, _, __) {
         final signedIn = _signedIn;
+        final owner = TeamService.current?.isOwner == true;
+        final recoveryLocked = SyncRecoveryGuard.active;
         _scheduleExpiryRefresh();
         return Scaffold(
           backgroundColor: AppTheme.background,
@@ -161,12 +420,65 @@ class _SyncScreenState extends State<SyncScreen> {
                       _sessionCard(signedIn),
                       const SizedBox(height: 14),
                       _button(
-                        label: _ru
-                            ? 'Синхронизировать сейчас'
-                            : 'Synchronise now',
+                        label: _ru ? 'Ручная синхронизация' : 'Manual sync',
                         onTap: (_busy || !signedIn) ? null : _syncNow,
                         filled: true,
                       ),
+                      if (signedIn && owner) ...[
+                        const SizedBox(height: 10),
+                        _button(
+                          label: recoveryLocked
+                              ? (SyncRecovery.verified
+                                    ? (_ru
+                                          ? 'Серверная копия проверена — снять защиту'
+                                          : 'Server copy verified — release lock')
+                                    : (_ru
+                                          ? 'Безопасно перенести данные с телефона'
+                                          : 'Safely upload this device'))
+                              : (_ru
+                                    ? 'Создать защитную копию на сервере'
+                                    : 'Create protected server copy'),
+                          onTap: _busy
+                              ? null
+                              : (recoveryLocked && SyncRecovery.verified
+                                    ? _releaseRecoveryLock
+                                    : _runRecovery),
+                        ),
+                      ],
+                      if (owner) ...[
+                        const SizedBox(height: 10),
+                        _button(
+                          label: _ru
+                              ? 'Экспортировать локальную резервную копию'
+                              : 'Export local backup',
+                          onTap: _busy ? null : _exportLocalBackup,
+                        ),
+                        const SizedBox(height: 10),
+                        _button(
+                          label: _ru
+                              ? 'Восстановить из локальной копии'
+                              : 'Restore local backup',
+                          onTap: _busy ? null : _restoreLocalBackup,
+                          muted: true,
+                        ),
+                      ],
+                      if (recoveryLocked) ...[
+                        const SizedBox(height: 10),
+                        Text(
+                          SyncRecovery.verified
+                              ? (_ru
+                                    ? 'Защитный режим: серверная копия уже проверена. Обычный pull всё ещё заблокирован.'
+                                    : 'Recovery mode: the server copy is verified. Normal pull is still locked.')
+                              : (_ru
+                                    ? 'Защитный режим: обычная синхронизация отключена, локальные бизнес-данные не будут заменены серверными.'
+                                    : 'Recovery mode: normal sync is disabled and local business data cannot be replaced by server rows.'),
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            height: 1.4,
+                            color: AppTheme.accent,
+                          ),
+                        ),
+                      ],
                       if (!signedIn) ...[
                         const SizedBox(height: 10),
                         _button(
@@ -372,7 +684,11 @@ class _SyncScreenState extends State<SyncScreen> {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  signedIn
+                  SyncRecoveryGuard.active
+                      ? (_ru
+                            ? 'Заблокирована защитным переносом'
+                            : 'Locked by protected upload')
+                      : signedIn
                       ? (_ru
                             ? 'Данные отправляются после изменений и при запуске'
                             : 'Data is sent after changes and on launch')
@@ -385,9 +701,9 @@ class _SyncScreenState extends State<SyncScreen> {
             ),
           ),
           Switch(
-            value: on && signedIn,
+            value: on && signedIn && !SyncRecoveryGuard.active,
             activeColor: AppTheme.accent,
-            onChanged: signedIn
+            onChanged: signedIn && !SyncRecoveryGuard.active
                 ? (value) async {
                     await SyncEndpoint.setEnabled(value);
                     if (value) {

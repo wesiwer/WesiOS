@@ -7,6 +7,7 @@ import 'pocketbase_transport.dart';
 import 'sync_endpoint.dart';
 import 'sync_engine.dart';
 import 'sync_journal.dart';
+import 'sync_recovery_guard.dart';
 import 'sync_transport.dart';
 
 /// Автоматический обмен между устройствами.
@@ -40,6 +41,10 @@ class SyncAuto {
   static final _SyncLifecycleObserver _lifecycle = _SyncLifecycleObserver();
 
   static void start() {
+    if (SyncRecoveryGuard.active) {
+      stop(force: true);
+      return;
+    }
     if (_listening) return;
     _generation++;
     _listening = true;
@@ -256,6 +261,16 @@ class SyncAuto {
   /// этом реальные network/apply/policy ошибки по-прежнему возвращаются сразу.
   static Future<SyncReport> now() async {
     _localTimer?.cancel();
+
+    if (SyncRecoveryGuard.active) {
+      return SyncReport(
+        at: DateTime.now(),
+        failure: const SyncFailure(
+          'RECOVERY_LOCKED',
+          'Сначала завершите безопасный перенос локальных данных',
+        ),
+      );
+    }
 
     if (!SyncEndpoint.isConnected) {
       return SyncReport(
