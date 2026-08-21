@@ -6,11 +6,8 @@ import '../../features/team/services/team_service.dart';
 import '../backup/local_backup_service.dart';
 import 'pocketbase_transport.dart';
 import 'sync_auto.dart';
-import 'sync_codec.dart';
 import 'sync_endpoint.dart';
 import 'sync_engine.dart';
-import 'sync_journal.dart';
-import 'sync_merge.dart';
 import 'sync_recovery.dart';
 import 'sync_recovery_guard.dart';
 import 'sync_transport.dart';
@@ -178,77 +175,25 @@ class SyncManualDirection {
       );
     }
 
-    await SyncJournal.open();
-    var received = 0;
     try {
-      for (final collection in SyncCodec.collections) {
-        await collection.ensureBox();
-        final remote = await transport.fetch(collection.name);
-        if (!remote.ok) {
-          return ManualDirectionalSyncReport(
-            ok: false,
-            upload: false,
-            changed: received,
-            backupRecords: backup.records,
-            failure: remote.failure,
-          );
-        }
-
-        var pending = remote.value!.values.toList(growable: false);
-        while (pending.isNotEmpty) {
-          var progressed = false;
-          final deferred = <SyncRecord>[];
-
-          for (final record in pending) {
-            final stamp = SyncStamp(record.updatedAt, deleted: record.deleted);
-            SyncJournal.expect(collection.name, record.id, stamp);
-
-            var accepted = false;
-            try {
-              if (record.deleted) {
-                await collection.removeById(record.id);
-                accepted = !collection.local().containsKey(record.id);
-              } else {
-                accepted = await collection.applyFields(record.fields);
-              }
-            } catch (_) {
-              accepted = false;
-            }
-
-            if (!accepted) {
-              SyncJournal.forget(collection.name, record.id);
-              deferred.add(record);
-              continue;
-            }
-
-            await SyncJournal.record(collection.name, record.id, stamp);
-            received++;
-            progressed = true;
-          }
-
-          if (deferred.isEmpty) break;
-          if (!progressed) {
-            final first = deferred.first;
-            return ManualDirectionalSyncReport(
-              ok: false,
-              upload: false,
-              changed: received,
-              backupRecords: backup.records,
-              failure: SyncFailure(
-                'REMOTE_APPLY_INCOMPLETE',
-                'Не удалось применить ${collection.name}:${first.id} (+${deferred.length - 1})',
-              ),
-            );
-          }
-          pending = deferred;
-        }
-        collection.notifyChanged();
+      final report = await SyncEngine.run(
+        transport: transport,
+        remoteAuthoritative: true,
+      );
+      final problem = report.firstFailure;
+      if (problem != null) {
+        return ManualDirectionalSyncReport(
+          ok: false,
+          upload: false,
+          changed: report.applied,
+          backupRecords: backup.records,
+          failure: problem,
+        );
       }
-
       return ManualDirectionalSyncReport(
         ok: true,
         upload: false,
-        changed: received,
+        changed: report.applied,
         backupRecords: backup.records,
       );
     } finally {

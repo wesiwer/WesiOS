@@ -283,19 +283,23 @@ class SyncEngine {
     }
   }
 
+  static bool _sameStamp(SyncStamp? a, SyncStamp? b) =>
+      a?.updatedAt == b?.updatedAt && a?.deleted == b?.deleted;
+
   static bool _localSnapshotStillCurrent(
     SyncCollection<dynamic> c,
     String id,
     SyncRecord? snapshot,
+    SyncStamp? initialStamp,
   ) {
     final currentStamp = SyncJournal.stampOf(c.name, id);
     final currentValue = _localValueBySyncId(c, id);
 
     if (snapshot == null) {
-      // A quarantined row can become visible after its parent/root is
-      // repaired earlier in this same pass. Visibility is not a local edit;
-      // a real Hive edit is journaled and therefore has a fresh stamp.
-      return currentStamp == null;
+      // A quarantined legacy row can already have a journal stamp from an
+      // older failed sync. Only a stamp CHANGE during this pass is a real
+      // concurrent edit.
+      return _sameStamp(currentStamp, initialStamp);
     }
 
     if (currentStamp == null ||
@@ -318,10 +322,13 @@ class SyncEngine {
     SyncTransport? transport,
     DateTime? now,
     Set<String>? only,
+    bool remoteAuthoritative = false,
   }) async {
     final at = now ?? SyncClock.now();
 
-    if (SyncRecoveryGuard.active) {
+    // Explicit manual server -> device passes are allowed while the recovery
+    // lock is active, but never upload local rows.
+    if (SyncRecoveryGuard.active && !remoteAuthoritative) {
       return _finish(
         SyncReport(
           at: at,
@@ -376,7 +383,13 @@ class SyncEngine {
             ),
           );
         }
-        final one = await _runOne(c, t, at, cancelled: cancelled);
+        final one = await _runOne(
+          c,
+          t,
+          at,
+          cancelled: cancelled,
+          remoteAuthoritative: remoteAuthoritative,
+        );
         reports.add(one);
         if (cancelled() || one.failure?.code == 'SESSION_CHANGED') {
           return _finish(
@@ -412,7 +425,9 @@ class SyncEngine {
       SyncJournal.pruneExpectations();
 
       final report = SyncReport(at: at, collections: reports);
-      if (report.ok && only == null) await SyncEndpoint.markRun(at);
+      if (report.ok && only == null && !remoteAuthoritative) {
+        await SyncEndpoint.markRun(at);
+      }
 
       if (report.firstFailure?.code == 'NOT_SIGNED_IN') {
         t.signOut();
@@ -429,6 +444,7 @@ class SyncEngine {
     SyncTransport t,
     DateTime at, {
     required bool Function() cancelled,
+    required bool remoteAuthoritative,
   }) async {
     SyncCollectionReport cancelledReport({int applied = 0}) =>
         SyncCollectionReport(
@@ -494,11 +510,20 @@ class SyncEngine {
       return SyncCollectionReport(collection: c.name, failure: remote.failure);
     }
 
+    final initialStamps = SyncJournal.forCollection(c.name);
     final allLocalBefore = localState(c, at);
-    final mergeLocal = firstEverExchange
-        ? _onlyNewTo(allLocalBefore, remote.value!)
-        : allLocalBefore;
-    final plan = SyncMerge.merge(local: mergeLocal, remote: remote.value!);
+    final plan = remoteAuthoritative
+        ? SyncPlan(
+            toUpload: const <SyncRecord>[],
+            toApplyLocally: remote.value!.values.toList(growable: false),
+            merged: Map<String, SyncRecord>.from(remote.value!),
+          )
+        : SyncMerge.merge(
+            local: firstEverExchange
+                ? _onlyNewTo(allLocalBefore, remote.value!)
+                : allLocalBefore,
+            remote: remote.value!,
+          );
 
     var applied = 0;
     SyncFailure? applyFailure;
@@ -515,7 +540,12 @@ class SyncEngine {
         await Future<void>.delayed(Duration.zero);
         if (cancelled()) return cancelledReport(applied: applied);
 
-        if (!_localSnapshotStillCurrent(c, r.id, allLocalBefore[r.id])) {
+        if (!_localSnapshotStillCurrent(
+          c,
+          r.id,
+          allLocalBefore[r.id],
+          initialStamps[r.id],
+        )) {
           concurrentLocalChange = true;
           concurrentId ??= r.id;
           continue;
@@ -578,7 +608,12 @@ class SyncEngine {
     for (final r in plan.toUpload) {
       await Future<void>.delayed(Duration.zero);
       if (cancelled()) return cancelledReport(applied: applied);
-      if (!_localSnapshotStillCurrent(c, r.id, allLocalBefore[r.id])) {
+      if (!_localSnapshotStillCurrent(
+        c,
+        r.id,
+        allLocalBefore[r.id],
+        initialStamps[r.id],
+      )) {
         return SyncCollectionReport(
           collection: c.name,
           applied: applied,
@@ -647,7 +682,12 @@ class SyncEngine {
 
         final source = uploadedById[id];
         if (source == null) continue;
-        if (!_localSnapshotStillCurrent(c, id, allLocalBefore[id])) {
+        if (!_localSnapshotStillCurrent(
+          c,
+          id,
+          allLocalBefore[id],
+          initialStamps[id],
+        )) {
           return SyncCollectionReport(
             collection: c.name,
             applied: applied + reconciliationApplied,
