@@ -98,9 +98,7 @@ export class PaymentOrchestrator {
     if (invoice.status !== 'paid') {
       throw new PaymentError('PAYMENT_NOT_VERIFIED', 'Invoice is not paid', 409);
     }
-    if (invoice.payload !== payment.id) {
-      throw new PaymentError('PAYMENT_PAYLOAD_MISMATCH', 'Invoice payload mismatch', 409);
-    }
+    assertCryptoInvoiceMatchesPayment(invoice, payment);
     return this.commerce.fulfillPayment(payment.id, {
       invoiceId: externalId,
       status: invoice.status,
@@ -133,7 +131,8 @@ export class PaymentOrchestrator {
       invoice_ids: payment.externalId,
     });
     const item = invoice.items?.[0];
-    if (item?.status === 'paid' && item.payload === payment.id) {
+    if (item?.status === 'paid') {
+      assertCryptoInvoiceMatchesPayment(item, payment);
       return this.commerce.fulfillPayment(payment.id, {
         invoiceId: payment.externalId,
         status: item.status,
@@ -312,6 +311,18 @@ function parseWebhookTimestamp(value) {
   }
   const parsed = Date.parse(value);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function assertCryptoInvoiceMatchesPayment(invoice, payment) {
+  if (invoice?.payload !== payment.id) {
+    throw new PaymentError('PAYMENT_PAYLOAD_MISMATCH', 'Invoice payload mismatch', 409);
+  }
+  const amountMinor = parseAmountMinor(invoice?.amount);
+  if (invoice?.currency_type !== 'fiat' ||
+      invoice?.fiat !== payment.currency ||
+      amountMinor !== payment.amountMinor) {
+    throw new PaymentError('PAYMENT_AMOUNT_MISMATCH', 'Payment amount mismatch', 409);
+  }
 }
 
 function parseAmountMinor(value) {
