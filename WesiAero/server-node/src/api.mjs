@@ -166,13 +166,6 @@ async function route(context) {
     if (!commerce.verifyPaymentClaim(id, claimToken)) {
       throw new HttpError(401, 'INVALID_ORDER_CLAIM', 'Invalid order claim token');
     }
-    if (payments) {
-      try {
-        await payments.reconcile(id);
-      } catch (error) {
-        if (!(error instanceof PaymentError)) throw error;
-      }
-    }
     const payment = commerce.getPayment(id);
     if (!payment) throw new HttpError(404, 'PAYMENT_NOT_FOUND', 'Payment not found');
     const payload = { order: publicOrder(payment) };
