@@ -179,7 +179,7 @@ for provider in mock yookassa crypto_pay; do
   label="Disabled in VPN prototype"
   curl -fsS \
     -X PUT \
-    -H "authorization: Bearer $WESI_AERO_ADMIN_TOKEN" \
+    -H "x-admin-token: $WESI_AERO_ADMIN_TOKEN" \
     -H 'content-type: application/json' \
     --data "{\"enabled\":false,\"testMode\":true,\"publicConfig\":{\"label\":\"$label\"}}" \
     "http://127.0.0.1:8790/v1/admin/payment-settings/$provider" \
@@ -191,7 +191,7 @@ done
 PROTOTYPE_LICENSE_FILE="$STATE_DIR/prototype-license.key"
 if [[ ! -s "$PROTOTYPE_LICENSE_FILE" ]]; then
   response="$(curl -fsS \
-    -H "authorization: Bearer $WESI_AERO_ADMIN_TOKEN" \
+    -H "x-admin-token: $WESI_AERO_ADMIN_TOKEN" \
     -H 'content-type: application/json' \
     --data '{"planId":"aero-flex","ipMode":"shared","deviceLimit":5,"durationDays":365,"note":"Wesi Aero prototype access"}' \
     http://127.0.0.1:8790/v1/admin/licenses)"
