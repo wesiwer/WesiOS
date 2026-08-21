@@ -3,21 +3,30 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SERVICE = ROOT / "android/app/src/main/kotlin/com/wesi/wesi_aero/AeroXrayVpnService.kt"
+MAIN = ROOT / "android/app/src/main/kotlin/com/wesi/wesi_aero/MainActivity.kt"
 
 
 def replace_once(text: str, old: str, new: str, label: str) -> str:
     if new in text:
         return text
-    if text.count(old) != 1:
-        raise SystemExit(f"{label}: expected exactly one patch anchor, found {text.count(old)}")
+    count = text.count(old)
+    if count != 1:
+        raise SystemExit(f"{label}: expected exactly one patch anchor, found {count}")
     return text.replace(old, new, 1)
 
 
 def main() -> None:
-    if not SERVICE.exists():
-        raise SystemExit(f"Generate Android Xray integration first: {SERVICE} is missing")
+    if not SERVICE.exists() or not MAIN.exists():
+        raise SystemExit("Generate Android Xray integration before hardening it")
 
     text = SERVICE.read_text(encoding="utf-8")
+
+    # v2rayNG's working Android built-in-TUN path does not enable IPv6 unless
+    # IPv6 is explicitly requested. Wesi Relay is currently live-verified for
+    # IPv4 egress only, so capture only IPv4 here. Android blocks the omitted
+    # address family instead of leaking it outside the VPN.
+    text = text.replace('                .addAddress("fd42:42:42::2", 126)\n', "", 1)
+    text = text.replace('                .addRoute("::", 0)\n', "", 1)
 
     text = replace_once(
         text,
@@ -60,29 +69,17 @@ def main() -> None:
         "underlying-network fields",
     )
 
+    # Initialise ConnectivityManager in onCreate, but register the callback only
+    # after Xray has successfully consumed the TUN fd. This mirrors v2rayNG's
+    # lifecycle and avoids changing network hints while the VPN is being built.
     text = replace_once(
         text,
         "        Seq.setContext(applicationContext)\n"
         "        Libv2ray.initCoreEnv(filesDir.absolutePath, \"\")\n",
         "        Seq.setContext(applicationContext)\n"
         "        Libv2ray.initCoreEnv(filesDir.absolutePath, \"\")\n"
-        "        connectivityManager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager\n"
-        "        startUnderlyingNetworkMonitor()\n",
-        "service onCreate network monitor",
-    )
-
-    text = replace_once(
-        text,
-        "            val established = builder.establish()\n"
-        "                ?: throw IllegalStateException(\"Android failed to create the VPN TUN interface\")\n"
-        "            tun = established\n\n"
-        "            val controller = Libv2ray.newCoreController(CoreCallback())\n",
-        "            val established = builder.establish()\n"
-        "                ?: throw IllegalStateException(\"Android failed to create the VPN TUN interface\")\n"
-        "            tun = established\n"
-        "            bindBestUnderlyingNetwork()\n\n"
-        "            val controller = Libv2ray.newCoreController(CoreCallback())\n",
-        "bind physical network after establish",
+        "        connectivityManager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager\n",
+        "service connectivity init",
     )
 
     text = replace_once(
@@ -96,16 +93,125 @@ def main() -> None:
         "            if (!controller.isRunning) {\n"
         "                throw IllegalStateException(\"Xray core did not enter running state\")\n"
         "            }\n"
-        "            val coreDelayMs = controller.measureDelay(\"https://cp.cloudflare.com/generate_204\")\n"
-        "            if (coreDelayMs < 0) {\n"
-        "                throw IllegalStateException(\"Xray outbound health check failed\")\n"
-        "            }\n\n"
+        "            startUnderlyingNetworkMonitor()\n"
+        "            // Startup must never depend on an external probe. In particular, do not\n"
+        "            // execute measureDelay(\"https://cp.cloudflare.com/generate_204\") here.\n\n"
         "            connectedAtMs = System.currentTimeMillis()\n",
-        "Xray outbound health probe",
+        "post-core network monitor",
     )
 
-    # Built-in TUN has multiple outbounds. Make the intended data path explicit
-    # instead of relying on Xray's first-outbound fallback semantics.
+    # Align the built-in Xray TUN policy with the proven Android v2rayNG
+    # template from the same Xray generation: level 8 with explicit timeouts,
+    # xray0 TUN name, and an auxiliary local SOCKS inbound for diagnostics.
+    text = replace_once(
+        text,
+        "        val tunInbound = JSONObject()\n"
+        "            .put(\"tag\", \"tun\")\n"
+        "            .put(\"port\", 0)\n"
+        "            .put(\"protocol\", \"tun\")\n"
+        "            .put(\n"
+        "                \"settings\",\n"
+        "                JSONObject()\n"
+        "                    .put(\"name\", \"wesi0\")\n"
+        "                    .put(\"mtu\", 1500)\n"
+        "                    .put(\"userLevel\", 0),\n"
+        "            )\n"
+        "            .put(\n"
+        "                \"sniffing\",\n"
+        "                JSONObject()\n"
+        "                    .put(\"enabled\", true)\n"
+        "                    .put(\"destOverride\", JSONArray().put(\"http\").put(\"tls\").put(\"quic\")),\n"
+        "            )\n",
+        "        val socksInbound = JSONObject()\n"
+        "            .put(\"tag\", \"socks\")\n"
+        "            .put(\"listen\", \"127.0.0.1\")\n"
+        "            .put(\"port\", 10808)\n"
+        "            .put(\"protocol\", \"socks\")\n"
+        "            .put(\n"
+        "                \"settings\",\n"
+        "                JSONObject()\n"
+        "                    .put(\"auth\", \"noauth\")\n"
+        "                    .put(\"udp\", true)\n"
+        "                    .put(\"userLevel\", 8),\n"
+        "            )\n"
+        "            .put(\n"
+        "                \"sniffing\",\n"
+        "                JSONObject()\n"
+        "                    .put(\"enabled\", true)\n"
+        "                    .put(\"destOverride\", JSONArray().put(\"http\").put(\"tls\")),\n"
+        "            )\n\n"
+        "        val tunInbound = JSONObject()\n"
+        "            .put(\"tag\", \"tun\")\n"
+        "            .put(\"protocol\", \"tun\")\n"
+        "            .put(\n"
+        "                \"settings\",\n"
+        "                JSONObject()\n"
+        "                    .put(\"name\", \"xray0\")\n"
+        "                    .put(\"MTU\", 1500)\n"
+        "                    .put(\"userLevel\", 8),\n"
+        "            )\n"
+        "            .put(\n"
+        "                \"sniffing\",\n"
+        "                JSONObject()\n"
+        "                    .put(\"enabled\", true)\n"
+        "                    .put(\"destOverride\", JSONArray().put(\"http\").put(\"tls\")),\n"
+        "            )\n",
+        "v2rayNG-compatible inbounds",
+    )
+
+    text = replace_once(
+        text,
+        "        val direct = JSONObject().put(\"tag\", \"direct\").put(\"protocol\", \"freedom\")\n",
+        "        val direct = JSONObject()\n"
+        "            .put(\"tag\", \"direct\")\n"
+        "            .put(\"protocol\", \"freedom\")\n"
+        "            .put(\"settings\", JSONObject().put(\"domainStrategy\", \"UseIP\"))\n",
+        "direct outbound settings",
+    )
+
+    text = replace_once(
+        text,
+        "        val policy = JSONObject().put(\n"
+        "            \"system\",\n"
+        "            JSONObject()\n"
+        "                .put(\"statsOutboundUplink\", true)\n"
+        "                .put(\"statsOutboundDownlink\", true),\n"
+        "        )\n",
+        "        val policy = JSONObject()\n"
+        "            .put(\n"
+        "                \"levels\",\n"
+        "                JSONObject().put(\n"
+        "                    \"8\",\n"
+        "                    JSONObject()\n"
+        "                        .put(\"handshake\", 4)\n"
+        "                        .put(\"connIdle\", 300)\n"
+        "                        .put(\"uplinkOnly\", 1)\n"
+        "                        .put(\"downlinkOnly\", 1),\n"
+        "                ),\n"
+        "            )\n"
+        "            .put(\n"
+        "                \"system\",\n"
+        "                JSONObject()\n"
+        "                    .put(\"statsInboundUplink\", true)\n"
+        "                    .put(\"statsInboundDownlink\", true)\n"
+        "                    .put(\"statsOutboundUplink\", true)\n"
+        "                    .put(\"statsOutboundDownlink\", true),\n"
+        "            )\n",
+        "Xray policy level 8",
+    )
+
+    text = replace_once(
+        text,
+        "            .put(\"policy\", policy)\n"
+        "            .put(\"inbounds\", JSONArray().put(tunInbound))\n",
+        "            .put(\"policy\", policy)\n"
+        "            .put(\"dns\", JSONObject().put(\"hosts\", JSONObject()).put(\"servers\", JSONArray()))\n"
+        "            .put(\"inbounds\", JSONArray().put(socksInbound).put(tunInbound))\n",
+        "runtime DNS and inbounds",
+    )
+
+    # Route Android TUN traffic explicitly through the selected proxy. The local
+    # SOCKS inbound is left on the normal first-outbound path, which is also proxy.
     text = replace_once(
         text,
         "            .put(\"outbounds\", JSONArray().put(proxy).put(direct).put(block))\n"
@@ -127,6 +233,29 @@ def main() -> None:
         "            )\n"
         "            .toString()\n",
         "explicit TUN routing",
+    )
+
+    text = replace_once(
+        text,
+        "        val user = JSONObject()\n"
+        "            .put(\"id\", id)\n"
+        "            .put(\"encryption\", \"none\")\n",
+        "        val user = JSONObject()\n"
+        "            .put(\"id\", id)\n"
+        "            .put(\"level\", 8)\n"
+        "            .put(\"encryption\", \"none\")\n",
+        "VLESS user policy level",
+    )
+    text = replace_once(
+        text,
+        "        val user = JSONObject()\n"
+        "            .put(\"id\", id)\n"
+        "            .put(\"alterId\", alterId)\n",
+        "        val user = JSONObject()\n"
+        "            .put(\"id\", id)\n"
+        "            .put(\"level\", 8)\n"
+        "            .put(\"alterId\", alterId)\n",
+        "VMess user policy level",
     )
 
     methods = '''    private fun startUnderlyingNetworkMonitor() {
@@ -171,8 +300,8 @@ def main() -> None:
         try {
             setUnderlyingNetworks(arrayOf(network))
         } catch (_: Throwable) {
-            // The self UID is excluded from the VPN as an additional loop guard;
-            // failing to update the hint must not crash an already established TUN.
+            // The app UID is excluded from the VPN as the primary loop guard.
+            // An underlying-network hint failure must not kill a healthy core.
         }
     }
 
@@ -186,27 +315,87 @@ def main() -> None:
 
     text = replace_once(
         text,
+        "    private fun stopTunnel(stopService: Boolean) {\n"
+        "        mainHandler.removeCallbacks(statsTick)\n",
+        "    private fun stopTunnel(stopService: Boolean) {\n"
+        "        mainHandler.removeCallbacks(statsTick)\n"
+        "        stopUnderlyingNetworkMonitor()\n",
+        "network monitor stop",
+    )
+
+    text = replace_once(
+        text,
         "    override fun onDestroy() {\n"
         "        mainHandler.removeCallbacks(statsTick)\n",
         "    override fun onDestroy() {\n"
         "        mainHandler.removeCallbacks(statsTick)\n"
         "        stopUnderlyingNetworkMonitor()\n",
-        "network monitor cleanup",
+        "network monitor destroy cleanup",
     )
 
     SERVICE.write_text(text, encoding="utf-8")
 
+    # Preserve the WireGuard regression fix in the same always-executed Android
+    # hardening step so a regenerated MainActivity cannot reintroduce the
+    # simultaneous-two-VpnService race.
+    activity = MAIN.read_text(encoding="utf-8")
+    old_handoff = '''        executor.execute {
+            try {
+                if (xrayActive) AeroXrayVpnService.stop(this)
+                wireGuardBackend.setState(wireGuardTunnel, Tunnel.State.UP, parsed)
+'''
+    new_handoff = '''        executor.execute {
+            try {
+                if (xrayActive || AeroXrayState.current().status != "disconnected") {
+                    AeroXrayVpnService.stop(this)
+                    val deadline = System.currentTimeMillis() + 3000L
+                    while (AeroXrayState.current().status != "disconnected" &&
+                        System.currentTimeMillis() < deadline) {
+                        Thread.sleep(50L)
+                    }
+                    if (AeroXrayState.current().status != "disconnected") {
+                        throw IllegalStateException("Xray VPN did not release Android TUN")
+                    }
+                }
+                wireGuardBackend.setState(wireGuardTunnel, Tunnel.State.UP, parsed)
+'''
+    activity = replace_once(activity, old_handoff, new_handoff, "Xray to WireGuard handoff")
+    MAIN.write_text(activity, encoding="utf-8")
+
+    service_check = SERVICE.read_text(encoding="utf-8")
+    activity_check = MAIN.read_text(encoding="utf-8")
     required = [
-        "setUnderlyingNetworks(arrayOf(network))",
-        "NET_CAPABILITY_NOT_VPN",
-        "controller.measureDelay(\"https://cp.cloudflare.com/generate_204\")",
-        '.put("inboundTag", JSONArray().put("tun"))',
+        'controller.startLoop(runtimeConfig, established.fd)',
+        'setUnderlyingNetworks(arrayOf(network))',
+        'NET_CAPABILITY_NOT_VPN',
+        '.put("name", "xray0")',
+        '.put("userLevel", 8)',
+        '.put("level", 8)',
         '.put("outboundTag", "proxy")',
+        'measureDelay("https://cp.cloudflare.com/generate_204")',
+        'startUnderlyingNetworkMonitor()',
     ]
-    missing = [marker for marker in required if marker not in text]
+    missing = [marker for marker in required if marker not in service_check]
     if missing:
         raise SystemExit(f"Android Xray datapath hardening incomplete: {missing}")
-    print("Hardened Android Xray TUN datapath: physical-network binding + explicit proxy route + health probe")
+
+    forbidden = [
+        'val coreDelayMs = controller.measureDelay(',
+        '.addAddress("fd42:42:42::2", 126)',
+        '.addRoute("::", 0)',
+        '.put("name", "wesi0")',
+        '.put("userLevel", 0)',
+    ]
+    survived = [marker for marker in forbidden if marker in service_check]
+    if survived:
+        raise SystemExit(f"Unsafe/legacy Android Xray datapath markers survived: {survived}")
+    if 'Xray VPN did not release Android TUN' not in activity_check:
+        raise SystemExit("Serialized Xray -> WireGuard handoff is missing")
+
+    print(
+        "Hardened Android Xray datapath: IPv4-only VPN, v2rayNG-compatible TUN policy, "
+        "post-core network binding, non-fatal startup, serialized WireGuard handoff"
+    )
 
 
 if __name__ == "__main__":
