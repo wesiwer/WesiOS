@@ -1,0 +1,155 @@
+name: WesiMark Original Android Rebuild
+
+on:
+  pull_request:
+    branches:
+      - 'wesimark/apk-build-v2.4.0'
+    paths:
+      - '.wesimark-apk/original-android-v2-trigger.txt'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  rebuild:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download full WesiMark source
+        id: source
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ci-report
+          URL='https://drive.usercontent.google.com/download?id=1ScMR7JUANdpGTha1hqUN-IXAh9UlVTvy&export=download&confirm=t'
+          curl -L --fail --retry 3 --retry-delay 2 "$URL" -o /tmp/WesiMark-source.zip
+          unzip -t /tmp/WesiMark-source.zip >/dev/null
+          rm -rf /tmp/wesimark-original
+          mkdir -p /tmp/wesimark-original
+          unzip -q /tmp/WesiMark-source.zip -d /tmp/wesimark-original
+          ROOT="$(find /tmp/wesimark-original -name pubspec.yaml -type f -printf '%h\n' | head -n1)"
+          test -n "$ROOT"
+          grep -q '^version: 2.4.0+14$' "$ROOT/pubspec.yaml"
+          test -d "$ROOT/android/app/src/main/res"
+          test -f "$ROOT/lib/main.dart"
+          echo "WESIMARK_ROOT=$ROOT" >> "$GITHUB_ENV"
+          printf 'source=ok\nroot=%s\n' "$ROOT" > ci-report/source.txt
+
+      - name: Inspect original identity and signing
+        if: steps.source.outcome == 'success'
+        id: inspect
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$WESIMARK_ROOT"
+          {
+            echo '=== WesiMark original Android identity ==='
+            echo 'Launcher resources:'
+            find android/app/src/main/res -type f \( -iname '*launcher*' -o -iname '*foreground*' -o -iname '*background*' -o -path '*/mipmap-*/*' \) -print | sort
+            echo
+            echo 'Package/signing references:'
+            grep -RniE 'applicationId|namespace|signingConfig|signingConfigs|storeFile|keyAlias' android/app android/build.gradle* android/settings.gradle* 2>/dev/null || true
+            echo
+            echo 'Keystore material:'
+            find android . -maxdepth 5 -type f \( -iname '*.jks' -o -iname '*.keystore' -o -name 'key.properties' -o -iname '*.p12' \) -print | sort || true
+          } > "$GITHUB_WORKSPACE/ci-report/original-android.txt"
+          ICON_COUNT="$(find android/app/src/main/res -type f \( -iname '*launcher*' -o -path '*/mipmap-*/*' \) | wc -l)"
+          test "$ICON_COUNT" -gt 0
+          KEY_COUNT="$(find android . -maxdepth 5 -type f \( -iname '*.jks' -o -iname '*.keystore' -o -name 'key.properties' -o -iname '*.p12' \) | wc -l)"
+          printf 'icon_count=%s\nkey_material_count=%s\n' "$ICON_COUNT" "$KEY_COUNT" > "$GITHUB_WORKSPACE/ci-report/identity-summary.txt"
+
+      - name: Set up Java 17
+        if: steps.source.outcome == 'success'
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Flutter
+        if: steps.source.outcome == 'success'
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Resolve dependencies
+        if: steps.source.outcome == 'success'
+        working-directory: ${{ env.WESIMARK_ROOT }}
+        run: flutter pub get
+
+      - name: Build release APK from original Android project
+        if: steps.source.outcome == 'success'
+        id: build
+        continue-on-error: true
+        working-directory: ${{ env.WESIMARK_ROOT }}
+        run: flutter build apk --release --build-name=2.4.0 --build-number=14
+
+      - name: Verify built APK
+        if: steps.build.outcome == 'success'
+        id: apk
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$WESIMARK_ROOT/build/app/outputs/flutter-apk/app-release.apk"
+          test -s "$APK"
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n1)"
+          {
+            echo '=== APK identity ==='
+            "$BUILD_TOOLS/aapt" dump badging "$APK" | head -n 12
+            echo
+            echo '=== APK signature ==='
+            "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK"
+            echo
+            sha256sum "$APK"
+          } > "$GITHUB_WORKSPACE/ci-report/apk-identity-signature.txt"
+          cp "$APK" /tmp/WesiMark-2.4.0+14.apk
+
+      - name: Record failure state
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p ci-report
+          printf 'source=%s\ninspect=%s\nbuild=%s\napk=%s\n' \
+            '${{ steps.source.outcome }}' \
+            '${{ steps.inspect.outcome }}' \
+            '${{ steps.build.outcome }}' \
+            '${{ steps.apk.outcome }}' > ci-report/result.txt
+
+      - name: Publish report and corrected APK to build branch
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/wesimark-report
+          cp -a ci-report /tmp/wesimark-report
+          git fetch origin wesimark/apk-build-v2.4.0
+          git reset --hard origin/wesimark/apk-build-v2.4.0
+          git clean -fd
+          mkdir -p ci-report build-artifacts
+          cp -a /tmp/wesimark-report/. ci-report/
+          if [ -s /tmp/WesiMark-2.4.0+14.apk ]; then
+            cp /tmp/WesiMark-2.4.0+14.apk build-artifacts/WesiMark-2.4.0+14.apk
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -f ci-report build-artifacts/WesiMark-2.4.0+14.apk 2>/dev/null || git add -f ci-report
+          if ! git diff --cached --quiet; then
+            git commit -m 'build(wesimark): original Android rebuild report [skip ci]'
+            git push origin HEAD:wesimark/apk-build-v2.4.0
+          fi
+
+      - name: Require corrected original-Android APK
+        if: always()
+        shell: bash
+        run: |
+          test '${{ steps.source.outcome }}' = 'success'
+          test '${{ steps.inspect.outcome }}' = 'success'
+          test '${{ steps.build.outcome }}' = 'success'
+          test '${{ steps.apk.outcome }}' = 'success'
