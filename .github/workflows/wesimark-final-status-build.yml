@@ -1,0 +1,132 @@
+name: WesiMark Final Corrected APK
+
+on:
+  push:
+    branches:
+      - wesimark/apk-build-v2.4.0
+    paths:
+      - '.github/workflows/wesimark-final-status-build.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  final-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: wesimark/apk-build-v2.4.0
+          fetch-depth: 1
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Build and inspect original WesiMark Android project
+        id: build
+        shell: bash
+        continue-on-error: true
+        run: |
+          set +e
+          STATUS_DIR="$GITHUB_WORKSPACE/.wesimark-apk"
+          mkdir -p "$STATUS_DIR"
+          REPORT="$STATUS_DIR/final-build-status.txt"
+          LOG=/tmp/wesimark-final-build.log
+          : > "$LOG"
+          exec > >(tee -a "$LOG") 2>&1
+
+          echo "RUN_ID=$GITHUB_RUN_ID" > "$REPORT"
+          echo "RUN_URL=https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" >> "$REPORT"
+          echo "SOURCE=original WesiMark Android project from Drive source zip" >> "$REPORT"
+
+          fail() {
+            CODE="$1"
+            echo "RESULT=FAIL" >> "$REPORT"
+            echo "EXIT_CODE=$CODE" >> "$REPORT"
+            echo "--- LOG TAIL ---" >> "$REPORT"
+            tail -n 120 "$LOG" >> "$REPORT" 2>/dev/null || true
+            exit "$CODE"
+          }
+
+          curl -fL --retry 3 --retry-delay 2 'https://drive.usercontent.google.com/download?id=1ScMR7JUANdpGTha1hqUN-IXAh9UlVTvy&export=download&confirm=t' -o /tmp/wesimark-source.zip || fail $?
+          unzip -t /tmp/wesimark-source.zip >/dev/null || fail $?
+          rm -rf /tmp/wesimark-src
+          mkdir -p /tmp/wesimark-src
+          unzip -q /tmp/wesimark-source.zip -d /tmp/wesimark-src || fail $?
+
+          PUBSPEC="$(find /tmp/wesimark-src -name pubspec.yaml -type f | head -n1)"
+          [ -n "$PUBSPEC" ] || fail 20
+          APP_DIR="$(dirname "$PUBSPEC")"
+          echo "APP_DIR=$APP_DIR" >> "$GITHUB_ENV"
+          grep -F 'version: 2.4.0+14' "$PUBSPEC" || fail 21
+          [ -d "$APP_DIR/android/app/src/main/res" ] || fail 22
+          [ -f "$APP_DIR/lib/main.dart" ] || fail 23
+
+          echo "--- ORIGINAL LAUNCHER RESOURCES ---" >> "$REPORT"
+          find "$APP_DIR/android/app/src/main/res" -type f \( -name 'ic_launcher*' -o -name '*launcher*' \) -print | sort >> "$REPORT"
+          ICON_COUNT=$(find "$APP_DIR/android/app/src/main/res" -type f \( -name 'ic_launcher*' -o -name '*launcher*' \) | wc -l)
+          echo "ICON_COUNT=$ICON_COUNT" >> "$REPORT"
+          [ "$ICON_COUNT" -gt 0 ] || fail 24
+
+          echo "--- ANDROID IDENTITY ---" >> "$REPORT"
+          grep -RInE 'applicationId|namespace|android:label' "$APP_DIR/android/app" "$APP_DIR/android/build.gradle"* "$APP_DIR/android/settings.gradle"* 2>/dev/null >> "$REPORT" || true
+
+          echo "--- SIGNING REFERENCES ---" >> "$REPORT"
+          grep -RInE 'signingConfig|storeFile|keyAlias|key.properties' "$APP_DIR/android" 2>/dev/null >> "$REPORT" || true
+          echo "--- SIGNING FILES ---" >> "$REPORT"
+          find "$APP_DIR/android" -type f \( -name '*.jks' -o -name '*.keystore' -o -name 'key.properties' \) -print >> "$REPORT"
+
+          cd "$APP_DIR" || fail 25
+          flutter pub get || fail $?
+          flutter build apk --release --build-name=2.4.0 --build-number=14 || fail $?
+
+          APK="$APP_DIR/build/app/outputs/flutter-apk/app-release.apk"
+          [ -s "$APK" ] || fail 26
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -n1)"
+          [ -x "$APKSIGNER" ] || fail 27
+
+          echo "--- APK SIGNATURE ---" >> "$REPORT"
+          "$APKSIGNER" verify --verbose --print-certs "$APK" >> "$REPORT" 2>&1 || fail $?
+          mkdir -p "$GITHUB_WORKSPACE/final-apk"
+          cp "$APK" "$GITHUB_WORKSPACE/final-apk/WesiMark-2.4.0+14.apk" || fail $?
+          echo "APK_SHA256=$(sha256sum "$GITHUB_WORKSPACE/final-apk/WesiMark-2.4.0+14.apk" | awk '{print $1}')" >> "$REPORT"
+          echo "APK_SIZE=$(stat -c%s "$GITHUB_WORKSPACE/final-apk/WesiMark-2.4.0+14.apk")" >> "$REPORT"
+          echo "RESULT=SUCCESS" >> "$REPORT"
+          exit 0
+
+      - name: Upload corrected APK
+        if: steps.build.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: WesiMark-2.4.0+14-corrected-apk
+          path: final-apk/WesiMark-2.4.0+14.apk
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish build status to service branch
+        if: always()
+        shell: bash
+        run: |
+          set -euxo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .wesimark-apk/final-build-status.txt
+          git commit -m 'ci(wesimark): record final corrected APK status [skip ci]' || true
+          git pull --rebase origin wesimark/apk-build-v2.4.0 || true
+          git push origin HEAD:wesimark/apk-build-v2.4.0
+
+      - name: Fail workflow if corrected APK build failed
+        if: steps.build.outcome != 'success'
+        shell: bash
+        run: exit 1
