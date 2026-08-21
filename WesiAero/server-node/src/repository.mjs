@@ -139,7 +139,7 @@ export class GatewayRepository {
 
   reserveLease({ user, deviceId, nodeId, protocol }) {
     validateDeviceId(deviceId);
-    if (!['vless-reality', 'amneziawg'].includes(protocol)) {
+    if (!['vless-reality', 'vmess-xray', 'amneziawg'].includes(protocol)) {
       throw new RepositoryError('INVALID_PROTOCOL', 'Unsupported protocol');
     }
 
@@ -359,7 +359,8 @@ function validateNode(node) {
     throw new RepositoryError('INVALID_NODE', 'Invalid node id');
   }
   if (!Array.isArray(node.protocols) || node.protocols.length === 0 ||
-      node.protocols.some((value) => !['vless-reality', 'amneziawg'].includes(value))) {
+      node.protocols.some((value) =>
+        !['vless-reality', 'vmess-xray', 'amneziawg'].includes(value))) {
     throw new RepositoryError('INVALID_NODE', 'Invalid node protocols');
   }
   if (node.load !== undefined &&
