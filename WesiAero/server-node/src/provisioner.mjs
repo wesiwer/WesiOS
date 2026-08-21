@@ -16,22 +16,32 @@ export class StaticProfileProvisioner {
   }
 
   async profileFor({ user, lease }) {
-    const filename = `${user.id}.${lease.node.id}.${lease.protocol}.json`;
-    const profilePath = path.join(this.profileDirectory, filename);
-    let stat;
-    try {
-      stat = fs.statSync(profilePath);
-    } catch (error) {
-      if (error.code === 'ENOENT') {
-        throw new ProvisioningError(
-          'PROFILE_NOT_PROVISIONED',
-          'Tunnel profile is not provisioned for this user and node',
-        );
+    const candidates = [
+      `${user.id}.${lease.node.id}.${lease.protocol}.json`,
+      `_default.${lease.node.id}.${lease.protocol}.json`,
+    ];
+
+    let profilePath = null;
+    for (const filename of candidates) {
+      const candidate = path.join(this.profileDirectory, filename);
+      try {
+        const stat = fs.statSync(candidate);
+        if (!stat.isFile() || stat.size > 131_072) {
+          throw new ProvisioningError('INVALID_PROFILE_FILE', 'Profile file is invalid');
+        }
+        profilePath = candidate;
+        break;
+      } catch (error) {
+        if (error.code === 'ENOENT') continue;
+        throw error;
       }
-      throw error;
     }
-    if (!stat.isFile() || stat.size > 131_072) {
-      throw new ProvisioningError('INVALID_PROFILE_FILE', 'Profile file is invalid');
+
+    if (!profilePath) {
+      throw new ProvisioningError(
+        'PROFILE_NOT_PROVISIONED',
+        'Tunnel profile is not provisioned for this user and node',
+      );
     }
 
     let profile;
@@ -56,4 +66,3 @@ function validateProfile(profile, protocol) {
     throw new ProvisioningError('INVALID_PROFILE', 'clientConfig is required');
   }
 }
-
