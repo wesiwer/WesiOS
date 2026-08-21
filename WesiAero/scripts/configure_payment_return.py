@@ -61,10 +61,13 @@ if __name__ == "__main__":
     # MethodChannel implementation.
     configure_wireguard()
 
+    manifest_text = manifest.read_text(encoding="utf-8")
     gradle = Path("android/app/build.gradle.kts").read_text(encoding="utf-8")
     activity = Path(
         "android/app/src/main/kotlin/com/wesi/wesi_aero/MainActivity.kt"
     ).read_text(encoding="utf-8")
+    if "android.permission.INTERNET" not in manifest_text:
+        raise SystemExit("Android release manifest has no INTERNET permission")
     if "com.wireguard.android:tunnel:" not in gradle:
         raise SystemExit("WireGuard Android dependency was not configured")
     if "GoBackend" not in activity or "VpnService.prepare" not in activity:
