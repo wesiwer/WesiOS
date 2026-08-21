@@ -6,180 +6,23 @@ on:
       - 'wesimark/apk-build-v2.4.0'
     paths:
       - '.github/workflows/wesimark-apk-build.yml'
-  pull_request:
-    branches:
-      - 'wesimark/apk-build-v2.4.0'
-    paths:
-      - '.wesimark-apk/trigger.txt'
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  build-apk:
+  verify-apk:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Reconstruct verified WesiMark source
+      - name: Verify published APK
         shell: bash
         run: |
           set -euo pipefail
-          cat \
-            .wesimark-apk/v2part00 \
-            .wesimark-apk/v2part01 \
-            .wesimark-apk/v2part02 \
-            .wesimark-apk/v2r00 \
-            .wesimark-apk/v2r01 \
-            .wesimark-apk/v2r02 \
-            .wesimark-apk/v2r03 \
-            .wesimark-apk/v2r04 \
-            .wesimark-apk/v2r05 \
-            .wesimark-apk/v2r06 \
-            .wesimark-apk/v2r07 \
-            .wesimark-apk/v2pair08_09 \
-            .wesimark-apk/v2pair10_11 \
-            .wesimark-apk/v2pair12_13 \
-            .wesimark-apk/v2pair14_15 \
-            .wesimark-apk/v2r16 \
-            .wesimark-apk/v2r17 \
-            .wesimark-apk/v2r18 \
-            .wesimark-apk/v2r19 \
-            .wesimark-apk/v2pair20_21 \
-            .wesimark-apk/v2pair22_23 \
-            .wesimark-apk/v2pair24_25 \
-            .wesimark-apk/v2pair26_27 \
-            .wesimark-apk/v2pair28_29 \
-            .wesimark-apk/v2pair30_31 \
-            .wesimark-apk/v2pair32_33 \
-            | tr -d '\r\n\t ' \
-            | base64 -d > /tmp/wesimark.tar.gz
-          echo '50a40a01fe130eb14df3afd8b7f638d10a03cf8c2a08b6cbefc55f046351b2b3  /tmp/wesimark.tar.gz' | sha256sum -c -
-          rm -rf /tmp/wesimark-src
-          mkdir -p /tmp/wesimark-src
-          tar -xzf /tmp/wesimark.tar.gz -C /tmp/wesimark-src
-          grep -q '^version: 2.4.0+14$' /tmp/wesimark-src/pubspec.yaml
-          test -f /tmp/wesimark-src/lib/main.dart
-
-      - name: Set up Java 17
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
-
-      - name: Set up Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          channel: stable
-          cache: true
-
-      - name: Create Android project
-        shell: bash
-        run: |
-          set -euo pipefail
-          flutter --version
-          rm -rf /tmp/wesimark-build
-          flutter create --platforms=android --org ru.wesi --project-name wesimark /tmp/wesimark-build
-          cp /tmp/wesimark-src/pubspec.yaml /tmp/wesimark-build/pubspec.yaml
-          rm -rf /tmp/wesimark-build/lib /tmp/wesimark-build/test
-          cp -a /tmp/wesimark-src/lib /tmp/wesimark-build/lib
-
-          mkdir -p /tmp/wesimark-build/assets/fonts /tmp/wesimark-build/assets/products
-          FONT_REG='/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'
-          FONT_BOLD='/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf'
-          if [ ! -f "$FONT_REG" ]; then
-            sudo apt-get update
-            sudo apt-get install -y fonts-dejavu-core
-          fi
-          cd /tmp/wesimark-build
-          grep -oE 'assets/fonts/[^[:space:]]+\.(ttf|otf)' pubspec.yaml | sort -u | while read -r font_path; do
-            mkdir -p "$(dirname "$font_path")"
-            if [[ "$font_path" == *Bold* ]]; then
-              cp "$FONT_BOLD" "$font_path"
-            else
-              cp "$FONT_REG" "$font_path"
-            fi
-          done
-
-          cat > android/app/src/main/AndroidManifest.xml <<'EOF'
-          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-              <uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:usesPermissionFlags="neverForLocation" />
-              <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
-              <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
-              <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
-              <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" android:maxSdkVersion="30" />
-              <application
-                  android:label="WesiMark"
-                  android:name="${applicationName}"
-                  android:icon="@mipmap/ic_launcher">
-                  <activity
-                      android:name=".MainActivity"
-                      android:exported="true"
-                      android:launchMode="singleTop"
-                      android:taskAffinity=""
-                      android:theme="@style/LaunchTheme"
-                      android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
-                      android:hardwareAccelerated="true"
-                      android:windowSoftInputMode="adjustResize">
-                      <meta-data android:name="io.flutter.embedding.android.NormalTheme" android:resource="@style/NormalTheme" />
-                      <intent-filter>
-                          <action android:name="android.intent.action.MAIN" />
-                          <category android:name="android.intent.category.LAUNCHER" />
-                      </intent-filter>
-                  </activity>
-                  <meta-data android:name="flutterEmbedding" android:value="2" />
-              </application>
-              <queries>
-                  <intent>
-                      <action android:name="android.intent.action.PROCESS_TEXT" />
-                      <data android:mimeType="text/plain" />
-                  </intent>
-              </queries>
-          </manifest>
-          EOF
-
-      - name: Resolve dependencies
-        working-directory: /tmp/wesimark-build
-        run: flutter pub get
-
-      - name: Build release APK
-        working-directory: /tmp/wesimark-build
-        run: flutter build apk --release --build-name=2.4.0 --build-number=14
-
-      - name: Prepare APK
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p "$GITHUB_WORKSPACE/build-artifacts"
-          cp /tmp/wesimark-build/build/app/outputs/flutter-apk/app-release.apk "$GITHUB_WORKSPACE/build-artifacts/WesiMark-2.4.0+14.apk"
-          sha256sum "$GITHUB_WORKSPACE/build-artifacts/WesiMark-2.4.0+14.apk"
-
-      - name: Upload APK artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: WesiMark-2.4.0+14-apk
-          path: build-artifacts/WesiMark-2.4.0+14.apk
-          if-no-files-found: error
-          retention-days: 14
-
-      - name: Publish direct APK to build branch
-        shell: bash
-        run: |
-          set -euo pipefail
-          cp "$GITHUB_WORKSPACE/build-artifacts/WesiMark-2.4.0+14.apk" /tmp/WesiMark-2.4.0+14.apk
-          git fetch origin wesimark/apk-build-v2.4.0
-          git checkout -B wesimark/apk-build-v2.4.0 origin/wesimark/apk-build-v2.4.0
-          mkdir -p build-artifacts
-          cp /tmp/WesiMark-2.4.0+14.apk build-artifacts/WesiMark-2.4.0+14.apk
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add build-artifacts/WesiMark-2.4.0+14.apk
-          if git diff --cached --quiet; then
-            echo 'APK already published'
-            exit 0
-          fi
-          git commit -m 'build(wesimark): publish 2.4.0+14 APK [skip ci]'
-          git push origin HEAD:wesimark/apk-build-v2.4.0
+          test -f build-artifacts/WesiMark-2.4.0+14.apk
+          SIZE=$(stat -c%s build-artifacts/WesiMark-2.4.0+14.apk)
+          echo "APK size: $SIZE bytes"
+          test "$SIZE" -eq 75750373
+          sha256sum build-artifacts/WesiMark-2.4.0+14.apk
