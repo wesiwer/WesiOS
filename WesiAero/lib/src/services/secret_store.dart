@@ -3,6 +3,7 @@ import 'dart:math';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
+import '../models/commerce_models.dart';
 import '../models/gateway_models.dart';
 
 class GatewaySecretStore {
@@ -16,6 +17,7 @@ class GatewaySecretStore {
   static const String _profileProtocolKey = 'active_gateway_profile_protocol';
   static const String _licenseKey = 'wesi_aero_license_key';
   static const String _deviceIdKey = 'wesi_aero_device_id';
+  static const String _pendingOrderKey = 'wesi_aero_pending_order';
 
   Future<void> saveProfile(ImportedGatewayConfig config) async {
     await _storage.write(key: _profileKey, value: config.rawValue);
@@ -40,6 +42,43 @@ class GatewaySecretStore {
       _storage.write(key: _licenseKey, value: value.trim());
 
   Future<void> clearLicenseKey() => _storage.delete(key: _licenseKey);
+
+  Future<void> savePendingOrder(CheckoutOrder order) async {
+    await _storage.write(
+      key: _pendingOrderKey,
+      value: jsonEncode({
+        'id': order.id,
+        'provider': order.provider.wireName,
+        'status': order.status,
+        'amountMinor': order.amountMinor,
+        'currency': order.currency,
+        'claimToken': order.claimToken,
+        'checkoutUrl': order.checkoutUrl,
+      }),
+    );
+  }
+
+  Future<CheckoutOrder?> readPendingOrder() async {
+    final raw = await _storage.read(key: _pendingOrderKey);
+    if (raw == null || raw.isEmpty) return null;
+    try {
+      final json = jsonDecode(raw) as Map<String, dynamic>;
+      return CheckoutOrder(
+        id: json['id'] as String,
+        provider: AeroPaymentProvider.fromWire(json['provider'] as String),
+        status: json['status'] as String,
+        amountMinor: (json['amountMinor'] as num).toInt(),
+        currency: json['currency'] as String,
+        claimToken: json['claimToken'] as String,
+        checkoutUrl: json['checkoutUrl'] as String?,
+      );
+    } catch (_) {
+      await clearPendingOrder();
+      return null;
+    }
+  }
+
+  Future<void> clearPendingOrder() => _storage.delete(key: _pendingOrderKey);
 
   Future<String> getOrCreateDeviceId() async {
     final existing = await _storage.read(key: _deviceIdKey);
