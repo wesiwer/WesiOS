@@ -1,0 +1,26 @@
+name: Dispatch Release 0.22.33 Once
+
+on:
+  push:
+    paths:
+      - '.github/workflows/dispatch-release-0.22.33-once.yml'
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch stable release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh workflow run release-app.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref main \
+            -f notes='Исправлена синхронизация организаций и восстановление дерева организаций.' \
+            -f deploy_to_server=true
+          echo 'Release workflow dispatched for 0.22.33+108'
