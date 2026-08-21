@@ -487,7 +487,7 @@ class SyncRecovery {
       final remote = remoteBefore[entry.key];
       if (remote != null &&
           !remote.deleted &&
-          _sameValue(remote.fields, entry.value)) {
+          samePayloadForVerification(collection, remote.fields, entry.value)) {
         continue;
       }
 
@@ -552,21 +552,25 @@ class SyncRecovery {
 
     var verified = 0;
     String? firstMismatch;
+    String? firstMismatchDetail;
     for (final entry in localRows.entries) {
       final remote = after.value![entry.key];
       if (remote != null &&
           !remote.deleted &&
-          _sameValue(remote.fields, entry.value)) {
+          samePayloadForVerification(collection, remote.fields, entry.value)) {
         verified++;
-      } else {
-        firstMismatch ??= entry.key;
+      } else if (firstMismatch == null) {
+        firstMismatch = entry.key;
+        firstMismatchDetail = remote == null
+            ? 'запись отсутствует на сервере'
+            : remote.deleted
+            ? 'сервер пометил запись удалённой'
+            : _verificationDifference(collection, remote.fields, entry.value);
       }
     }
 
     if (verified != localRows.length) {
-      final rejected = pushed.authoritativeIds.isNotEmpty
-          ? pushed.authoritativeIds.first
-          : firstMismatch;
+      final detail = firstMismatchDetail;
       return SyncRecoveryCollectionReport(
         collection: collection.name,
         local: localRows.length,
@@ -574,7 +578,9 @@ class SyncRecovery {
         verified: verified,
         failure: SyncFailure(
           'RECOVERY_VERIFY_FAILED',
-          'После отправки не совпала ${collection.name}:${rejected ?? '?'}',
+          'Сервер вернул другую версию записи в разделе '
+              '«${_collectionLabel(collection.name)}»'
+              '${detail == null ? '' : ' — $detail'}',
         ),
       );
     }
@@ -585,6 +591,93 @@ class SyncRecovery {
       uploaded: pushed.sent,
       verified: verified,
     );
+  }
+
+  @visibleForTesting
+  static bool samePayloadForVerification(
+    SyncCollection<dynamic> collection,
+    Map<String, dynamic> remote,
+    Map<String, dynamic> local,
+  ) {
+    if (_sameValue(remote, local)) return true;
+    final a = _verificationPayload(collection, remote);
+    final b = _verificationPayload(collection, local);
+    return a != null && b != null && _sameValue(a, b);
+  }
+
+  static Map<String, dynamic>? _verificationPayload(
+    SyncCollection<dynamic> collection,
+    Map<String, dynamic> fields,
+  ) {
+    if (collection.name != 'organizations') {
+      return Map<String, dynamic>.from(fields);
+    }
+    try {
+      final model = collection.decode(Map<String, dynamic>.from(fields));
+      if (model == null) return null;
+      final out = Map<String, dynamic>.from(collection.encode(model));
+      final currency = '${out['baseCurrency'] ?? ''}'.trim();
+      if (currency.isEmpty) out['baseCurrency'] = 'RUB';
+      final createdBy = '${out['createdBy'] ?? ''}'.trim();
+      if (createdBy.isEmpty) out['createdBy'] = 'sync-server';
+      return out;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static String _collectionLabel(String name) {
+    const labels = <String, String>{
+      'organizations': 'Организации',
+      'employees': 'Сотрудники',
+      'organization_grants': 'Права сотрудников',
+      'accounts': 'Счета',
+      'finance_categories': 'Финансовые категории',
+      'transactions': 'Операции',
+      'inter_org_transfers': 'Переводы между организациями',
+      'tasks': 'Задачи',
+      'task_ai_memory': 'Память задач',
+      'roadmap_projects': 'Roadmap',
+      'roadmap_items': 'Roadmap',
+      'crm_clients': 'CRM',
+      'crm_deals': 'CRM',
+      'crm_interactions': 'CRM',
+      'sandbox_transactions': 'Песочница',
+      'what_if_presets': 'Сценарии What-if',
+      'transaction_audit': 'История финансов',
+      'critical_audit': 'Журнал безопасности',
+    };
+    return labels[name] ?? 'Данные WesiOS';
+  }
+
+  static String? _verificationDifference(
+    SyncCollection<dynamic> collection,
+    Map<String, dynamic> remote,
+    Map<String, dynamic> local,
+  ) {
+    final a = _verificationPayload(collection, remote);
+    final b = _verificationPayload(collection, local);
+    if (a == null || b == null) return 'некорректная структура ответа';
+    final keys = <String>{...a.keys, ...b.keys}.toList()..sort();
+    const labels = <String, String>{
+      'id': 'идентификатор',
+      'name': 'название',
+      'parentId': 'родительская организация',
+      'isRoot': 'тип организации',
+      'baseCurrency': 'валюта',
+      'status': 'статус',
+      'createdAt': 'дата создания',
+      'updatedAt': 'дата изменения',
+      'createdBy': 'источник создания',
+      'code': 'код',
+      'description': 'описание',
+      'colorValue': 'цвет',
+      'sortOrder': 'порядок',
+    };
+    for (final key in keys) {
+      if (!_sameValue(a[key], b[key])) return labels[key] ?? 'данные записи';
+    }
+    return null;
   }
 
   static bool _sameSnapshot(_RecoverySnapshot a, _RecoverySnapshot b) {
