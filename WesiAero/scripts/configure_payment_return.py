@@ -9,6 +9,21 @@ from configure_android_wireguard import patch_gradle, write_activity
 
 def configure_manifest(path: Path) -> None:
     text = path.read_text(encoding="utf-8")
+
+    internet_permission = (
+        '    <uses-permission android:name="android.permission.INTERNET" />\n'
+    )
+    if 'android.permission.INTERNET' not in text:
+        manifest_tag_end = text.find('>')
+        if manifest_tag_end < 0:
+            raise SystemExit(f"Invalid Android manifest: {path}")
+        text = (
+            text[: manifest_tag_end + 1]
+            + '\n'
+            + internet_permission
+            + text[manifest_tag_end + 1 :]
+        )
+
     if 'android:scheme="wesi-aero"' not in text:
         activity_end = "        </activity>"
         if activity_end not in text:
@@ -27,7 +42,8 @@ def configure_manifest(path: Path) -> None:
             </intent-filter>
 """
         text = text.replace(activity_end, payment_return + activity_end, 1)
-        path.write_text(text, encoding="utf-8")
+
+    path.write_text(text, encoding="utf-8")
 
 
 if __name__ == "__main__":
