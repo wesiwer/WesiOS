@@ -5,6 +5,8 @@ import sys
 from pathlib import Path
 
 from configure_android_wireguard import main as configure_wireguard
+from configure_android_xray import main as configure_xray
+from download_xray_aar import main as download_xray_aar
 
 
 def configure_manifest(path: Path) -> None:
@@ -55,21 +57,31 @@ if __name__ == "__main__":
 
     configure_manifest(manifest)
 
-    # CI and local platform bootstrap already invoke this script immediately
-    # after `flutter create`. Keep the real native VPN backend in the exact same
-    # deterministic step so no release APK can accidentally ship the preview
-    # MethodChannel implementation.
+    # This is the single Android platform bootstrap step used by CI immediately
+    # after `flutter create`. Configure every real VPN backend here so a release
+    # APK cannot accidentally fall back to a preview-only MethodChannel bridge.
     configure_wireguard()
+    download_xray_aar()
+    configure_xray()
 
     manifest_text = manifest.read_text(encoding="utf-8")
     gradle = Path("android/app/build.gradle.kts").read_text(encoding="utf-8")
     activity = Path(
         "android/app/src/main/kotlin/com/wesi/wesi_aero/MainActivity.kt"
     ).read_text(encoding="utf-8")
+    xray_service = Path(
+        "android/app/src/main/kotlin/com/wesi/wesi_aero/AeroXrayVpnService.kt"
+    ).read_text(encoding="utf-8")
     if "android.permission.INTERNET" not in manifest_text:
         raise SystemExit("Android release manifest has no INTERNET permission")
+    if 'android:name=".AeroXrayVpnService"' not in manifest_text:
+        raise SystemExit("Android release manifest has no Xray VpnService")
     if "com.wireguard.android:tunnel:" not in gradle:
         raise SystemExit("WireGuard Android dependency was not configured")
+    if 'implementation(files("libs/libv2ray.aar"))' not in gradle:
+        raise SystemExit("Xray Android AAR was not configured")
     if "GoBackend" not in activity or "VpnService.prepare" not in activity:
         raise SystemExit("Native Android VPN bridge was not configured")
-    print("Configured Wesi Aero Android VPN bridge and payment return")
+    if "AeroXrayVpnService" not in activity or "Libv2ray.newCoreController" not in xray_service:
+        raise SystemExit("Native Android Xray backend was not configured")
+    print("Configured Wesi Aero WireGuard + Xray VPN backends and payment return")
