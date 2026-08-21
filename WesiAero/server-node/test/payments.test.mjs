@@ -25,7 +25,7 @@ describe('verified payment adapters', () => {
 
   afterEach(() => database.close());
 
-  it('verifies Crypto Pay HMAC, ISO timestamp, payload and deduplicates webhook', async () => {
+  it('verifies Crypto Pay webhook and handles non-unique update ids safely', async () => {
     commerce.setPaymentSetting({
       provider: 'crypto_pay',
       enabled: true,
@@ -49,6 +49,7 @@ describe('verified payment adapters', () => {
       cryptoPayToken: token,
       cryptoPayTestnet: true,
     }, { now: () => now });
+    const secret = createHash('sha256').update(token).digest();
     const raw = Buffer.from(JSON.stringify({
       update_id: 1001,
       update_type: 'invoice_paid',
@@ -61,7 +62,6 @@ describe('verified payment adapters', () => {
         paid_amount: '3.50',
       },
     }));
-    const secret = createHash('sha256').update(token).digest();
     const signature = createHmac('sha256', secret).update(raw).digest('hex');
     const accepted = await orchestrator.handleCryptoPayWebhook(raw, signature);
     assert.equal(accepted.payment.status, 'paid');
@@ -70,6 +70,41 @@ describe('verified payment adapters', () => {
       await orchestrator.handleCryptoPayWebhook(raw, signature),
       { duplicate: true },
     );
+
+    const secondOrder = commerce.createPayment({
+      provider: 'crypto_pay',
+      planId: 'aero-flex',
+      ipMode: 'shared',
+      deviceLimit: 1,
+      durationDays: 30,
+      idempotencyKey: 'crypto-order-0002',
+    });
+    commerce.attachProviderPayment(secondOrder.id, {
+      externalId: '777002',
+      checkoutUrl: 'https://t.me/CryptoTestnetBot?start=invoice2',
+    });
+    const secondRaw = Buffer.from(JSON.stringify({
+      update_id: 1001,
+      update_type: 'invoice_paid',
+      request_date: new Date(now).toISOString(),
+      payload: {
+        invoice_id: 777002,
+        status: 'paid',
+        payload: secondOrder.id,
+        paid_asset: 'TON',
+        paid_amount: '2.75',
+      },
+    }));
+    const secondSignature = createHmac('sha256', secret)
+      .update(secondRaw)
+      .digest('hex');
+    const secondAccepted = await orchestrator.handleCryptoPayWebhook(
+      secondRaw,
+      secondSignature,
+    );
+    assert.equal(secondAccepted.payment.status, 'paid');
+    assert.match(secondAccepted.key, /^WA1-/);
+
     await assert.rejects(
       () => orchestrator.handleCryptoPayWebhook(raw, '0'.repeat(64)),
       (error) => error instanceof PaymentError &&
