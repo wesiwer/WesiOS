@@ -6,7 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:window_manager/window_manager.dart';
 
 import 'src/app.dart';
-import 'src/state/gateway_controller.dart';
+import 'src/state/prototype_gateway_controller.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -29,7 +29,7 @@ Future<void> main() async {
     });
   }
 
-  final controller = GatewayController();
+  final controller = PrototypeGatewayController();
   unawaited(controller.initialize());
   runApp(WesiAeroApp(controller: controller));
 }
