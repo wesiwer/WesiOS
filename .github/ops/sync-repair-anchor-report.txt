@@ -1,0 +1,9 @@
+snapshot_anchor=True
+run_guard_anchor=True
+runone_call=True
+runone_signature=True
+plan_anchor=True
+snapshot_r_calls=2
+snapshot_id_calls=1
+manual_loop=True
+test_anchor=True
