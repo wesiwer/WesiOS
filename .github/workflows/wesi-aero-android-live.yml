@@ -84,6 +84,7 @@ jobs:
           python3 scripts/configure_android_wireguard.py
           python3 scripts/download_xray_aar.py
           python3 scripts/configure_android_xray.py
+          python3 scripts/harden_android_xray_datapath.py
           for density in mdpi hdpi xhdpi xxhdpi xxxhdpi; do
             cp assets/branding/wesi_aero_mark.png "android/app/src/main/res/mipmap-$density/ic_launcher.png"
           done
@@ -92,6 +93,10 @@ jobs:
           grep -q 'android.permission.BIND_VPN_SERVICE' android/app/src/main/AndroidManifest.xml
           grep -q 'com.wesi.aero/gateway' android/app/src/main/kotlin/com/wesi/wesi_aero/MainActivity.kt
           grep -q 'com.wesi.aero/gateway-events' android/app/src/main/kotlin/com/wesi/wesi_aero/MainActivity.kt
+          grep -q 'setUnderlyingNetworks(arrayOf(network))' android/app/src/main/kotlin/com/wesi/wesi_aero/AeroXrayVpnService.kt
+          grep -q 'NET_CAPABILITY_NOT_VPN' android/app/src/main/kotlin/com/wesi/wesi_aero/AeroXrayVpnService.kt
+          grep -q 'measureDelay("https://cp.cloudflare.com/generate_204")' android/app/src/main/kotlin/com/wesi/wesi_aero/AeroXrayVpnService.kt
+          grep -q 'put("outboundTag", "proxy")' android/app/src/main/kotlin/com/wesi/wesi_aero/AeroXrayVpnService.kt
           test -s android/app/libs/libv2ray.aar
 
       - name: Load prototype license from Wesi Relay
@@ -178,13 +183,13 @@ jobs:
             --dart-define=WESI_AERO_DEMO=false \
             --dart-define=WESI_AERO_CONTROL_URL="$AERO_CONTROL_URL" \
             --dart-define=WESI_AERO_PROTOTYPE_LICENSE="$WESI_AERO_PROTOTYPE_LICENSE"
-          cp build/app/outputs/flutter-apk/app-release.apk Wesi-Aero-Android-Live-0.2.1+3.apk
-          test -s Wesi-Aero-Android-Live-0.2.1+3.apk
+          cp build/app/outputs/flutter-apk/app-release.apk Wesi-Aero-Android-Live-0.2.2+4.apk
+          test -s Wesi-Aero-Android-Live-0.2.2+4.apk
 
       - uses: actions/upload-artifact@v4
         with:
           name: Wesi-Aero-Android-Live
-          path: WesiAero/Wesi-Aero-Android-Live-0.2.1+3.apk
+          path: WesiAero/Wesi-Aero-Android-Live-0.2.2+4.apk
           retention-days: 7
           if-no-files-found: error
 
