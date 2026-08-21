@@ -4,7 +4,7 @@ import '../models/gateway_models.dart';
 
 class GatewaySecretStore {
   GatewaySecretStore({FlutterSecureStorage? storage})
-      : _storage = storage ?? FlutterSecureStorage();
+      : _storage = storage ?? const FlutterSecureStorage();
 
   final FlutterSecureStorage _storage;
 

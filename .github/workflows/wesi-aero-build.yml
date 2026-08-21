@@ -38,7 +38,9 @@ jobs:
           cache: true
 
       - name: Generate Android platform
-        run: flutter create --platforms=android --org com.wesi --project-name wesi_aero .
+        run: |
+          flutter create --platforms=android --org com.wesi --project-name wesi_aero .
+          rm -f test/widget_test.dart
 
       - name: Apply Wesi Aero Android metadata and icon
         shell: bash
@@ -117,7 +119,9 @@ jobs:
 
       - name: Generate Windows platform
         shell: pwsh
-        run: flutter create --platforms=windows --org com.wesi --project-name wesi_aero .
+        run: |
+          flutter create --platforms=windows --org com.wesi --project-name wesi_aero .
+          Remove-Item test/widget_test.dart -ErrorAction SilentlyContinue
 
       - name: Apply Wesi Aero Windows metadata and icon
         shell: pwsh

@@ -240,6 +240,10 @@ abstract final class GatewayTheme {
     final shape = RoundedRectangleBorder(
       borderRadius: BorderRadius.circular(GatewayTokens.radiusMedium),
     );
+    final inputBorder = OutlineInputBorder(
+      borderRadius: BorderRadius.circular(GatewayTokens.radiusMedium),
+      borderSide: BorderSide(color: palette.border),
+    );
 
     return base.copyWith(
       extensions: <ThemeExtension<dynamic>>[palette],
@@ -270,12 +274,14 @@ abstract final class GatewayTheme {
         hintStyle: textTheme.bodyMedium?.copyWith(color: palette.textMuted),
         labelStyle: textTheme.bodyMedium,
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
-        border: shape.copyWith(side: BorderSide(color: palette.border)),
-        enabledBorder: shape.copyWith(side: BorderSide(color: palette.border)),
-        focusedBorder: shape.copyWith(
-          side: BorderSide(color: palette.accent, width: 1.4),
+        border: inputBorder,
+        enabledBorder: inputBorder,
+        focusedBorder: inputBorder.copyWith(
+          borderSide: BorderSide(color: palette.accent, width: 1.4),
         ),
-        errorBorder: shape.copyWith(side: BorderSide(color: palette.danger)),
+        errorBorder: inputBorder.copyWith(
+          borderSide: BorderSide(color: palette.danger),
+        ),
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(

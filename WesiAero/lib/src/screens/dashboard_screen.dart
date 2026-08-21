@@ -1,5 +1,3 @@
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
 
 import '../design/gateway_theme.dart';
@@ -39,7 +37,7 @@ class DashboardScreen extends StatelessWidget {
                   _DashboardHeader(isDemo: controller.snapshot.isDemo),
                   const SizedBox(height: GatewayTokens.space24),
                   if (desktop)
-                    Row(
+                    const Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Expanded(
@@ -49,8 +47,8 @@ class DashboardScreen extends StatelessWidget {
                             compact: false,
                           ),
                         ),
-                        const SizedBox(width: GatewayTokens.space16),
-                        const Expanded(
+                        SizedBox(width: GatewayTokens.space16),
+                        Expanded(
                           flex: 4,
                           child: Column(
                             children: [

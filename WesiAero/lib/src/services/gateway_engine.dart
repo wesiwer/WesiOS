@@ -41,7 +41,8 @@ class PlatformGatewayEngine implements GatewayEngine {
 
   late final Stream<GatewaySnapshot> _snapshots = _events
       .receiveBroadcastStream()
-      .whereType<Map<Object?, Object?>>()
+      .where((event) => event is Map<Object?, Object?>)
+      .cast<Map<Object?, Object?>>()
       .map(_decodeSnapshot)
       .asBroadcastStream();
 
