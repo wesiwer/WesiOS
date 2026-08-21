@@ -1,5 +1,4 @@
-name: Apply organization sync code fix once
-# trigger: apply validated organization recovery patch
+name: Diagnose production organization sync once
 
 on:
   push:
@@ -8,115 +7,57 @@ on:
       - '.github/workflows/apply-org-sync-code-fix-once.yml'
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  apply:
+  diagnose:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: main
-          fetch-depth: 0
-      - uses: subosito/flutter-action@v2
-        with:
-          channel: stable
-          cache: true
-      - name: Patch sync codec
+      - name: Prepare SSH
+        env:
+          KEY: ${{ secrets.WESI_SERVER_SSH_KEY }}
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          KNOWN: ${{ secrets.WESI_SERVER_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          test -n "${KEY:-}" && test -n "${HOST:-}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          if [ -n "${KNOWN:-}" ]; then
+            printf '%s\n' "$KNOWN" > ~/.ssh/known_hosts
+          else
+            ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          fi
+          chmod 600 ~/.ssh/known_hosts
+      - name: Read organization structural payloads only
+        env:
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          USER: ${{ secrets.WESI_SERVER_USER }}
         shell: bash
         run: |
           set -euo pipefail
-          python3 - <<'PY'
-          from pathlib import Path
-          p=Path('lib/core/sync/sync_codec.dart')
-          s=p.read_text(encoding='utf-8')
-          a=s.index('bool _organizationSnapshotValid(')
-          b=s.index('\nbool _employeeExists',a)
-          helper=r'''bool _organizationConnectedToRoot(
-            Map<String, OrganizationModel> byId,
-            OrganizationModel node,
-          ) {
-            if (node.id == OrganizationModel.rootId) {
-              return node.isRoot && node.parentId == null && !node.archived;
-            }
-            if (node.isRoot || node.parentId == null || node.parentId!.isEmpty) {
-              return false;
-            }
-            final seen = <String>{node.id};
-            var current = node;
-            while (current.id != OrganizationModel.rootId) {
-              final parentId = current.parentId;
-              if (parentId == null || parentId.isEmpty || !seen.add(parentId)) {
-                return false;
-              }
-              final parent = byId[parentId];
-              if (parent == null) return false;
-              if (!current.archived && parent.archived) return false;
-              current = parent;
-            }
-            return current.isRoot && current.parentId == null && !current.archived;
-          }
-          '''
-          s=s[:a]+helper+s[b:]
-          cls=s.index('class OrganizationsSync extends SyncCollection<OrganizationModel>')
-          a=s.index('  @override\n  Future<bool> applyFields(',cls)
-          b=s.index('  @override\n  Future<void> removeById',a)
-          repl=r'''  @override
-            Map<String, OrganizationModel> local() {
-              final b = box();
-              if (b == null) return const {};
-              final byId = <String, OrganizationModel>{
-                for (final row in b.values) row.id: row,
-              };
-              return <String, OrganizationModel>{
-                for (final row in byId.values)
-                  if (_organizationConnectedToRoot(byId, row)) row.id: row,
-              };
-            }
-
-            @override
-            Future<bool> applyFields(Map<String, dynamic> fields) async {
-              final b = box();
-              final incoming = decode(fields);
-              if (b == null || incoming == null) return false;
-              final byId = <String, OrganizationModel>{
-                for (final row in b.values)
-                  if (row.id != incoming.id) row.id: row,
-                incoming.id: incoming,
-              };
-              if (!_organizationConnectedToRoot(byId, incoming)) return false;
-              if (incoming.archived &&
-                  byId.values.any(
-                    (row) => row.parentId == incoming.id && !row.archived,
-                  )) {
-                return false;
-              }
-              await b.put(incoming.id, incoming);
-              return true;
-            }
-
-          '''
-          s=s[:a]+repl+s[b:]
-          p.write_text(s,encoding='utf-8')
-          PY
-          dart format lib/core/sync/sync_codec.dart test/core/sync/organization_sync_recovery_test.dart
-          git diff --check
-      - name: Validate
-        shell: bash
-        run: |
-          set -euo pipefail
-          flutter pub get
-          flutter test test/core/sync/organization_sync_recovery_test.dart
-          flutter analyze --no-fatal-infos --no-fatal-warnings lib/core/sync/sync_codec.dart test/core/sync/organization_sync_recovery_test.dart
-      - name: Commit to current main
-        shell: bash
-        run: |
-          set -euo pipefail
-          git config user.name 'WesiOS Sync Fix'
-          git config user.email 'actions@users.noreply.github.com'
-          git add lib/core/sync/sync_codec.dart test/core/sync/organization_sync_recovery_test.dart
-          git commit -m 'fix(sync): recover organization tree from stale local cache'
-          git fetch origin main
-          git rebase origin/main
-          git push origin HEAD:main
+          SSH="ssh -i $HOME/.ssh/id_deploy -o BatchMode=yes"
+          $SSH "$USER@$HOST" 'python3 - <<'"'"'PY'"'"'
+          import json, sqlite3, os
+          candidates=[
+            "/opt/pocketbase/pb_data/data.db",
+            "/opt/pocketbase/pb_data/data.db-wal",
+          ]
+          db=next((p for p in candidates if p.endswith("data.db") and os.path.exists(p)), None)
+          if not db:
+            raise SystemExit("PocketBase data.db not found")
+          con=sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+          rows=con.execute("SELECT rid, stamp, deleted, payload FROM wesios_records WHERE coll='organizations' ORDER BY rid").fetchall()
+          keep=("id","name","parentId","isRoot","baseCurrency","status","createdAt","updatedAt","createdBy","code","sortOrder","archived","created","updated")
+          print("COUNT", len(rows))
+          for rid,stamp,deleted,payload in rows:
+            try:
+              p=json.loads(payload) if isinstance(payload,str) else payload
+            except Exception:
+              p={"_payload_parse":"failed"}
+            if not isinstance(p,dict): p={"_payload_type":type(p).__name__}
+            safe={k:p.get(k) for k in keep if k in p}
+            print(json.dumps({"rid":rid,"stamp":stamp,"deleted":bool(deleted),"payload":safe},ensure_ascii=False,sort_keys=True))
+          PY'
