@@ -1,0 +1,205 @@
+name: Fix Organization Sync Definitively Once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/fix-organization-sync-definitive-once.yml'
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Patch client-side organization compatibility
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p = Path('lib/core/sync/sync_codec.dart')
+          s = p.read_text(encoding='utf-8')
+          old = """  OrganizationModel? decode(Map<String, dynamic> fields) {
+            final id = _strOrNull(fields['id']);
+            final name = _strOrNull(fields['name']);
+            final createdAt = _date(fields['createdAt']);
+            if (id == null ||
+                name == null ||
+                name.trim().isEmpty ||
+                createdAt == null) {
+              return null;
+            }
+            final isRoot = fields['isRoot'] == true;
+            final parentId = _strOrNull(fields['parentId']);
+            if (isRoot != (id == OrganizationModel.rootId)) return null;
+            if (isRoot && parentId != null) return null;
+            return OrganizationModel(
+          """
+          new = """  OrganizationModel? decode(Map<String, dynamic> fields) {
+            final id = _strOrNull(fields['id']);
+            final name = _strOrNull(fields['name']);
+            // Old PocketBase callbacks used `created`/`updated` and could send
+            // stale root metadata. The root id is the invariant; do not make a
+            // valid tree depend on which JS callback happens to serve a request.
+            final createdAt =
+                _date(fields['createdAt']) ??
+                _date(fields['created']) ??
+                _date(fields['updatedAt']) ??
+                _date(fields['updated']);
+            if (id == null ||
+                name == null ||
+                name.trim().isEmpty ||
+                createdAt == null) {
+              return null;
+            }
+            final canonicalRoot = id == OrganizationModel.rootId;
+            // No non-root record may elevate itself to root, but the canonical
+            // root is repaired locally even when a legacy server says otherwise.
+            if (!canonicalRoot && fields['isRoot'] == true) return null;
+            final isRoot = canonicalRoot;
+            final parentId = isRoot
+                ? null
+                : (_strOrNull(fields['parentId']) ?? _strOrNull(fields['parent']));
+            return OrganizationModel(
+          """
+          if old not in s:
+              raise SystemExit('organization decode block not found; refusing unsafe patch')
+          s = s.replace(old, new, 1)
+
+          old_apply = """  Future<bool> applyFields(Map<String, dynamic> fields) async {
+            final b = box();
+            final incoming = decode(fields);
+            if (b == null || incoming == null) return false;
+          """
+          new_apply = """  Future<bool> applyFields(Map<String, dynamic> fields) async {
+            // Sync may run after a lifecycle/session transition. Reopen the box
+            // instead of turning a transient closed box into a fake data error.
+            final b = box() ?? await ensureBox();
+            final incoming = decode(fields);
+            if (incoming == null) return false;
+          """
+          if old_apply not in s:
+              raise SystemExit('organization applyFields block not found; refusing unsafe patch')
+          s = s.replace(old_apply, new_apply, 1)
+          p.write_text(s, encoding='utf-8')
+
+          p = Path('test/core/sync/organization_sync_recovery_test.dart')
+          s = p.read_text(encoding='utf-8')
+          anchor = """  test('child is deferred until its parent chain exists', () async {
+          """
+          test_block = """  test('legacy root payload is canonicalized on the client', () async {
+            final legacyRoot = payload(
+              id: OrganizationModel.rootId,
+              name: 'Wesi Inc',
+              parentId: 'legacy-parent-that-must-be-ignored',
+              isRoot: false,
+            )
+              ..remove('createdAt')
+              ..['created'] = '2026-08-17T13:19:24.672';
+
+            expect(await sync.applyFields(legacyRoot), isTrue);
+            final root = Hive.box<OrganizationModel>(
+              OrganizationService.boxName,
+            ).get(OrganizationModel.rootId);
+            expect(root, isNotNull);
+            expect(root!.isRoot, isTrue);
+            expect(root.parentId, isNull);
+
+            expect(
+              await sync.applyFields(
+                payload(
+                  id: OrganizationModel.wesiBeatsId,
+                  name: 'Wesi Beats',
+                  parentId: OrganizationModel.rootId,
+                ),
+              ),
+              isTrue,
+            );
+          });
+
+          test('organization apply reopens a closed Hive box', () async {
+            final box = Hive.box<OrganizationModel>(OrganizationService.boxName);
+            await box.close();
+
+            expect(
+              await sync.applyFields(
+                payload(id: OrganizationModel.rootId, name: 'Wesi Inc'),
+              ),
+              isTrue,
+            );
+            expect(Hive.isBoxOpen(OrganizationService.boxName), isTrue);
+          });
+
+          """
+          if anchor not in s:
+              raise SystemExit('test insertion anchor not found')
+          s = s.replace(anchor, test_block + anchor, 1)
+          p.write_text(s, encoding='utf-8')
+
+          p = Path('pubspec.yaml')
+          s = p.read_text(encoding='utf-8')
+          if 'version: 0.22.32+107' not in s:
+              raise SystemExit('unexpected pubspec version')
+          p.write_text(s.replace('version: 0.22.32+107', 'version: 0.22.33+108', 1), encoding='utf-8')
+
+          p = Path('lib/core/constants/app_version.dart')
+          s = p.read_text(encoding='utf-8')
+          if "static const String number = '0.22.32';" not in s or 'static const int build = 107;' not in s:
+              raise SystemExit('unexpected AppVersion values')
+          s = s.replace("static const String number = '0.22.32';", "static const String number = '0.22.33';", 1)
+          s = s.replace('static const int build = 107;', 'static const int build = 108;', 1)
+          p.write_text(s, encoding='utf-8')
+          PY
+
+      - name: Format and verify focused regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          dart format lib/core/sync/sync_codec.dart test/core/sync/organization_sync_recovery_test.dart
+          flutter pub get
+          flutter test test/core/sync/organization_sync_recovery_test.dart
+          flutter test test/core/sync/organization_sync_server_compat_test.dart
+          git diff --check
+
+      - name: Commit client repair
+        id: commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'WesiOS Sync Repair'
+          git config user.email 'actions@users.noreply.github.com'
+          git add lib/core/sync/sync_codec.dart test/core/sync/organization_sync_recovery_test.dart pubspec.yaml lib/core/constants/app_version.dart
+          git commit -m 'fix(sync): canonicalize organization root on client'
+          git push origin HEAD:main
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Redeploy current legacy sync hooks and restart PocketBase
+        id: deploy
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PATCH_SHA: ${{ steps.commit.outputs.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          since=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          gh workflow run deploy-sync-hooks.yml --repo "$GITHUB_REPOSITORY" --ref main
+          run_id=''
+          for i in $(seq 1 60); do
+            payload=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow deploy-sync-hooks.yml --event workflow_dispatch --branch main --limit 20 --json databaseId,headSha,createdAt,status,conclusion)
+            run_id=$(printf '%s' "$payload" | jq -r --arg sha "$PATCH_SHA" --arg since "$since" '[.[] | select(.headSha == $sha and .createdAt >= $since)] | sort_by(.createdAt) | reverse | .[0].databaseId // empty')
+            if [ -n "$run_id" ]; then break; fi
+            sleep 3
+          done
+          [ -n "$run_id" ] || { echo 'deploy-sync-hooks run not found' >&2; exit 1; }
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+          gh run watch "$run_id" --repo "$GITHUB_REPOSITORY" --exit-status --interval 10
