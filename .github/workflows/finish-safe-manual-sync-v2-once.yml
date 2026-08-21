@@ -1,0 +1,241 @@
+name: Finish safe manual sync v2 once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/finish-safe-manual-sync-v2-once.yml'
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  patch-test-commit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/safe-local-recovery-upload
+          fetch-depth: 1
+          token: ${{ github.token }}
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - name: Apply robust patch, verify and commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -uo pipefail
+          LOG="$RUNNER_TEMP/safe-sync-v2.log"
+          : > "$LOG"
+          fail() {
+            code=$?
+            {
+              echo 'Второй проход интеграции не прошёл проверку.'
+              echo
+              echo '```text'
+              tail -n 220 "$LOG"
+              echo '```'
+            } > "$RUNNER_TEMP/pr-comment.md"
+            gh pr comment 234 --repo "$GITHUB_REPOSITORY" --body-file "$RUNNER_TEMP/pr-comment.md" || true
+            exit "$code"
+          }
+          trap fail ERR
+          set -e
+
+          python3 <<'PY' 2>&1 | tee -a "$LOG"
+          from pathlib import Path
+          import re
+
+          manual = Path('lib/core/sync/sync_manual_direction.dart')
+          text = manual.read_text()
+          if "import 'sync_merge.dart';" not in text:
+              text = text.replace("import 'sync_journal.dart';\n", "import 'sync_journal.dart';\nimport 'sync_merge.dart';\n", 1)
+          manual.write_text(text)
+
+          engine = Path('lib/core/sync/sync_engine.dart')
+          text = engine.read_text()
+          new_lookup = '''  static dynamic _localValueBySyncId(
+            SyncCollection<dynamic> c,
+            String id,
+          ) {
+            // The collection projection is authoritative. Structurally invalid
+            // raw Hive rows may be quarantined by a codec and must not look like
+            // concurrent user edits that block authoritative server repair.
+            try {
+              return c.local()[id];
+            } catch (_) {
+              return null;
+            }
+          }
+
+          '''
+          text, n = re.subn(
+              r"  static dynamic _localValueBySyncId\(.*?\n  \}\n\n(?=  static Future<bool> _purgeLocalCacheBySyncId)",
+              new_lookup,
+              text,
+              count=1,
+              flags=re.S,
+          )
+          if n != 1:
+              raise SystemExit(f'_localValueBySyncId replacement count={n}')
+          text, n = re.subn(
+              r"    if \(snapshot == null\) \{\s*return currentValue == null && currentStamp == null;\s*\}",
+              """    if (snapshot == null) {
+              // A quarantined row can become visible after its parent/root is
+              // repaired earlier in this same pass. Visibility is not a local edit;
+              // a real Hive edit is journaled and therefore has a fresh stamp.
+              return currentStamp == null;
+            }""",
+              text,
+              count=1,
+          )
+          if n != 1:
+              raise SystemExit(f'snapshot-null replacement count={n}')
+          engine.write_text(text)
+
+          recovery = Path('lib/core/sync/sync_recovery.dart')
+          text = recovery.read_text()
+          needle = '    if (SyncRecoveryGuard.active || SyncRecoveryGuard.migrationChecked) return;\n'
+          owner_guard = '''    if (SyncRecoveryGuard.active || SyncRecoveryGuard.migrationChecked) return;
+
+            final current = TeamService.current;
+            if (current == null) return;
+            if (!current.isOwner) {
+              await SyncRecoveryGuard.markMigrationChecked();
+              return;
+            }
+          '''
+          if 'final current = TeamService.current;' not in text:
+              if needle not in text:
+                  raise SystemExit('recovery guard anchor missing')
+              text = text.replace(needle, owner_guard, 1)
+          recovery.write_text(text)
+
+          screen = Path('lib/features/settings/sync_screen.dart')
+          text = screen.read_text()
+          if 'sync_manual_direction.dart' not in text:
+              anchor = "import '../../core/sync/sync_endpoint.dart';\n"
+              if anchor not in text:
+                  raise SystemExit('sync screen import anchor missing')
+              text = text.replace(anchor, anchor + "import '../../core/sync/sync_manual_direction.dart';\n", 1)
+
+          replacement = r'''  Future<void> _manualUploadDevice() async {
+            if (_busy || !_signedIn || TeamService.current?.isOwner != true) return;
+            final confirmed = await showDialog<bool>(
+              context: context,
+              builder: (dialogContext) => AlertDialog(
+                title: Text(_ru ? 'Отправить данные с устройства?' : 'Upload device data?'),
+                content: Text(
+                  _ru
+                      ? 'Телефон станет источником истины для бизнес-данных. Перед отправкой WesiOS создаст резервную копию, затем отправит локальные записи на сервер без скачивания серверных данных и проверит их обратным чтением. После успешной проверки можно использовать обычную автоматическую синхронизацию.'
+                      : 'This device becomes authoritative for business data. WesiOS creates a backup first, uploads local rows without downloading server data, then verifies them by reading them back. Normal automatic sync can be used after verification.',
+                ),
+                actions: [
+                  TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: Text(_ru ? 'Отмена' : 'Cancel')),
+                  FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: Text(_ru ? 'Отправить с устройства' : 'Upload device')),
+                ],
+              ),
+            );
+            if (confirmed != true || !mounted) return;
+            setState(() => _busy = true);
+            final report = await SyncManualDirection.uploadDeviceAuthoritative();
+            if (!mounted) return;
+            setState(() => _busy = false);
+            _say(report.describe(russian: _ru), error: !report.ok);
+          }
+
+          Future<void> _manualDownloadServer() async {
+            if (_busy || !_signedIn) return;
+            final confirmed = await showDialog<bool>(
+              context: context,
+              builder: (dialogContext) => AlertDialog(
+                title: Text(_ru ? 'Принять данные с сервера?' : 'Download server data?'),
+                content: Text(
+                  _ru
+                      ? 'WesiOS сначала сохранит защитную локальную копию. Затем серверные записи будут применены на устройстве без отправки локальных данных на сервер. Совпадающие записи могут быть заменены серверной версией; локальные записи, которых на сервере нет, автоматически не удаляются.'
+                      : 'WesiOS saves a local safety backup first. Server rows are then applied to this device without uploading local data. Matching rows may be replaced by the server version; local rows absent from the server are not automatically deleted.',
+                ),
+                actions: [
+                  TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: Text(_ru ? 'Отмена' : 'Cancel')),
+                  FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: Text(_ru ? 'Принять с сервера' : 'Download server')),
+                ],
+              ),
+            );
+            if (confirmed != true || !mounted) return;
+            setState(() => _busy = true);
+            final report = await SyncManualDirection.downloadServerAuthoritative();
+            if (!mounted) return;
+            setState(() => _busy = false);
+            _say(report.describe(russian: _ru), error: !report.ok);
+          }
+
+          Future<void> _syncNow() async {
+            if (_busy) return;
+            if (!_signedIn) {
+              _say(_ru ? 'Сеанс WesiOS завершён. Войдите заново.' : 'Your WesiOS session has ended. Sign in again.', error: true);
+              await _goToLogin();
+              return;
+            }
+            final choice = await showDialog<String>(
+              context: context,
+              builder: (dialogContext) => AlertDialog(
+                title: Text(_ru ? 'Ручная синхронизация' : 'Manual sync'),
+                content: Text(_ru ? 'Выберите, какая сторона сейчас является источником данных.' : 'Choose which side is the data source for this pass.'),
+                actions: [
+                  TextButton(onPressed: () => Navigator.pop(dialogContext), child: Text(_ru ? 'Отмена' : 'Cancel')),
+                  OutlinedButton(onPressed: () => Navigator.pop(dialogContext, 'download'), child: Text(_ru ? 'Принять с сервера' : 'Download server')),
+                  if (TeamService.current?.isOwner == true)
+                    FilledButton(onPressed: () => Navigator.pop(dialogContext, 'upload'), child: Text(_ru ? 'Отправить с устройства' : 'Upload device')),
+                ],
+              ),
+            );
+            if (!mounted) return;
+            if (choice == 'upload') await _manualUploadDevice();
+            if (choice == 'download') await _manualDownloadServer();
+          }
+
+          @override
+          Widget build'''
+          text, n = re.subn(
+              r"  Future<void> _syncNow\(\) async \{.*?\n  \}\n\n  @override\n  Widget build",
+              replacement,
+              text,
+              count=1,
+              flags=re.S,
+          )
+          if n != 1:
+              raise SystemExit(f'_syncNow replacement count={n}')
+
+          text, n = re.subn(
+              r"_button\(\s*label: _ru\s*\? 'Синхронизировать сейчас'\s*: 'Synchronise now',\s*onTap: \(_busy \|\| !signedIn \|\| recoveryLocked\)\s*\? null\s*: _syncNow,\s*filled: true,\s*\)",
+              """_button(
+                                label: _ru ? 'Ручная синхронизация' : 'Manual sync',
+                                onTap: (_busy || !signedIn) ? null : _syncNow,
+                                filled: true,
+                              )""",
+              text,
+              count=1,
+              flags=re.S,
+          )
+          if n != 1:
+              raise SystemExit(f'manual button replacement count={n}')
+          screen.write_text(text)
+          PY
+
+          git rm -f --ignore-unmatch .github/workflows/implement-manual-direction-sync-once.yml 2>&1 | tee -a "$LOG"
+          dart format lib/core/sync/sync_engine.dart lib/core/sync/sync_recovery.dart lib/core/sync/sync_manual_direction.dart lib/features/settings/sync_screen.dart test/core/sync/organization_sync_hidden_cache_engine_test.dart 2>&1 | tee -a "$LOG"
+          flutter pub get 2>&1 | tee -a "$LOG"
+          flutter test test/core/sync/organization_sync_legacy_root_test.dart test/core/sync/organization_sync_recovery_test.dart test/core/sync/organization_sync_server_compat_test.dart test/core/sync/organization_sync_hidden_cache_engine_test.dart test/core/sync/sync_recovery_test.dart test/core/backup/local_backup_service_test.dart 2>&1 | tee -a "$LOG"
+          flutter analyze --no-fatal-infos lib/core/sync/sync_engine.dart lib/core/sync/sync_recovery.dart lib/core/sync/sync_manual_direction.dart lib/core/backup/local_backup_service.dart lib/features/settings/sync_screen.dart test/core/sync/organization_sync_hidden_cache_engine_test.dart 2>&1 | tee -a "$LOG"
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'feat(sync): add safe manual direction and repair recovery' 2>&1 | tee -a "$LOG"
+          git push origin HEAD:fix/safe-local-recovery-upload 2>&1 | tee -a "$LOG"
+          gh pr comment 234 --repo "$GITHUB_REPOSITORY" --body '✅ Ручное направление синхронизации, восстановление backup и full-engine repair `org_wesi_inc (+2)` прошли целевые тесты и analyzer.' || true
