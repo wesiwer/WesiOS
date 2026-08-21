@@ -1,0 +1,1 @@
+Trigger original WesiMark Android rebuild for launcher icon and signing restoration.
