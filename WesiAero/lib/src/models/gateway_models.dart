@@ -8,25 +8,94 @@ enum TunnelStatus {
   error,
 }
 
+enum TunnelEngine {
+  automatic,
+  singBox,
+  xray,
+  native;
+
+  String get title => switch (this) {
+        TunnelEngine.automatic => 'Автоматически',
+        TunnelEngine.singBox => 'sing-box',
+        TunnelEngine.xray => 'Xray',
+        TunnelEngine.native => 'Native',
+      };
+
+  String get wireName => switch (this) {
+        TunnelEngine.automatic => 'auto',
+        TunnelEngine.singBox => 'sing-box',
+        TunnelEngine.xray => 'xray',
+        TunnelEngine.native => 'native',
+      };
+}
+
 enum GatewayProtocol {
   automatic,
   vlessReality,
-  vmessXray,
+  vmess,
+  trojan,
+  shadowsocks,
+  hysteria2,
+  tuic,
+  wireGuard,
   amneziaWg;
 
   String get title => switch (this) {
         GatewayProtocol.automatic => 'Автоматически',
-        GatewayProtocol.vlessReality => 'VLESS · Xray/REALITY',
-        GatewayProtocol.vmessXray => 'VMess · Xray',
+        GatewayProtocol.vlessReality => 'VLESS · REALITY',
+        GatewayProtocol.vmess => 'VMess',
+        GatewayProtocol.trojan => 'Trojan',
+        GatewayProtocol.shadowsocks => 'Shadowsocks',
+        GatewayProtocol.hysteria2 => 'Hysteria2',
+        GatewayProtocol.tuic => 'TUIC',
+        GatewayProtocol.wireGuard => 'WireGuard',
         GatewayProtocol.amneziaWg => 'AmneziaWG',
       };
 
   String get wireName => switch (this) {
         GatewayProtocol.automatic => 'auto',
         GatewayProtocol.vlessReality => 'vless-reality',
-        GatewayProtocol.vmessXray => 'vmess-xray',
+        GatewayProtocol.vmess => 'vmess',
+        GatewayProtocol.trojan => 'trojan',
+        GatewayProtocol.shadowsocks => 'shadowsocks',
+        GatewayProtocol.hysteria2 => 'hysteria2',
+        GatewayProtocol.tuic => 'tuic',
+        GatewayProtocol.wireGuard => 'wireguard',
         GatewayProtocol.amneziaWg => 'amneziawg',
       };
+
+  Set<TunnelEngine> get supportedEngines => switch (this) {
+        GatewayProtocol.automatic => const {
+            TunnelEngine.automatic,
+            TunnelEngine.singBox,
+            TunnelEngine.xray,
+            TunnelEngine.native,
+          },
+        GatewayProtocol.vlessReality ||
+        GatewayProtocol.vmess ||
+        GatewayProtocol.trojan ||
+        GatewayProtocol.shadowsocks => const {
+            TunnelEngine.automatic,
+            TunnelEngine.singBox,
+            TunnelEngine.xray,
+          },
+        GatewayProtocol.hysteria2 || GatewayProtocol.tuic => const {
+            TunnelEngine.automatic,
+            TunnelEngine.singBox,
+          },
+        GatewayProtocol.wireGuard => const {
+            TunnelEngine.automatic,
+            TunnelEngine.native,
+            TunnelEngine.singBox,
+          },
+        GatewayProtocol.amneziaWg => const {
+            TunnelEngine.automatic,
+            TunnelEngine.native,
+          },
+      };
+
+  bool supportsEngine(TunnelEngine engine) =>
+      engine == TunnelEngine.automatic || supportedEngines.contains(engine);
 }
 
 enum SplitMode {
@@ -122,6 +191,7 @@ class GatewaySnapshot {
     required this.stats,
     this.node,
     this.protocol = GatewayProtocol.automatic,
+    this.engine = TunnelEngine.automatic,
     this.errorMessage,
     this.isDemo = false,
   });
@@ -131,12 +201,14 @@ class GatewaySnapshot {
         stats = const SessionStats(),
         node = null,
         protocol = GatewayProtocol.automatic,
+        engine = TunnelEngine.automatic,
         errorMessage = null;
 
   final TunnelStatus status;
   final SessionStats stats;
   final GatewayNode? node;
   final GatewayProtocol protocol;
+  final TunnelEngine engine;
   final String? errorMessage;
   final bool isDemo;
 
@@ -145,6 +217,7 @@ class GatewaySnapshot {
     SessionStats? stats,
     GatewayNode? node,
     GatewayProtocol? protocol,
+    TunnelEngine? engine,
     String? errorMessage,
     bool? isDemo,
     bool clearError = false,
@@ -154,6 +227,7 @@ class GatewaySnapshot {
       stats: stats ?? this.stats,
       node: node ?? this.node,
       protocol: protocol ?? this.protocol,
+      engine: engine ?? this.engine,
       errorMessage: clearError ? null : errorMessage ?? this.errorMessage,
       isDemo: isDemo ?? this.isDemo,
     );
@@ -209,24 +283,35 @@ class GatewayConfigParser {
       throw const FormatException('Конфигурация не может быть пустой.');
     }
 
-    if (value.startsWith('vless://')) {
-      return _parseVless(value);
+    if (value.startsWith('vless://')) return _parseVless(value);
+    if (value.startsWith('vmess://')) return _parseVmess(value);
+    if (value.startsWith('trojan://')) return _parseSimpleUri(
+          value,
+          GatewayProtocol.trojan,
+          schemes: const {'trojan'},
+        );
+    if (value.startsWith('ss://')) return _parseShadowsocks(value);
+    if (value.startsWith('hysteria2://') || value.startsWith('hy2://')) {
+      return _parseSimpleUri(
+        value,
+        GatewayProtocol.hysteria2,
+        schemes: const {'hysteria2', 'hy2'},
+      );
     }
-
-    if (value.startsWith('vmess://')) {
-      return _parseVmess(value);
-    }
+    if (value.startsWith('tuic://')) return _parseSimpleUri(
+          value,
+          GatewayProtocol.tuic,
+          schemes: const {'tuic'},
+        );
 
     if (value.contains('[Interface]') && value.contains('[Peer]')) {
-      return _parseAmneziaWg(value);
+      return _parseWireGuardFamily(value);
     }
 
-    if (value.startsWith('{')) {
-      return _parseJson(value);
-    }
+    if (value.startsWith('{')) return _parseJson(value);
 
     throw const FormatException(
-      'Поддерживаются VLESS URI, VMess URI, AmneziaWG/WireGuard INI и JSON-профиль.',
+      'Поддерживаются VLESS, VMess, Trojan, Shadowsocks, Hysteria2, TUIC, WireGuard, AmneziaWG и JSON-профили.',
     );
   }
 
@@ -248,12 +333,9 @@ class GatewayConfigParser {
       );
     }
 
-    final name = uri.fragment.isEmpty
-        ? '${uri.host}:${uri.port}'
-        : Uri.decodeComponent(uri.fragment);
     return ImportedGatewayConfig(
       protocol: GatewayProtocol.vlessReality,
-      displayName: name,
+      displayName: _uriName(uri),
       rawValue: value,
     );
   }
@@ -293,13 +375,60 @@ class GatewayConfigParser {
 
     final name = (decoded['ps'] as String?)?.trim();
     return ImportedGatewayConfig(
-      protocol: GatewayProtocol.vmessXray,
+      protocol: GatewayProtocol.vmess,
       displayName: name?.isNotEmpty == true ? name! : '$host:$port',
       rawValue: value,
     );
   }
 
-  static ImportedGatewayConfig _parseAmneziaWg(String value) {
+  static ImportedGatewayConfig _parseShadowsocks(String value) {
+    final uri = Uri.tryParse(value);
+    if (uri == null || uri.scheme != 'ss') {
+      throw const FormatException('Некорректный Shadowsocks URI.');
+    }
+    // SIP002 permits both base64 userinfo and legacy fully-base64 payloads.
+    // Native engines perform the final method/password validation.
+    if (uri.host.isEmpty && !value.substring(5).contains('@')) {
+      try {
+        final payload = value.substring(5).split('#').first.split('?').first;
+        final decoded = utf8.decode(base64.decode(base64.normalize(payload)));
+        if (!decoded.contains('@') || !decoded.contains(':')) {
+          throw const FormatException('Некорректный Shadowsocks payload.');
+        }
+      } catch (_) {
+        throw const FormatException('Некорректный Shadowsocks URI.');
+      }
+    }
+    return ImportedGatewayConfig(
+      protocol: GatewayProtocol.shadowsocks,
+      displayName: uri.fragment.isEmpty
+          ? (uri.host.isEmpty ? 'Shadowsocks' : '${uri.host}:${uri.port}')
+          : Uri.decodeComponent(uri.fragment),
+      rawValue: value,
+    );
+  }
+
+  static ImportedGatewayConfig _parseSimpleUri(
+    String value,
+    GatewayProtocol protocol, {
+    required Set<String> schemes,
+  }) {
+    final uri = Uri.tryParse(value);
+    if (uri == null ||
+        !schemes.contains(uri.scheme.toLowerCase()) ||
+        uri.host.isEmpty ||
+        uri.port < 1 ||
+        uri.userInfo.isEmpty) {
+      throw FormatException('Некорректный ${protocol.title} URI.');
+    }
+    return ImportedGatewayConfig(
+      protocol: protocol,
+      displayName: _uriName(uri),
+      rawValue: value,
+    );
+  }
+
+  static ImportedGatewayConfig _parseWireGuardFamily(String value) {
     final hasPrivateKey = RegExp(
       r'^\s*PrivateKey\s*=\s*\S+',
       multiLine: true,
@@ -318,13 +447,20 @@ class GatewayConfigParser {
 
     if (!hasPrivateKey || !hasPublicKey || !hasEndpoint) {
       throw const FormatException(
-        'В конфигурации AmneziaWG отсутствует ключ или Endpoint.',
+        'В WireGuard-конфигурации отсутствует ключ или Endpoint.',
       );
     }
 
+    final isAmnezia = RegExp(
+      r'^\s*(Jc|Jmin|Jmax|S1|S2|H1|H2|H3|H4)\s*=',
+      multiLine: true,
+      caseSensitive: false,
+    ).hasMatch(value);
+    final protocol =
+        isAmnezia ? GatewayProtocol.amneziaWg : GatewayProtocol.wireGuard;
     return ImportedGatewayConfig(
-      protocol: GatewayProtocol.amneziaWg,
-      displayName: 'Импортированный AmneziaWG',
+      protocol: protocol,
+      displayName: isAmnezia ? 'Импортированный AmneziaWG' : 'Импортированный WireGuard',
       rawValue: value,
     );
   }
@@ -337,7 +473,12 @@ class GatewayConfigParser {
 
     final protocol = switch (decoded['protocol']) {
       'vless-reality' => GatewayProtocol.vlessReality,
-      'vmess-xray' => GatewayProtocol.vmessXray,
+      'vmess' || 'vmess-xray' => GatewayProtocol.vmess,
+      'trojan' => GatewayProtocol.trojan,
+      'shadowsocks' => GatewayProtocol.shadowsocks,
+      'hysteria2' => GatewayProtocol.hysteria2,
+      'tuic' => GatewayProtocol.tuic,
+      'wireguard' => GatewayProtocol.wireGuard,
       'amneziawg' => GatewayProtocol.amneziaWg,
       _ => throw const FormatException('Неизвестный протокол JSON-профиля.'),
     };
@@ -346,14 +487,10 @@ class GatewayConfigParser {
       throw const FormatException('В JSON-профиле отсутствует поле config.');
     }
 
-    final parsed = switch (protocol) {
-      GatewayProtocol.vlessReality => _parseVless(config),
-      GatewayProtocol.vmessXray => _parseVmess(config),
-      GatewayProtocol.amneziaWg => _parseAmneziaWg(config),
-      GatewayProtocol.automatic => throw const FormatException(
-          'Автоматический протокол нельзя импортировать как профиль.',
-        ),
-    };
+    final parsed = parse(config);
+    if (parsed.protocol != protocol) {
+      throw const FormatException('Протокол JSON-профиля не совпадает с config.');
+    }
 
     return ImportedGatewayConfig(
       protocol: protocol,
@@ -363,6 +500,10 @@ class GatewayConfigParser {
       rawValue: config,
     );
   }
+
+  static String _uriName(Uri uri) => uri.fragment.isEmpty
+      ? '${uri.host}:${uri.port}'
+      : Uri.decodeComponent(uri.fragment);
 }
 
 String formatBytes(int bytes, {int decimals = 1}) {
