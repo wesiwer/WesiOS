@@ -29,6 +29,7 @@ class GatewayController extends ChangeNotifier {
   List<GatewayNode> nodes = const [];
   GatewayNode? selectedNode;
   GatewayProtocol protocol = GatewayProtocol.automatic;
+  TunnelEngine engine = TunnelEngine.automatic;
   SplitMode splitMode = SplitMode.allTraffic;
   ThemeMode themeMode = ThemeMode.light;
   int navigationIndex = 0;
@@ -385,6 +386,7 @@ class GatewayController extends ChangeNotifier {
       await _engine.connect(
         node: node,
         protocol: protocol,
+        engine: engine,
         splitMode: splitMode,
         rules: rules,
         killSwitch: killSwitch,
@@ -412,6 +414,7 @@ class GatewayController extends ChangeNotifier {
     if (protocol != GatewayProtocol.automatic &&
         !node.protocols.contains(protocol)) {
       protocol = GatewayProtocol.automatic;
+      engine = TunnelEngine.automatic;
     }
     notifyListeners();
   }
@@ -425,6 +428,18 @@ class GatewayController extends ChangeNotifier {
       return;
     }
     protocol = value;
+    if (value != GatewayProtocol.automatic && !value.supportsEngine(engine)) {
+      engine = TunnelEngine.automatic;
+    }
+    notifyListeners();
+  }
+
+  void setEngine(TunnelEngine value) {
+    if (isConnected || isBusy || engine == value) return;
+    if (protocol != GatewayProtocol.automatic && !protocol.supportsEngine(value)) {
+      return;
+    }
+    engine = value;
     notifyListeners();
   }
 
@@ -492,6 +507,7 @@ class GatewayController extends ChangeNotifier {
     await _engine.importConfig(parsed);
     await _secretStore.saveProfile(parsed);
     protocol = parsed.protocol;
+    if (!parsed.protocol.supportsEngine(engine)) engine = TunnelEngine.automatic;
     importProfileName = parsed.displayName;
     notifyListeners();
     return parsed;
@@ -513,6 +529,7 @@ class GatewayController extends ChangeNotifier {
         'LICENSE_REVOKED' => 'Ключ отозван администратором.',
         'INVALID_LICENSE_KEY' => 'Ключ не найден или введён неверно.',
         'PAYMENT_METHOD_UNAVAILABLE' => 'Этот способ оплаты пока недоступен.',
+        'ENGINE_UNAVAILABLE' => error.message,
         _ => error.message,
       };
     }
