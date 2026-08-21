@@ -1,6 +1,6 @@
 name: Verify PR234 full once
 
-# Trigger revision 2: workflow already exists on main before this push.
+# Exact-head release gate for the protected sync fix.
 on:
   push:
     branches: [main]
@@ -12,7 +12,19 @@ permissions:
   issues: write
   pull-requests: write
 
+concurrency:
+  group: verify-pr234-full
+  cancel-in-progress: true
+
 jobs:
+  start:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mark start
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh pr comment 234 --repo "$GITHUB_REPOSITORY" --body '⏳ FULL GATE STARTED for `4122837`: full analyze/tests + Android + Windows.'
+
   analyze-test:
     runs-on: ubuntu-latest
     timeout-minutes: 40
@@ -116,7 +128,7 @@ jobs:
 
   report:
     if: always()
-    needs: [analyze-test, android, windows]
+    needs: [start, analyze-test, android, windows]
     runs-on: ubuntu-latest
     steps:
       - name: Report result
