@@ -58,6 +58,8 @@ jobs:
           git add .github/wesi-aero-vpn-live-status.json
           git diff --cached --check
           git commit -m 'chore(aero): mark live VPN verification started'
+          git fetch origin codex/wesi-aero-build-20260821
+          git rebase origin/codex/wesi-aero-build-20260821
           git push origin HEAD:codex/wesi-aero-build-20260821
 
       - name: Deploy and verify real VPN egress
@@ -125,4 +127,6 @@ jobs:
             exit 0
           fi
           git commit -m 'chore(aero): record live VPN verification'
+          git fetch origin codex/wesi-aero-build-20260821
+          git rebase origin/codex/wesi-aero-build-20260821
           git push origin HEAD:codex/wesi-aero-build-20260821
