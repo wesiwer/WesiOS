@@ -1,0 +1,9 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "git": {
+    "deploymentEnabled": {
+      "wesimark/apk-build-v2.4.0": false,
+      "wesimark/apk-trigger-v2.4.0": false
+    }
+  }
+}
