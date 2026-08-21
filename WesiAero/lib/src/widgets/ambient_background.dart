@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
@@ -60,17 +61,12 @@ class _AmbientBackgroundState extends State<AmbientBackground>
       child: Stack(
         fit: StackFit.expand,
         children: [
-          // The grid is static while the theme is unchanged, so it can stay in
-          // the raster cache independently from the moving glow layer.
           RepaintBoundary(
             child: CustomPaint(
               painter: _GridPainter(isDark: isDark),
               isComplex: true,
             ),
           ),
-          // Drive animation directly through CustomPainter.repaint. This keeps
-          // the exact same glow motion while avoiding a widget build/layout on
-          // every display frame.
           RepaintBoundary(
             child: CustomPaint(
               painter: _GlowPainter(
@@ -103,45 +99,77 @@ class _GlowPainter extends CustomPainter {
   final Color connected;
   final bool isDark;
 
+  Size? _shaderSize;
+  ui.Shader? _accentShader;
+  ui.Shader? _connectedShader;
+  Offset _accentBase = Offset.zero;
+  Offset _connectedBase = Offset.zero;
+  double _accentRadius = 0;
+  double _connectedRadius = 0;
+  final Paint _accentPaint = Paint();
+  final Paint _connectedPaint = Paint();
+
+  void _ensureShaders(Size size) {
+    if (_shaderSize == size &&
+        _accentShader != null &&
+        _connectedShader != null) {
+      return;
+    }
+
+    _shaderSize = size;
+    _accentBase = Offset(size.width * 0.76, size.height * 0.14);
+    _connectedBase = Offset(size.width * 0.18, size.height * 0.78);
+    _accentRadius = size.shortestSide * 0.62;
+    _connectedRadius = size.shortestSide * 0.48;
+
+    _accentShader = ui.Gradient.radial(
+      _accentBase,
+      _accentRadius,
+      [
+        accent.withValues(alpha: isDark ? 0.15 : 0.08),
+        accent.withValues(alpha: 0),
+      ],
+      const [0, 1],
+    );
+    _connectedShader = ui.Gradient.radial(
+      _connectedBase,
+      _connectedRadius,
+      [
+        connected.withValues(alpha: isDark ? 0.07 : 0.04),
+        connected.withValues(alpha: 0),
+      ],
+      const [0, 1],
+    );
+    _accentPaint.shader = _accentShader;
+    _connectedPaint.shader = _connectedShader;
+  }
+
   @override
   void paint(Canvas canvas, Size size) {
+    _ensureShaders(size);
+
     final angle = animation.value * math.pi * 2;
-    final accentCenter = Offset(
-      size.width * (0.76 + math.sin(angle) * 0.08),
-      size.height * (0.14 + math.cos(angle * 0.7) * 0.05),
+    final accentOffset = Offset(
+      size.width * math.sin(angle) * 0.08,
+      size.height * math.cos(angle * 0.7) * 0.05,
     );
-    final connectedCenter = Offset(
-      size.width * (0.18 + math.cos(angle * 0.8) * 0.06),
-      size.height * (0.78 + math.sin(angle * 0.55) * 0.05),
+    final connectedOffset = Offset(
+      size.width * math.cos(angle * 0.8) * 0.06,
+      size.height * math.sin(angle * 0.55) * 0.05,
     );
 
-    final accentPaint = Paint()
-      ..shader = RadialGradient(
-        colors: [
-          accent.withValues(alpha: isDark ? 0.15 : 0.08),
-          accent.withValues(alpha: 0),
-        ],
-      ).createShader(
-        Rect.fromCircle(
-          center: accentCenter,
-          radius: size.shortestSide * 0.62,
-        ),
-      );
-    final connectedPaint = Paint()
-      ..shader = RadialGradient(
-        colors: [
-          connected.withValues(alpha: isDark ? 0.07 : 0.04),
-          connected.withValues(alpha: 0),
-        ],
-      ).createShader(
-        Rect.fromCircle(
-          center: connectedCenter,
-          radius: size.shortestSide * 0.48,
-        ),
-      );
+    // Move cached radial layers instead of allocating two new gradient shaders
+    // and painting two full-screen rectangles every frame. The glow radii,
+    // alpha and motion are unchanged.
+    canvas.save();
+    canvas.translate(accentOffset.dx, accentOffset.dy);
+    canvas.drawCircle(_accentBase, _accentRadius, _accentPaint);
+    canvas.restore();
 
-    canvas.drawRect(Offset.zero & size, accentPaint);
-    canvas.drawRect(Offset.zero & size, connectedPaint);
+    canvas.save();
+    canvas.translate(connectedOffset.dx, connectedOffset.dy);
+    canvas.drawCircle(_connectedBase, _connectedRadius, _connectedPaint);
+    canvas.restore();
   }
 
   @override
