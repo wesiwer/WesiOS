@@ -11,12 +11,35 @@ on:
 
 permissions:
   contents: read
+  statuses: write
 
 concurrency:
   group: wesi-aero-build-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  announce-run:
+    name: Publish workflow run link
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Attach run URL to the commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.sha }}
+          TARGET_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          payload=$(jq -nc --arg state pending --arg target_url "$TARGET_URL" \
+            --arg description "Wesi Aero suite is building" --arg context "wesi-aero/build" \
+            '{state:$state,target_url:$target_url,description:$description,context:$context}')
+          curl --fail-with-body --retry 3 --silent --show-error \
+            -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/statuses/$SHA" \
+            -d "$payload"
+
   server-tests:
     name: Server integration tests
     runs-on: ubuntu-latest
@@ -378,3 +401,40 @@ jobs:
           path: WesiAeroAdmin/dist/Wesi-Aero-Admin-Windows-Setup.exe
           retention-days: 7
           if-no-files-found: error
+
+  publish-run-status:
+    name: Publish final suite status
+    if: ${{ always() }}
+    needs:
+      - announce-run
+      - server-tests
+      - android
+      - windows
+      - admin-android
+      - admin-windows
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Attach final result to the commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.sha }}
+          TARGET_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          BUILD_RESULTS: ${{ join(needs.*.result, ',') }}
+        run: |
+          state=failure
+          description="One or more Wesi Aero jobs failed"
+          if [ "$BUILD_RESULTS" = "success,success,success,success,success,success" ]; then
+            state=success
+            description="All Wesi Aero artifacts passed"
+          fi
+          payload=$(jq -nc --arg state "$state" --arg target_url "$TARGET_URL" \
+            --arg description "$description" --arg context "wesi-aero/build" \
+            '{state:$state,target_url:$target_url,description:$description,context:$context}')
+          curl --fail-with-body --retry 3 --silent --show-error \
+            -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/statuses/$SHA" \
+            -d "$payload"
