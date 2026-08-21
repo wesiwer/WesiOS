@@ -103,64 +103,66 @@ class _GatewayOrbState extends State<GatewayOrb>
                     : 1,
             duration: GatewayTokens.quick,
             curve: Curves.easeOutCubic,
-            child: SizedBox.square(
-              dimension: widget.size,
-              child: AnimatedBuilder(
-                animation: _controller,
-                builder: (context, child) => CustomPaint(
-                  painter: _OrbPainter(
-                    phase: _controller.value,
-                    color: activeColor,
-                    status: widget.status,
-                    isDark: Theme.of(context).brightness == Brightness.dark,
-                  ),
-                  child: child,
-                ),
-                child: Center(
-                  child: AnimatedContainer(
-                    duration: GatewayTokens.expressive,
-                    curve: Curves.easeOutCubic,
-                    width: widget.size * 0.52,
-                    height: widget.size * 0.52,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: palette.surface.withValues(alpha: 0.86),
-                      border: Border.all(
-                        color: activeColor.withValues(alpha: 0.38),
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: activeColor.withValues(alpha: 0.15),
-                          blurRadius: 36,
-                          spreadRadius: 2,
-                        ),
-                      ],
+            child: RepaintBoundary(
+              child: SizedBox.square(
+                dimension: widget.size,
+                child: AnimatedBuilder(
+                  animation: _controller,
+                  builder: (context, child) => CustomPaint(
+                    painter: _OrbPainter(
+                      phase: _controller.value,
+                      color: activeColor,
+                      status: widget.status,
+                      isDark: Theme.of(context).brightness == Brightness.dark,
                     ),
-                    child: AnimatedSwitcher(
-                      duration: GatewayTokens.normal,
-                      transitionBuilder: (child, animation) => ScaleTransition(
-                        scale: CurvedAnimation(
-                          parent: animation,
-                          curve: Curves.easeOutBack,
+                    child: child,
+                  ),
+                  child: Center(
+                    child: AnimatedContainer(
+                      duration: GatewayTokens.expressive,
+                      curve: Curves.easeOutCubic,
+                      width: widget.size * 0.52,
+                      height: widget.size * 0.52,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: palette.surface.withValues(alpha: 0.86),
+                        border: Border.all(
+                          color: activeColor.withValues(alpha: 0.38),
                         ),
-                        child: FadeTransition(opacity: animation, child: child),
+                        boxShadow: [
+                          BoxShadow(
+                            color: activeColor.withValues(alpha: 0.15),
+                            blurRadius: 36,
+                            spreadRadius: 2,
+                          ),
+                        ],
                       ),
-                      child: busy
-                          ? SizedBox.square(
-                              key: const ValueKey('busy'),
-                              dimension: widget.size * 0.16,
-                              child: CircularProgressIndicator(
+                      child: AnimatedSwitcher(
+                        duration: GatewayTokens.normal,
+                        transitionBuilder: (child, animation) => ScaleTransition(
+                          scale: CurvedAnimation(
+                            parent: animation,
+                            curve: Curves.easeOutBack,
+                          ),
+                          child: FadeTransition(opacity: animation, child: child),
+                        ),
+                        child: busy
+                            ? SizedBox.square(
+                                key: const ValueKey('busy'),
+                                dimension: widget.size * 0.16,
+                                child: CircularProgressIndicator(
+                                  color: activeColor,
+                                  strokeWidth: 3,
+                                  strokeCap: StrokeCap.round,
+                                ),
+                              )
+                            : Icon(
+                                Icons.power_settings_new_rounded,
+                                key: ValueKey(widget.status),
+                                size: widget.size * 0.21,
                                 color: activeColor,
-                                strokeWidth: 3,
-                                strokeCap: StrokeCap.round,
                               ),
-                            )
-                          : Icon(
-                              Icons.power_settings_new_rounded,
-                              key: ValueKey(widget.status),
-                              size: widget.size * 0.21,
-                              color: activeColor,
-                            ),
+                      ),
                     ),
                   ),
                 ),
@@ -264,4 +266,3 @@ class _OrbPainter extends CustomPainter {
         oldDelegate.isDark != isDark;
   }
 }
-
