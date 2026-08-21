@@ -32,19 +32,23 @@ if (process.env.WESI_AERO_SEED_DEMO === 'true') {
     country: 'Foreign VPS',
     countryCode: 'XX',
     endpoint: `${relayHost}:8443`,
-    protocols: ['vless-reality', 'vmess-xray', 'amneziawg'],
+    // Advertise only transports that are physically live on this relay.
+    // Extra protocols are enabled only after their server backends and
+    // provisioned client profiles pass an external egress probe.
+    protocols: ['vless-reality', 'vmess', 'wireguard'],
     load: 0.05,
     online: true,
     recommended: true,
     capacity: 500,
-    tags: ['relay', 'xray', 'wireguard', 'prototype'],
-    notes: 'Primary VLESS/REALITY, VMess/Xray fallback, WireGuard fallback.',
+    tags: ['relay', 'xray', 'sing-box-ready', 'wireguard', 'prototype'],
+    notes: 'VLESS/REALITY, VMess and standard WireGuard are live. Additional transports are staged separately.',
     transportConfig: {
       defaultProtocol: 'vless-reality',
-      fallbackProtocol: 'vmess-xray',
+      fallbackProtocol: 'vmess',
       realityPort: 8443,
       vmessPort: 8444,
-      amneziaWgPort: 51820,
+      wireGuardPort: 51820,
+      engines: ['sing-box', 'xray', 'native'],
     },
   });
 }
