@@ -83,14 +83,37 @@ jobs:
           ssh "${SSH[@]}" "$RELAY_SSH_USER@$RELAY_SSH_HOST" \
             "chmod 700 '$remote_script' && sudo -n env WESI_AERO_PUBLIC_HOST='$PUBLIC_HOST' WESI_AERO_REALITY_PORT=8443 WESI_AERO_VMESS_PORT=8444 bash '$remote_script' && rm -f '$remote_script'"
 
-      - name: Verify relay service and listeners
+      - name: Verify Xray service and local listeners
         run: |
           set -euo pipefail
           SSH=(-i "$HOME/.ssh/wesi_aero_relay_key" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/wesi_aero_known_hosts" -o StrictHostKeyChecking=yes)
-          ssh "${SSH[@]}" "$RELAY_SSH_USER@$RELAY_SSH_HOST" \
-            "sudo -n systemctl is-active --quiet xray && sudo -n xray run -test -config /usr/local/etc/xray/config.json && sudo -n ss -lnt | grep -E ':(8443|8444)[[:space:]]' >/dev/null"
-          timeout 8 bash -c "</dev/tcp/$PUBLIC_HOST/8443"
-          timeout 8 bash -c "</dev/tcp/$PUBLIC_HOST/8444"
+          ssh "${SSH[@]}" "$RELAY_SSH_USER@$RELAY_SSH_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          sudo -n systemctl is-active xray
+          sudo -n xray run -test -config /usr/local/etc/xray/config.json
+          listeners="$(sudo -n ss -lnt)"
+          printf '%s\n' "$listeners" | grep -q ':8443' || { echo 'VLESS listener 8443 is missing' >&2; exit 21; }
+          printf '%s\n' "$listeners" | grep -q ':8444' || { echo 'VMess listener 8444 is missing' >&2; exit 22; }
+          if command -v ufw >/dev/null 2>&1; then
+            sudo -n ufw status | grep -E '8443|8444' || true
+          fi
+          echo 'Local Xray service and both listeners verified.'
+          REMOTE
+
+      - name: Verify public relay TCP reachability
+        run: |
+          python3 - <<'PY'
+          import socket
+          import sys
+          host = 'wesi-ai-178-236-247-194.nip.io'
+          for port in (8443, 8444):
+              try:
+                  with socket.create_connection((host, port), timeout=8):
+                      print(f'{host}:{port} reachable')
+              except OSError as exc:
+                  print(f'::error::{host}:{port} unreachable: {exc}')
+                  sys.exit(20 + (port - 8443))
+          PY
 
       - name: Retrieve ephemeral client verification configs
         run: |
@@ -140,6 +163,7 @@ jobs:
               --socks5-hostname 127.0.0.1:10808 https://api.ipify.org)
             [ "$proxy_ip" = "$EXPECTED_RELAY_IP" ] || {
               echo "::error::$name egress IP mismatch: $proxy_ip"
+              tail -n 30 "$log" || true
               return 1
             }
             cleanup
