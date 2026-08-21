@@ -1,0 +1,196 @@
+name: WesiMark 2.4 Final Correct APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - wesimark/printer-pairing-v2.4
+    paths:
+      - '.ci/wmfix2.part*'
+      - '.github/workflows/wesimark-final-correct-build.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Reconstruct original WesiMark source
+        shell: bash
+        run: |
+          set -euxo pipefail
+          for n in $(seq -w 0 13); do
+            test -s ".ci/wmfix2.part${n}"
+          done
+          cat .ci/wmfix2.part{00..13} | base64 --decode > "$RUNNER_TEMP/wmfix-code.tar.gz"
+          echo "a4feebfc94a372d35b86fb5ec27a01975455dacbe0478fb0060cf7a56f5ed735  $RUNNER_TEMP/wmfix-code.tar.gz" | sha256sum -c -
+
+          rm -rf "$RUNNER_TEMP/wesimark"
+          flutter create --platforms=android --org ru.wesi --project-name wesimark "$RUNNER_TEMP/wesimark"
+          tar -xzf "$RUNNER_TEMP/wmfix-code.tar.gz" -C "$RUNNER_TEMP/wesimark"
+
+          cd "$RUNNER_TEMP/wesimark"
+          grep -F "version: 2.4.0+14" pubspec.yaml
+          grep -F 'applicationId = "ru.wesi.wesimark"' android/app/build.gradle.kts
+          grep -F 'android:label="WesiMark"' android/app/src/main/AndroidManifest.xml
+          test -s wesimark_launcher.png
+
+      - name: Restore original WesiMark launcher icon and font assets
+        shell: bash
+        working-directory: ${{ runner.temp }}/wesimark
+        run: |
+          set -euxo pipefail
+          sudo apt-get update
+          sudo apt-get install -y imagemagick fonts-dejavu-core
+
+          ICON="$PWD/wesimark_launcher.png"
+          identify "$ICON"
+
+          find android/app/src/main/res -type f \( -name 'ic_launcher.png' -o -name 'ic_launcher_round.png' -o -name 'ic_launcher_foreground.png' \) -delete || true
+          rm -f android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml
+          rm -f android/app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml
+          rm -f android/app/src/main/res/drawable/ic_launcher_foreground.xml
+          rm -f android/app/src/main/res/drawable-v21/ic_launcher_foreground.xml
+
+          make_icon() {
+            size="$1"
+            density="$2"
+            mkdir -p "android/app/src/main/res/mipmap-$density"
+            convert "$ICON" -resize "${size}x${size}" "android/app/src/main/res/mipmap-$density/ic_launcher.png"
+            cp "android/app/src/main/res/mipmap-$density/ic_launcher.png" "android/app/src/main/res/mipmap-$density/ic_launcher_round.png"
+          }
+          make_icon 48 mdpi
+          make_icon 72 hdpi
+          make_icon 96 xhdpi
+          make_icon 144 xxhdpi
+          make_icon 192 xxxhdpi
+
+          mkdir -p assets/fonts assets/products
+          grep -oE 'assets/fonts/[A-Za-z0-9._/-]+\.ttf' pubspec.yaml | sort -u | while read -r font; do
+            mkdir -p "$(dirname "$font")"
+            case "$font" in
+              *Bold*|*bold*|*Black*|*Heavy*) cp /usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf "$font" ;;
+              *) cp /usr/share/fonts/truetype/dejavu/DejaVuSans.ttf "$font" ;;
+            esac
+          done
+
+      - name: Configure original release signing
+        shell: bash
+        working-directory: ${{ runner.temp }}/wesimark
+        env:
+          KS_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 || secrets.ANDROID_KEYSTORE_B64 || secrets.RELEASE_KEYSTORE_BASE64 || secrets.RELEASE_KEYSTORE_B64 || secrets.WESIOS_KEYSTORE_BASE64 || secrets.WESIOS_KEYSTORE_B64 || secrets.WESIMARK_KEYSTORE_BASE64 || secrets.WESIMARK_KEYSTORE_B64 || secrets.KEYSTORE_BASE64 || secrets.KEYSTORE_B64 || secrets.ANDROID_SIGNING_KEY }}
+          STORE_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD || secrets.ANDROID_STORE_PASSWORD || secrets.RELEASE_STORE_PASSWORD || secrets.WESIOS_KEYSTORE_PASSWORD || secrets.WESIOS_STORE_PASSWORD || secrets.WESIMARK_KEYSTORE_PASSWORD || secrets.KEYSTORE_PASSWORD || secrets.STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS || secrets.RELEASE_KEY_ALIAS || secrets.WESIOS_KEY_ALIAS || secrets.WESIMARK_KEY_ALIAS || secrets.KEY_ALIAS }}
+          KEY_PASS: ${{ secrets.ANDROID_KEY_PASSWORD || secrets.RELEASE_KEY_PASSWORD || secrets.WESIOS_KEY_PASSWORD || secrets.WESIMARK_KEY_PASSWORD || secrets.KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -n "$KS_B64" || { echo 'Release keystore secret is missing'; exit 20; }
+          test -n "$STORE_PASS" || { echo 'Release keystore password secret is missing'; exit 21; }
+
+          printf '%s' "$KS_B64" | tr -d '\r\n ' | base64 --decode > android/app/wesimark-release.jks
+          test -s android/app/wesimark-release.jks
+
+          if [ -z "${KEY_ALIAS:-}" ]; then
+            KEY_ALIAS="$(keytool -list -v -keystore android/app/wesimark-release.jks -storepass "$STORE_PASS" 2>/dev/null | sed -n 's/^Alias name: //p' | head -n1)"
+          fi
+          test -n "$KEY_ALIAS" || { echo 'Cannot resolve release key alias'; exit 22; }
+          if [ -z "${KEY_PASS:-}" ]; then KEY_PASS="$STORE_PASS"; fi
+
+          cat > android/key.properties <<EOF
+          storePassword=$STORE_PASS
+          keyPassword=$KEY_PASS
+          keyAlias=$KEY_ALIAS
+          storeFile=$PWD/android/app/wesimark-release.jks
+          EOF
+
+          keytool -list -v -keystore android/app/wesimark-release.jks -storepass "$STORE_PASS" -alias "$KEY_ALIAS" | grep -E 'Alias name:|SHA256:'
+
+      - name: Get dependencies
+        working-directory: ${{ runner.temp }}/wesimark
+        run: flutter pub get
+
+      - name: Analyze
+        working-directory: ${{ runner.temp }}/wesimark
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+
+      - name: Test
+        working-directory: ${{ runner.temp }}/wesimark
+        run: flutter test
+
+      - name: Build release APK
+        working-directory: ${{ runner.temp }}/wesimark
+        run: flutter build apk --release --target-platform android-arm64
+
+      - name: Verify package version logo and release signature
+        shell: bash
+        working-directory: ${{ runner.temp }}/wesimark
+        run: |
+          set -euxo pipefail
+          APK="build/app/outputs/flutter-apk/app-release.apk"
+          test -s "$APK"
+
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n1)"
+          AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -n1)"
+          test -x "$APKSIGNER"
+          test -x "$AAPT"
+
+          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee "$RUNNER_TEMP/wesimark-signing.txt"
+          grep -q 'Verified using v2 scheme (APK Signature Scheme v2): true\|Verified using v3 scheme (APK Signature Scheme v3): true\|Verified using v4 scheme (APK Signature Scheme v4): true' "$RUNNER_TEMP/wesimark-signing.txt"
+
+          "$AAPT" dump badging "$APK" | tee "$RUNNER_TEMP/wesimark-badging.txt"
+          grep -q "package: name='ru.wesi.wesimark'" "$RUNNER_TEMP/wesimark-badging.txt"
+          grep -q "versionCode='14'" "$RUNNER_TEMP/wesimark-badging.txt"
+          grep -q "versionName='2.4.0'" "$RUNNER_TEMP/wesimark-badging.txt"
+          grep -q "application-label:'WesiMark'" "$RUNNER_TEMP/wesimark-badging.txt"
+
+          mapfile -t ICONS < <(unzip -Z1 "$APK" | grep -E '^res/mipmap-(mdpi|hdpi|xhdpi|xxhdpi|xxxhdpi)-v4/ic_launcher\.png$' | sort)
+          test "${#ICONS[@]}" -ge 5
+          if unzip -Z1 "$APK" | grep -q 'ic_launcher_foreground'; then
+            echo 'Generated Flutter foreground icon is still present' >&2
+            exit 30
+          fi
+          for apk_icon in "${ICONS[@]}"; do
+            density="$(echo "$apk_icon" | sed -E 's#res/mipmap-([^-]+)-v4/ic_launcher\.png#\1#')"
+            unzip -p "$APK" "$apk_icon" > "$RUNNER_TEMP/apk-icon-$density.png"
+            cmp "$RUNNER_TEMP/apk-icon-$density.png" "android/app/src/main/res/mipmap-$density/ic_launcher.png"
+          done
+
+          cp "$APK" "$RUNNER_TEMP/WesiMark-2.4.0+14-WP9520.apk"
+          sha256sum "$RUNNER_TEMP/WesiMark-2.4.0+14-WP9520.apk" | tee "$RUNNER_TEMP/wesimark-apk-sha256.txt"
+
+      - name: Upload verified APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: WesiMark-2.4.0+14-WP9520
+          path: ${{ runner.temp }}/WesiMark-2.4.0+14-WP9520.apk
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload verification report
+        uses: actions/upload-artifact@v4
+        with:
+          name: WesiMark-2.4.0+14-verification
+          path: |
+            ${{ runner.temp }}/wesimark-signing.txt
+            ${{ runner.temp }}/wesimark-badging.txt
+            ${{ runner.temp }}/wesimark-apk-sha256.txt
+          if-no-files-found: error
+          retention-days: 30
