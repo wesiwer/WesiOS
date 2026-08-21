@@ -1,0 +1,72 @@
+name: Scoped Organization Sync Repair
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/ops/run-organization-sync-repair-v3-20260821'
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Apply scoped client repair
+        run: python3 .github/scripts/repair_organization_sync.py
+
+      - name: Format and verify focused regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          dart format lib/core/sync/sync_codec.dart test/core/sync/organization_sync_legacy_root_test.dart
+          flutter pub get
+          flutter test test/core/sync/organization_sync_legacy_root_test.dart
+          flutter test test/core/sync/organization_sync_recovery_test.dart
+          flutter test test/core/sync/organization_sync_server_compat_test.dart
+          git diff --check
+
+      - name: Commit client repair to main
+        id: commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'WesiOS Sync Repair'
+          git config user.email 'actions@users.noreply.github.com'
+          git add lib/core/sync/sync_codec.dart test/core/sync/organization_sync_legacy_root_test.dart pubspec.yaml lib/core/constants/app_version.dart
+          git commit -m 'fix(sync): canonicalize organization root on client'
+          git push origin HEAD:main
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Redeploy legacy sync hooks and restart PocketBase
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PATCH_SHA: ${{ steps.commit.outputs.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          since=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          gh workflow run deploy-sync-hooks.yml --repo "$GITHUB_REPOSITORY" --ref main
+          run_id=''
+          for i in $(seq 1 80); do
+            payload=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow deploy-sync-hooks.yml --event workflow_dispatch --branch main --limit 20 --json databaseId,headSha,createdAt,status,conclusion)
+            run_id=$(printf '%s' "$payload" | jq -r --arg sha "$PATCH_SHA" --arg since "$since" '[.[] | select(.headSha == $sha and .createdAt >= $since)] | sort_by(.createdAt) | reverse | .[0].databaseId // empty')
+            if [ -n "$run_id" ]; then break; fi
+            sleep 3
+          done
+          [ -n "$run_id" ] || { echo 'deploy-sync-hooks run not found' >&2; exit 1; }
+          echo "deploy run: $run_id"
+          gh run watch "$run_id" --repo "$GITHUB_REPOSITORY" --exit-status --interval 10
