@@ -46,7 +46,7 @@ export function createApiServer({
       if (config.technicalLogs) {
         const durationMs = Math.round(performance.now() - startedAt);
         process.stdout.write(
-          `${new Date().toISOString()} ${request.method} ${pathname} ${statusCode} ${Math.round(performance.now() - startedAt)}ms\n`,
+          `${new Date().toISOString()} ${request.method} ${pathname} ${statusCode} ${durationMs}ms\n`,
         );
       }
     }
@@ -70,6 +70,11 @@ async function route(context) {
     sendJson(response, 200, commerce
       ? { status: 'ok', catalogRevision: commerce.revision }
       : { status: 'ok' });
+    return 200;
+  }
+
+  if (request.method === 'GET' && pathname === '/v1/payment-return') {
+    sendPaymentReturnPage(response);
     return 200;
   }
 
@@ -160,6 +165,13 @@ async function route(context) {
     const claimToken = request.headers['x-order-claim'];
     if (!commerce.verifyPaymentClaim(id, claimToken)) {
       throw new HttpError(401, 'INVALID_ORDER_CLAIM', 'Invalid order claim token');
+    }
+    if (payments) {
+      try {
+        await payments.reconcile(id);
+      } catch (error) {
+        if (!(error instanceof PaymentError)) throw error;
+      }
     }
     const payment = commerce.getPayment(id);
     if (!payment) throw new HttpError(404, 'PAYMENT_NOT_FOUND', 'Payment not found');
@@ -584,6 +596,41 @@ function isExpectedError(error) {
     error instanceof CommerceError ||
     error instanceof PaymentError ||
     error instanceof SecureChannelError;
+}
+
+function sendPaymentReturnPage(response) {
+  const appUrl = 'wesi-aero://payment-return';
+  const body = `<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Wesi Aero · Оплата</title>
+  <style>
+    html,body{height:100%;margin:0;background:#08090b;color:#f5f7fa;font-family:system-ui,-apple-system,Segoe UI,sans-serif}
+    body{display:grid;place-items:center;padding:24px;box-sizing:border-box}
+    main{max-width:520px;text-align:center}
+    h1{font-size:28px;margin:0 0 12px}
+    p{color:#aeb5c0;line-height:1.5;margin:0 0 24px}
+    a{display:inline-block;padding:13px 20px;border-radius:14px;background:#f5f7fa;color:#08090b;text-decoration:none;font-weight:700}
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Возвращаемся в Wesi Aero</h1>
+    <p>Приложение самостоятельно проверит платёж, получит ключ с сервера и привяжет его к этому устройству.</p>
+    <a href="${appUrl}">Открыть Wesi Aero</a>
+  </main>
+  <script>setTimeout(function(){window.location.href='${appUrl}'},120);</script>
+</body>
+</html>`;
+  response.writeHead(200, {
+    ...securityHeaders(),
+    'content-type': 'text/html; charset=utf-8',
+    'content-length': Buffer.byteLength(body),
+    'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'",
+  });
+  response.end(body);
 }
 
 function sendJson(response, statusCode, payload, extraHeaders = {}) {
