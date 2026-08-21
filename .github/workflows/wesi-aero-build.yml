@@ -1,0 +1,186 @@
+name: Build Wesi Aero Demo Installers
+
+on:
+  push:
+    branches:
+      - codex/wesi-aero-build-20260821
+    paths:
+      - WesiAero/**
+      - .github/workflows/wesi-aero-build.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: wesi-aero-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  android:
+    name: Android APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    defaults:
+      run:
+        working-directory: WesiAero
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Generate Android platform
+        run: flutter create --platforms=android --org com.wesi --project-name wesi_aero .
+
+      - name: Apply Wesi Aero Android metadata and icon
+        shell: bash
+        run: |
+          set -euo pipefail
+          sed -i 's/minSdk = flutter.minSdkVersion/minSdk = 23/' android/app/build.gradle.kts
+          sed -i 's/android:label="wesi_aero"/android:label="Wesi Aero"/' android/app/src/main/AndroidManifest.xml
+          for density in mdpi hdpi xhdpi xxhdpi xxxhdpi; do
+            cp assets/branding/wesi_aero_mark.png "android/app/src/main/res/mipmap-$density/ic_launcher.png"
+          done
+
+      - name: Validate Flutter project
+        run: |
+          flutter pub get
+          flutter analyze
+          flutter test
+
+      - name: Configure permanent Android release signature
+        shell: bash
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          for name in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
+            if [ -z "${!name:-}" ]; then
+              echo "::error::Required repository secret $name is missing"
+              exit 1
+            fi
+          done
+          keystore="$RUNNER_TEMP/wesi-aero-release.jks"
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | tr -d '[:space:]' | base64 -d > "$keystore"
+          store_password=$(printf '%s' "$ANDROID_KEYSTORE_PASSWORD" | tr -d '\r\n')
+          key_password=$(printf '%s' "$ANDROID_KEY_PASSWORD" | tr -d '\r\n')
+          alias_name=$(printf '%s' "$ANDROID_KEY_ALIAS" | tr -d '\r\n')
+          keytool -list -keystore "$keystore" -storepass "$store_password" -alias "$alias_name" >/dev/null
+          {
+            printf 'storeFile=%s\n' "$keystore"
+            printf 'storePassword=%s\n' "$store_password"
+            printf 'keyAlias=%s\n' "$alias_name"
+            printf 'keyPassword=%s\n' "$key_password"
+          } > android/key.properties
+          python3 scripts/configure_android_signing.py
+
+      - name: Build signed release APK
+        env:
+          GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx4G -Dorg.gradle.daemon=false
+        run: |
+          flutter build apk --release
+          cp build/app/outputs/flutter-apk/app-release.apk Wesi-Aero-Android.apk
+          test -s Wesi-Aero-Android.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Wesi-Aero-Android
+          path: WesiAero/Wesi-Aero-Android.apk
+          retention-days: 7
+          if-no-files-found: error
+
+  windows:
+    name: Windows installer
+    runs-on: windows-2022
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: WesiAero
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Generate Windows platform
+        shell: pwsh
+        run: flutter create --platforms=windows --org com.wesi --project-name wesi_aero .
+
+      - name: Apply Wesi Aero Windows metadata and icon
+        shell: pwsh
+        run: |
+          Copy-Item assets/branding/wesi_aero_mark.ico windows/runner/resources/app_icon.ico -Force
+          $main = Get-Content windows/runner/main.cpp -Raw
+          $main.Replace('L"wesi_aero"', 'L"Wesi Aero"') | Set-Content windows/runner/main.cpp -Encoding utf8
+          $rc = Get-Content windows/runner/Runner.rc -Raw
+          $rc.Replace('"wesi_aero"', '"Wesi Aero"') | Set-Content windows/runner/Runner.rc -Encoding utf8
+
+      - name: Build Windows release
+        shell: pwsh
+        run: |
+          flutter pub get
+          flutter analyze
+          flutter test
+          flutter build windows --release
+          if (!(Test-Path build/windows/x64/runner/Release/wesi_aero.exe)) { throw 'Windows release executable is missing' }
+
+      - name: Ensure Inno Setup compiler
+        id: inno
+        shell: pwsh
+        run: |
+          $candidates = @(
+            "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
+            "$env:ProgramFiles\Inno Setup 6\ISCC.exe"
+          )
+          $iscc = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $iscc) {
+            choco install innosetup -y --no-progress
+            $iscc = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+          }
+          if (-not $iscc) { throw 'ISCC.exe not found after Inno Setup install' }
+          "path=$iscc" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: Build Windows installer
+        shell: pwsh
+        run: |
+          $iscc = '${{ steps.inno.outputs.path }}'
+          $source = (Resolve-Path build/windows/x64/runner/Release).Path
+          $out = Join-Path $PWD 'dist'
+          New-Item -ItemType Directory -Force -Path $out | Out-Null
+          & $iscc '/DMyAppVersion=0.1.0' "/DSourceDir=$source" "/O$out" installer/windows/wesi-aero.iss
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed with exit code $LASTEXITCODE" }
+          if (!(Test-Path dist/Wesi-Aero-Windows-Setup.exe)) { throw 'Installer output is missing' }
+
+      - name: Smoke-test install and uninstall
+        shell: pwsh
+        run: |
+          $setup = (Resolve-Path dist/Wesi-Aero-Windows-Setup.exe).Path
+          $testDir = Join-Path $env:RUNNER_TEMP 'Wesi-Aero-Installer-Smoke'
+          Remove-Item $testDir -Recurse -Force -ErrorAction SilentlyContinue
+          $install = Start-Process -FilePath $setup -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',"/DIR=$testDir") -PassThru -Wait
+          if ($install.ExitCode -ne 0) { throw "Installer smoke install failed: $($install.ExitCode)" }
+          if (!(Test-Path (Join-Path $testDir 'wesi_aero.exe'))) { throw 'Installed executable is missing' }
+          $uninstaller = Join-Path $testDir 'unins000.exe'
+          if (!(Test-Path $uninstaller)) { throw 'Uninstaller is missing' }
+          $uninstall = Start-Process -FilePath $uninstaller -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART') -PassThru -Wait
+          if ($uninstall.ExitCode -ne 0) { throw "Installer smoke uninstall failed: $($uninstall.ExitCode)" }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Wesi-Aero-Windows
+          path: WesiAero/dist/Wesi-Aero-Windows-Setup.exe
+          retention-days: 7
+          if-no-files-found: error

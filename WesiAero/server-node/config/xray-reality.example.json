@@ -1,0 +1,64 @@
+{
+  "log": {
+    "access": "none",
+    "dnsLog": false,
+    "loglevel": "warning"
+  },
+  "stats": {},
+  "policy": {
+    "levels": {
+      "0": {
+        "statsUserUplink": true,
+        "statsUserDownlink": true
+      }
+    },
+    "system": {
+      "statsInboundUplink": true,
+      "statsInboundDownlink": true
+    }
+  },
+  "inbounds": [
+    {
+      "tag": "vless-reality",
+      "listen": "0.0.0.0",
+      "port": 8443,
+      "protocol": "vless",
+      "settings": {
+        "clients": [
+          {
+            "id": "REPLACE_WITH_USER_UUID",
+            "email": "opaque-user-id",
+            "flow": "xtls-rprx-vision"
+          }
+        ],
+        "decryption": "none"
+      },
+      "streamSettings": {
+        "network": "raw",
+        "security": "reality",
+        "realitySettings": {
+          "show": false,
+          "dest": "AUTHORIZED_TLS_TARGET:443",
+          "xver": 0,
+          "serverNames": [
+            "AUTHORIZED_TLS_TARGET"
+          ],
+          "privateKey": "REPLACE_WITH_REALITY_PRIVATE_KEY",
+          "shortIds": [
+            "REPLACE_WITH_HEX_SHORT_ID"
+          ]
+        }
+      }
+    }
+  ],
+  "outbounds": [
+    {
+      "tag": "direct",
+      "protocol": "freedom"
+    },
+    {
+      "tag": "block",
+      "protocol": "blackhole"
+    }
+  ]
+}

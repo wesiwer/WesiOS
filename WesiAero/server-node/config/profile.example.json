@@ -1,0 +1,4 @@
+{
+  "protocol": "vless-reality",
+  "clientConfig": "vless://USER_UUID@wesi-ai-178-236-247-194.nip.io:8443?security=reality&encryption=none&pbk=SERVER_PUBLIC_KEY&fp=chrome&sni=AUTHORIZED_TLS_TARGET&sid=SHORT_ID&type=tcp&flow=xtls-rprx-vision#Wesi%20Aero"
+}

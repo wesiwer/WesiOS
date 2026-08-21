@@ -1,0 +1,14 @@
+{
+  "name": "wesi-aero-server-node",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "start": "node src/index.mjs",
+    "test": "node --test --test-reporter=spec",
+    "bootstrap-user": "node src/bootstrap-user.mjs"
+  }
+}

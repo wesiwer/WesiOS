@@ -1,0 +1,117 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="390" height="844" viewBox="0 0 390 844">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset=".62" stop-color="#F7F9FC"/>
+      <stop offset="1" stop-color="#EEF3F9"/>
+    </linearGradient>
+    <radialGradient id="blueAura">
+      <stop offset="0" stop-color="#2563EB" stop-opacity=".13"/>
+      <stop offset="1" stop-color="#2563EB" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="protectedAura">
+      <stop offset="0" stop-color="#607F9E" stop-opacity=".20"/>
+      <stop offset="1" stop-color="#607F9E" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="ring" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#607F9E" stop-opacity=".22"/>
+      <stop offset=".38" stop-color="#607F9E"/>
+      <stop offset=".7" stop-color="#9FB6CB"/>
+      <stop offset="1" stop-color="#607F9E" stop-opacity=".24"/>
+    </linearGradient>
+    <filter id="blur40" x="-80%" y="-80%" width="260%" height="260%"><feGaussianBlur stdDeviation="28"/></filter>
+    <filter id="glow" x="-80%" y="-80%" width="260%" height="260%">
+      <feGaussianBlur stdDeviation="7" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <pattern id="grid" width="48" height="48" patternUnits="userSpaceOnUse">
+      <path d="M48 0H0V48" fill="none" stroke="#1E3A5F" stroke-opacity=".025"/>
+    </pattern>
+  </defs>
+
+  <rect width="390" height="844" fill="url(#bg)"/>
+  <circle cx="345" cy="82" r="175" fill="url(#blueAura)" filter="url(#blur40)"/>
+  <circle cx="28" cy="650" r="145" fill="url(#protectedAura)" filter="url(#blur40)"/>
+  <rect width="390" height="844" fill="url(#grid)"/>
+
+  <g font-family="Inter,Segoe UI,Arial,sans-serif">
+    <text x="20" y="31" fill="#172033" font-size="13" font-weight="700">09:41</text>
+    <g transform="translate(304 20)" fill="none" stroke="#172033" stroke-width="2" stroke-linecap="round">
+      <path d="M0 8v3M5 5v6M10 2v9M15 0v11M25 5c4-4 10-4 14 0M28 8c2-2 6-2 8 0"/>
+      <rect x="47" y="1" width="23" height="11" rx="3"/><path d="M71 5v3"/>
+    </g>
+    <line x1="0" y1="49" x2="390" y2="49" stroke="#0F172A" stroke-opacity=".10"/>
+
+    <g transform="translate(20 66)">
+      <path d="M1 3l6 17 7-11 6 11" fill="none" stroke="#1E3A5F" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M20 20L27 2" fill="none" stroke="#2563EB" stroke-width="2.8" stroke-linecap="round"/>
+      <text x="38" y="17" fill="#1E3A5F" font-size="15" font-weight="800" letter-spacing="1.6">AERO</text>
+    </g>
+    <g transform="translate(292 65)">
+      <rect width="78" height="26" rx="13" fill="#607F9E" fill-opacity=".10" stroke="#607F9E" stroke-opacity=".32"/>
+      <path d="M10 8l5-2 5 2v4c0 4-2.7 6.5-5 7.6-2.3-1.1-5-3.6-5-7.6z" fill="none" stroke="#607F9E" stroke-width="1.4"/>
+      <text x="26" y="17" fill="#607F9E" font-size="9" font-weight="800" letter-spacing=".6">ЗАЩИЩЕНО</text>
+    </g>
+
+    <text x="20" y="124" fill="#172033" font-size="25" font-weight="760" letter-spacing="-.4">Приватный маршрут</text>
+    <text x="20" y="146" fill="#667085" font-size="12.5">Wesi Aero защищает трафик одним касанием</text>
+
+    <rect x="16" y="165" width="358" height="398" rx="28" fill="#FFFFFF" fill-opacity=".86" stroke="#0F172A" stroke-opacity=".11"/>
+    <circle cx="195" cy="348" r="146" fill="url(#protectedAura)"/>
+    <circle cx="195" cy="350" r="103" fill="#607F9E" fill-opacity=".07" filter="url(#glow)"/>
+    <circle cx="195" cy="350" r="100" fill="none" stroke="#607F9E" stroke-opacity=".15" stroke-width="7"/>
+    <path d="M195 250a100 100 0 1 1-80.2 40.3" fill="none" stroke="url(#ring)" stroke-width="8" stroke-linecap="round" filter="url(#glow)">
+      <animateTransform attributeName="transform" type="rotate" from="0 195 350" to="360 195 350" dur="8s" repeatCount="indefinite"/>
+    </path>
+    <circle cx="195" cy="350" r="67" fill="#FFFFFF" fill-opacity=".95" stroke="#607F9E" stroke-opacity=".36"/>
+    <path d="M195 314v34M175 330a28 28 0 1 0 40 0" fill="none" stroke="#607F9E" stroke-width="5" stroke-linecap="round"/>
+    <circle cx="111" cy="286" r="2" fill="#607F9E" fill-opacity=".64"/><circle cx="281" cy="322" r="1.5" fill="#9FB6CB"/>
+    <circle cx="267" cy="421" r="2" fill="#607F9E" fill-opacity=".48"/><circle cx="120" cy="430" r="1.5" fill="#9FB6CB"/>
+
+    <g transform="translate(115 184)">
+      <circle cx="4" cy="6" r="4" fill="#607F9E" filter="url(#glow)"><animate attributeName="opacity" values=".45;1;.45" dur="2.4s" repeatCount="indefinite"/></circle>
+      <text x="16" y="10" fill="#607F9E" font-size="10" font-weight="800" letter-spacing="1.1">СОЕДИНЕНИЕ ЗАЩИЩЕНО</text>
+    </g>
+    <text x="195" y="476" text-anchor="middle" fill="#667085" font-size="12.5">AmneziaWG · Wesi Relay · preview</text>
+    <text x="195" y="500" text-anchor="middle" fill="#172033" font-size="16" font-weight="650" letter-spacing=".8">00:18:42</text>
+    <g transform="translate(34 517)">
+      <rect width="322" height="1" fill="#0F172A" fill-opacity=".08"/>
+      <text y="26" fill="#667085" font-size="9.5" font-weight="700" letter-spacing=".8">KILL SWITCH</text>
+      <text x="82" y="26" fill="#465166" font-size="10.5">активен · утечки заблокированы</text><circle cx="309" cy="22" r="5" fill="#607F9E"/>
+    </g>
+
+    <g transform="translate(16 579)">
+      <rect width="358" height="68" rx="18" fill="#FFFFFF" fill-opacity=".88" stroke="#0F172A" stroke-opacity=".11"/>
+      <g transform="translate(16 20)">
+        <rect width="30" height="30" rx="9" fill="#2563EB" fill-opacity=".09" stroke="#2563EB" stroke-opacity=".26"/>
+        <circle cx="15" cy="15" r="8" fill="none" stroke="#2563EB" stroke-width="1.4"/>
+        <path d="M7 15h16M15 7c3 3 3 13 0 16M15 7c-3 3-3 13 0 16" fill="none" stroke="#2563EB" stroke-width="1"/>
+      </g>
+      <text x="58" y="27" fill="#172033" font-size="13.5" font-weight="700">Wesi Relay · Auto</text>
+      <text x="58" y="47" fill="#667085" font-size="10.5">оптимальный узел · 34 ms</text>
+      <path d="M330 27l7 7-7 7" fill="none" stroke="#667085" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    </g>
+
+    <g transform="translate(16 659)">
+      <rect width="172" height="63" rx="16" fill="#FFFFFF" fill-opacity=".86" stroke="#0F172A" stroke-opacity=".10"/>
+      <path d="M18 17v14m-5-5 5 5 5-5" fill="none" stroke="#2563EB" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+      <text x="14" y="47" fill="#172033" font-size="13" font-weight="700">3.8 MB/s</text><text x="103" y="47" fill="#667085" font-size="9.5">ЗАГРУЗКА</text>
+      <g transform="translate(186)">
+        <rect width="172" height="63" rx="16" fill="#FFFFFF" fill-opacity=".86" stroke="#0F172A" stroke-opacity=".10"/>
+        <path d="M18 31V17m-5 5 5-5 5 5" fill="none" stroke="#2563EB" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+        <text x="14" y="47" fill="#172033" font-size="13" font-weight="700">640 KB/s</text><text x="113" y="47" fill="#667085" font-size="9.5">ОТДАЧА</text>
+      </g>
+    </g>
+
+    <g transform="translate(0 744)">
+      <rect width="390" height="100" fill="#FFFFFF" fill-opacity=".95"/><line x1="0" y1="0" x2="390" y2="0" stroke="#0F172A" stroke-opacity=".10"/>
+      <g text-anchor="middle" font-size="9.5" font-weight="650">
+        <g transform="translate(49 20)"><circle cx="0" cy="9" r="11" fill="#2563EB" fill-opacity=".10"/><path d="M0 2v8M-5 6a7 7 0 1 0 10 0" fill="none" stroke="#2563EB" stroke-width="1.8" stroke-linecap="round"/><text x="0" y="39" fill="#2563EB">Aero</text></g>
+        <g transform="translate(146 20)"><circle cx="0" cy="9" r="8" fill="none" stroke="#667085" stroke-width="1.6"/><path d="M-7 9h14M0 1c3 3 3 13 0 16M0 1c-3 3-3 13 0 16" fill="none" stroke="#667085" stroke-width="1.2"/><text x="0" y="39" fill="#667085">Серверы</text></g>
+        <g transform="translate(244 20)"><path d="M-9 4h7l4 5h7M-9 15h7l4-5" fill="none" stroke="#667085" stroke-width="1.7" stroke-linecap="round"/><text x="0" y="39" fill="#667085">Маршруты</text></g>
+        <g transform="translate(341 20)"><path d="M-8 4h16M-8 10h16M-8 16h16M-3 2v4M3 8v4M-1 14v4" fill="none" stroke="#667085" stroke-width="1.5" stroke-linecap="round"/><text x="0" y="39" fill="#667085">Настройки</text></g>
+      </g>
+      <rect x="145" y="87" width="100" height="4" rx="2" fill="#172033" fill-opacity=".72"/>
+    </g>
+  </g>
+</svg>

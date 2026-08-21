@@ -1,0 +1,12 @@
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.idea/
+.metadata
+build/
+android/.gradle/
+windows/flutter/ephemeral/
+server-node/data/
+server-node/profiles/
+server-node/.env
+
