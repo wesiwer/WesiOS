@@ -133,8 +133,12 @@ chmod 600 "$PRIVATE_FILE"
 SERVER_PUBLIC="$(awk -F' = ' '/^PublicKey/ {print $2; exit}' "$CONF")"
 ENDPOINT="$(awk -F' = ' '/^Endpoint/ {print $2; exit}' "$CONF")"
 CLIENT_ADDRESS="$(awk -F' = ' '/^Address/ {print $2; exit}' "$CONF")"
-[[ -n "$SERVER_PUBLIC" && -n "$ENDPOINT" && -n "$CLIENT_ADDRESS" ]]
+[[ -n "$SERVER_PUBLIC" && -n "$ENDPOINT" && -n "$CLIENT_ADDRESS" ]] || {
+  echo 'WireGuard client profile is incomplete.' >&2
+  exit 1
+}
 
+echo "WireGuard probe endpoint: $ENDPOINT; client address: $CLIENT_ADDRESS"
 cleanup_wg() {
   sudo ip route del 1.1.1.1/32 dev wesiwg 2>/dev/null || true
   sudo ip route del 10.77.0.1/32 dev wesiwg 2>/dev/null || true
@@ -142,6 +146,7 @@ cleanup_wg() {
 }
 trap cleanup_wg EXIT
 cleanup_wg
+
 sudo ip link add dev wesiwg type wireguard
 sudo ip address add "$CLIENT_ADDRESS" dev wesiwg
 sudo wg set wesiwg \
@@ -153,20 +158,48 @@ sudo wg set wesiwg \
 sudo ip link set up dev wesiwg
 sudo ip route replace 10.77.0.1/32 dev wesiwg
 sudo ip route replace 1.1.1.1/32 dev wesiwg
-ping -c 2 -W 3 10.77.0.1 >/dev/null
+
+echo 'WireGuard client interface configured; provoking handshake.'
+# ICMP reachability is not a protocol requirement. Send traffic only to cause
+# the kernel to initiate a handshake, then inspect WireGuard's own state.
+ping -c 1 -W 1 10.77.0.1 >/dev/null 2>&1 || true
 handshake=0
-for _ in $(seq 1 10); do
+for _ in $(seq 1 15); do
   handshake="$(sudo wg show wesiwg latest-handshakes | awk '{print $2; exit}')"
-  [[ "${handshake:-0}" -gt 0 ]] && break
+  if [[ "${handshake:-0}" -gt 0 ]]; then
+    break
+  fi
+  ping -c 1 -W 1 10.77.0.1 >/dev/null 2>&1 || true
   sleep 1
 done
-[[ "${handshake:-0}" -gt 0 ]] || { echo 'WireGuard handshake missing' >&2; exit 1; }
-curl -fsS --max-time 15 \
+if [[ "${handshake:-0}" -le 0 ]]; then
+  echo 'WireGuard handshake missing after 15 seconds.' >&2
+  sudo wg show wesiwg >&2 || true
+  ip -4 address show dev wesiwg >&2 || true
+  ip -4 route show >&2 || true
+  getent ahostsv4 "$AERO_HOST" >&2 || true
+  ssh "${SSH[@]}" "$RELAY_SSH_USER@$RELAY_SSH_HOST" \
+    'if [ "$(id -u)" -eq 0 ]; then SUDO=""; else SUDO="sudo -n"; fi; $SUDO wg show wg0; $SUDO iptables -S INPUT | grep 51820 || true; $SUDO ss -lunp | grep 51820 || true' \
+    >&2 || true
+  exit 1
+fi
+echo "WireGuard cryptographic handshake verified at epoch $handshake."
+
+if ! curl -fsS --max-time 20 \
   --connect-to one.one.one.one:443:1.1.1.1:443 \
-  https://one.one.one.one/cdn-cgi/trace > "$WORK/wg-trace"
+  https://one.one.one.one/cdn-cgi/trace > "$WORK/wg-trace"; then
+  echo 'WireGuard handshake succeeded but routed HTTPS egress failed.' >&2
+  sudo wg show wesiwg >&2 || true
+  ip route get 1.1.1.1 >&2 || true
+  ssh "${SSH[@]}" "$RELAY_SSH_USER@$RELAY_SSH_HOST" \
+    'if [ "$(id -u)" -eq 0 ]; then SUDO=""; else SUDO="sudo -n"; fi; $SUDO sysctl net.ipv4.ip_forward; $SUDO iptables -S FORWARD; $SUDO iptables -t nat -S POSTROUTING' \
+    >&2 || true
+  exit 1
+fi
 wg_ip="$(awk -F= '$1=="ip" {print $2}' "$WORK/wg-trace")"
 [[ "$wg_ip" == "$RELAY_EGRESS_IP" ]] || {
   echo "WireGuard egress mismatch: $wg_ip != VPS egress $RELAY_EGRESS_IP" >&2
+  sudo wg show wesiwg >&2 || true
   exit 1
 }
 echo "WireGuard handshake and external egress verified through VPS: $wg_ip"
@@ -178,5 +211,6 @@ curl -fsS --max-time 20 "https://$AERO_HOST/v1/catalog" \
   | jq -e '(.paymentMethods | length) == 0 and (.servers[] | select(.id == "wesi-relay") | (.protocols | index("vless-reality")) != null and (.protocols | index("vmess-xray")) != null and (.protocols | index("amneziawg")) != null)' >/dev/null
 curl -fsS --max-time 20 "https://$AI_HOST/health" >/dev/null
 
+echo 'Public Wesi Aero control plane healthy, payments disabled, Wesi AI preserved.'
 rm -rf "$WORK"
 echo "Wesi Aero live VPN prototype verified: VLESS, VMess, WireGuard and HTTPS control plane."
