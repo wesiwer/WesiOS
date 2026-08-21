@@ -1,0 +1,171 @@
+name: Build Wesi Aero Live Android
+
+on:
+  push:
+    branches:
+      - codex/wesi-aero-build-20260821
+    paths:
+      - 'WesiAero/lib/**'
+      - 'WesiAero/scripts/**'
+      - 'WesiAero/pubspec.yaml'
+      - '.github/workflows/wesi-aero-android-live.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  statuses: write
+
+concurrency:
+  group: wesi-aero-android-live-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  AERO_CONTROL_URL: https://wesi-aero-178-236-247-194.nip.io
+  RELAY_SSH_HOST: ${{ secrets.WESI_RELAY_SSH_HOST }}
+  RELAY_SSH_USER: ${{ secrets.WESI_RELAY_SSH_USER }}
+  RELAY_SSH_KEY: ${{ secrets.WESI_RELAY_SSH_KEY }}
+  RELAY_SSH_KNOWN_HOSTS: ${{ secrets.WESI_RELAY_SSH_KNOWN_HOSTS }}
+
+jobs:
+  android-live:
+    name: Live Android APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: WesiAero
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: codex/wesi-aero-build-20260821
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Generate Android platform
+        run: |
+          set -euo pipefail
+          flutter create --platforms=android --org com.wesi --project-name wesi_aero .
+          rm -f test/widget_test.dart
+
+      - name: Apply Wesi Aero metadata and native VPN runtime
+        run: |
+          set -euo pipefail
+          sed -i 's/minSdk = flutter.minSdkVersion/minSdk = 23/' android/app/build.gradle.kts
+          sed -i 's/android:label="wesi_aero"/android:label="Wesi Aero"/' android/app/src/main/AndroidManifest.xml
+          python3 scripts/configure_payment_return.py
+          python3 scripts/configure_android_wireguard.py
+          python3 scripts/download_xray_aar.py
+          python3 scripts/configure_android_xray.py
+          for density in mdpi hdpi xhdpi xxhdpi xxxhdpi; do
+            cp assets/branding/wesi_aero_mark.png "android/app/src/main/res/mipmap-$density/ic_launcher.png"
+          done
+          grep -q 'android:scheme="wesi-aero"' android/app/src/main/AndroidManifest.xml
+          grep -q 'android:name=".AeroXrayVpnService"' android/app/src/main/AndroidManifest.xml
+          grep -q 'android.permission.BIND_VPN_SERVICE' android/app/src/main/AndroidManifest.xml
+          grep -q 'com.wesi.aero/gateway' android/app/src/main/kotlin/com/wesi/wesi_aero/MainActivity.kt
+          grep -q 'com.wesi.aero/gateway-events' android/app/src/main/kotlin/com/wesi/wesi_aero/MainActivity.kt
+          test -s android/app/libs/libv2ray.aar
+
+      - name: Load prototype license from Wesi Relay
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in RELAY_SSH_HOST RELAY_SSH_USER RELAY_SSH_KEY; do
+            if [ -z "${!name:-}" ]; then
+              echo "::error::Required server credential $name is missing"
+              exit 1
+            fi
+          done
+          mkdir -p "$HOME/.ssh"
+          chmod 700 "$HOME/.ssh"
+          keyfile="$RUNNER_TEMP/wesi-aero-relay-key"
+          knownhosts="$RUNNER_TEMP/wesi-aero-known-hosts"
+          printf '%s\n' "$RELAY_SSH_KEY" > "$keyfile"
+          chmod 600 "$keyfile"
+          if [ -n "${RELAY_SSH_KNOWN_HOSTS:-}" ]; then
+            printf '%s\n' "$RELAY_SSH_KNOWN_HOSTS" > "$knownhosts"
+          else
+            ssh-keyscan -H "$RELAY_SSH_HOST" > "$knownhosts" 2>/dev/null
+          fi
+          chmod 600 "$knownhosts"
+          prototype_license="$(ssh \
+            -i "$keyfile" \
+            -o BatchMode=yes \
+            -o UserKnownHostsFile="$knownhosts" \
+            "$RELAY_SSH_USER@$RELAY_SSH_HOST" \
+            'if [ "$(id -u)" -eq 0 ]; then cat /var/lib/wesi-aero/prototype-license.key; else sudo -n cat /var/lib/wesi-aero/prototype-license.key; fi' \
+            | tr -d '\r\n')"
+          if ! printf '%s' "$prototype_license" | grep -q '^WA1-'; then
+            echo '::error::Relay did not return a valid Wesi Aero prototype license'
+            exit 1
+          fi
+          echo "::add-mask::$prototype_license"
+          printf 'WESI_AERO_PROTOTYPE_LICENSE=%s\n' "$prototype_license" >> "$GITHUB_ENV"
+
+      - name: Validate Flutter and live control plane
+        run: |
+          set -euo pipefail
+          flutter pub get
+          flutter analyze
+          flutter test
+          curl -fsS --max-time 15 "$AERO_CONTROL_URL/healthz" | grep -q '"status":"ok"'
+          curl -fsS --max-time 15 "$AERO_CONTROL_URL/v1/catalog" | grep -q 'wesi-relay'
+
+      - name: Configure permanent Android release signature
+        shell: bash
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          for name in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
+            if [ -z "${!name:-}" ]; then
+              echo "::error::Required repository secret $name is missing"
+              exit 1
+            fi
+          done
+          keystore="$RUNNER_TEMP/wesi-aero-release.jks"
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | tr -d '[:space:]' | base64 -d > "$keystore"
+          store_password=$(printf '%s' "$ANDROID_KEYSTORE_PASSWORD" | tr -d '\r\n')
+          key_password=$(printf '%s' "$ANDROID_KEY_PASSWORD" | tr -d '\r\n')
+          alias_name=$(printf '%s' "$ANDROID_KEY_ALIAS" | tr -d '\r\n')
+          keytool -list -keystore "$keystore" -storepass "$store_password" -alias "$alias_name" >/dev/null
+          {
+            printf 'storeFile=%s\n' "$keystore"
+            printf 'storePassword=%s\n' "$store_password"
+            printf 'keyAlias=%s\n' "$alias_name"
+            printf 'keyPassword=%s\n' "$key_password"
+          } > android/key.properties
+          python3 scripts/configure_android_signing.py
+
+      - name: Build signed live APK
+        env:
+          GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx5G -Dorg.gradle.daemon=false
+        run: |
+          set -euo pipefail
+          test -n "${WESI_AERO_PROTOTYPE_LICENSE:-}"
+          flutter build apk --release \
+            --dart-define=WESI_AERO_DEMO=false \
+            --dart-define=WESI_AERO_CONTROL_URL="$AERO_CONTROL_URL" \
+            --dart-define=WESI_AERO_PROTOTYPE_LICENSE="$WESI_AERO_PROTOTYPE_LICENSE"
+          cp build/app/outputs/flutter-apk/app-release.apk Wesi-Aero-Android-Live-0.2.1+3.apk
+          test -s Wesi-Aero-Android-Live-0.2.1+3.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Wesi-Aero-Android-Live
+          path: WesiAero/Wesi-Aero-Android-Live-0.2.1+3.apk
+          retention-days: 7
+          if-no-files-found: error
