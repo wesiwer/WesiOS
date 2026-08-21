@@ -53,27 +53,43 @@ class _AmbientBackgroundState extends State<AmbientBackground>
   @override
   Widget build(BuildContext context) {
     final palette = context.palette;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return ColoredBox(
       color: palette.background,
-      child: AnimatedBuilder(
-        animation: _controller,
-        builder: (context, child) => CustomPaint(
-          painter: _AmbientPainter(
-            phase: _controller.value,
-            accent: palette.accent,
-            connected: palette.connected,
-            isDark: Theme.of(context).brightness == Brightness.dark,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          // The grid never changes while a theme is active. Isolating it from
+          // the animated glow lets the raster cache keep this full-screen layer
+          // instead of repainting every line on every animation frame.
+          RepaintBoundary(
+            child: CustomPaint(
+              painter: _GridPainter(isDark: isDark),
+            ),
           ),
-          child: child,
-        ),
-        child: RepaintBoundary(child: widget.child),
+          RepaintBoundary(
+            child: AnimatedBuilder(
+              animation: _controller,
+              builder: (context, child) => CustomPaint(
+                painter: _GlowPainter(
+                  phase: _controller.value,
+                  accent: palette.accent,
+                  connected: palette.connected,
+                  isDark: isDark,
+                ),
+              ),
+            ),
+          ),
+          RepaintBoundary(child: widget.child),
+        ],
       ),
     );
   }
 }
 
-class _AmbientPainter extends CustomPainter {
-  const _AmbientPainter({
+class _GlowPainter extends CustomPainter {
+  const _GlowPainter({
     required this.phase,
     required this.accent,
     required this.connected,
@@ -104,7 +120,10 @@ class _AmbientPainter extends CustomPainter {
           accent.withValues(alpha: 0),
         ],
       ).createShader(
-        Rect.fromCircle(center: accentCenter, radius: size.shortestSide * 0.62),
+        Rect.fromCircle(
+          center: accentCenter,
+          radius: size.shortestSide * 0.62,
+        ),
       );
     final connectedPaint = Paint()
       ..shader = RadialGradient(
@@ -121,7 +140,24 @@ class _AmbientPainter extends CustomPainter {
 
     canvas.drawRect(Offset.zero & size, accentPaint);
     canvas.drawRect(Offset.zero & size, connectedPaint);
+  }
 
+  @override
+  bool shouldRepaint(covariant _GlowPainter oldDelegate) {
+    return oldDelegate.phase != phase ||
+        oldDelegate.accent != accent ||
+        oldDelegate.connected != connected ||
+        oldDelegate.isDark != isDark;
+  }
+}
+
+class _GridPainter extends CustomPainter {
+  const _GridPainter({required this.isDark});
+
+  final bool isDark;
+
+  @override
+  void paint(Canvas canvas, Size size) {
     final gridPaint = Paint()
       ..color = (isDark ? Colors.white : const Color(0xFF1E3A5F))
           .withValues(alpha: isDark ? 0.018 : 0.028)
@@ -136,10 +172,6 @@ class _AmbientPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _AmbientPainter oldDelegate) {
-    return oldDelegate.phase != phase ||
-        oldDelegate.accent != accent ||
-        oldDelegate.connected != connected ||
-        oldDelegate.isDark != isDark;
-  }
+  bool shouldRepaint(covariant _GridPainter oldDelegate) =>
+      oldDelegate.isDark != isDark;
 }
