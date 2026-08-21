@@ -61,7 +61,11 @@ def main() -> None:
                 }
                 wireGuardBackend.setState(wireGuardTunnel, Tunnel.State.UP, parsed)
 '''
-    activity = replace_once(activity, old_handoff, new_handoff, "Xray to WireGuard handoff")
+    # The always-executed hardening step now owns this handoff too. Keep this
+    # legacy guard compatible with both old generated code and already-hardened
+    # code instead of failing merely because the patch was applied earlier.
+    if 'Xray VPN did not release Android TUN' not in activity:
+        activity = replace_once(activity, old_handoff, new_handoff, "Xray to WireGuard handoff")
     MAIN.write_text(activity, encoding="utf-8")
 
     service_check = SERVICE.read_text(encoding="utf-8")
@@ -79,7 +83,7 @@ def main() -> None:
     if 'Xray VPN did not release Android TUN' not in activity_check:
         raise SystemExit("Serialized Xray -> WireGuard handoff is missing")
 
-    print("Fixed Android VPN regressions: non-fatal Xray startup + serialized Xray/WireGuard TUN handoff")
+    print("Verified Android VPN regressions: non-fatal Xray startup + serialized Xray/WireGuard TUN handoff")
 
 
 if __name__ == "__main__":
