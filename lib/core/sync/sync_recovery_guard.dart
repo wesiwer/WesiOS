@@ -139,7 +139,6 @@ class SyncRecoveryGuard {
     await _box?.put(_reasonKey, '');
   }
 
-  @override
-  static String toString() =>
+  static String describe() =>
       'SyncRecoveryGuard(active=$active, status=$lastStatus, run=$lastRunId)';
 }
