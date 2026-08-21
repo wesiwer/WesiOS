@@ -15,16 +15,11 @@ export class StaticProfileProvisioner {
     this.profileDirectory = profileDirectory;
   }
 
-  async profileFor({ user, lease, engine = 'auto' }) {
-    const normalizedEngine = normalizeEngine(engine, lease.protocol);
+  async profileFor({ user, lease }) {
     const protocolNames = profileProtocolCandidates(lease.protocol);
     const candidates = [];
     for (const protocol of protocolNames) {
-      // Prefer an explicitly engine-scoped profile, but preserve the existing
-      // generic files as the source of truth for current relay credentials.
       candidates.push(
-        `${user.id}.${lease.node.id}.${protocol}.${normalizedEngine}.json`,
-        `_default.${lease.node.id}.${protocol}.${normalizedEngine}.json`,
         `${user.id}.${lease.node.id}.${protocol}.json`,
         `_default.${lease.node.id}.${protocol}.json`,
       );
@@ -64,54 +59,21 @@ export class StaticProfileProvisioner {
     const result = {
       ...profile,
       protocol: lease.protocol,
-      engine: normalizedEngine,
-    };
-
-    if (normalizedEngine === 'sing-box') {
-      const explicit = profile.singBoxConfig;
-      const config = typeof explicit === 'string' && explicit.trim().startsWith('{')
-        ? explicit
-        : buildSingBoxConfig(lease.protocol, profile.clientConfig);
-      return {
-        ...result,
-        profileFormat: 'sing-box-json',
-        clientConfig: config,
-      };
-    }
-
-    return {
-      ...result,
       profileFormat: lease.protocol === 'wireguard' || lease.protocol === 'amneziawg'
         ? 'wireguard-ini'
         : 'uri',
     };
-  }
-}
 
-function normalizeEngine(engine, protocol) {
-  if (engine === 'auto' || !engine) {
-    if (['vless-reality', 'vmess', 'trojan', 'shadowsocks', 'hysteria2', 'tuic'].includes(protocol)) {
-      return 'sing-box';
+    // One lease carries both engine representations. The app can switch
+    // Xray <-> sing-box without requesting another credential or session.
+    const explicit = profile.singBoxConfig;
+    if (typeof explicit === 'string' && explicit.trim().startsWith('{')) {
+      result.singBoxConfig = explicit;
+    } else if (['vless-reality', 'vmess', 'trojan', 'shadowsocks', 'hysteria2', 'tuic'].includes(lease.protocol)) {
+      result.singBoxConfig = buildSingBoxConfig(lease.protocol, profile.clientConfig);
     }
-    return 'native';
+    return result;
   }
-  if (!['sing-box', 'xray', 'native'].includes(engine)) {
-    throw new ProvisioningError('INVALID_ENGINE', 'Unsupported tunnel engine', 400);
-  }
-  const allowed = new Set({
-    'vless-reality': ['sing-box', 'xray'],
-    vmess: ['sing-box', 'xray'],
-    trojan: ['sing-box', 'xray'],
-    shadowsocks: ['sing-box', 'xray'],
-    hysteria2: ['sing-box'],
-    tuic: ['sing-box'],
-    wireguard: ['sing-box', 'native'],
-    amneziawg: ['native'],
-  }[protocol] ?? []);
-  if (!allowed.has(engine)) {
-    throw new ProvisioningError('ENGINE_UNAVAILABLE', `${engine} does not support ${protocol}`, 409);
-  }
-  return engine;
 }
 
 function profileProtocolCandidates(protocol) {
@@ -141,7 +103,7 @@ function validateProfile(profile, protocol) {
 
 function buildSingBoxConfig(protocol, raw) {
   const proxy = parseSingBoxOutbound(protocol, raw);
-  const config = {
+  return JSON.stringify({
     log: { level: 'warn', timestamp: true },
     dns: {
       servers: [
@@ -174,8 +136,7 @@ function buildSingBoxConfig(protocol, raw) {
       auto_detect_interface: true,
       final: 'proxy',
     },
-  };
-  return JSON.stringify(config);
+  });
 }
 
 function parseSingBoxOutbound(protocol, raw) {
@@ -198,11 +159,14 @@ function parseVless(raw) {
   let uri;
   try { uri = new URL(raw); } catch { throw invalidUri('VLESS'); }
   if (uri.protocol !== 'vless:' || !uri.hostname || !uri.port || !uri.username) throw invalidUri('VLESS');
-  const security = uri.searchParams.get('security');
-  if (security !== 'reality') throw new ProvisioningError('INVALID_PROFILE', 'VLESS profile must use REALITY');
+  if (uri.searchParams.get('security') !== 'reality') {
+    throw new ProvisioningError('INVALID_PROFILE', 'VLESS profile must use REALITY');
+  }
   const serverName = uri.searchParams.get('sni');
   const publicKey = uri.searchParams.get('pbk');
-  if (!serverName || !publicKey) throw new ProvisioningError('INVALID_PROFILE', 'VLESS REALITY SNI/public key is missing');
+  if (!serverName || !publicKey) {
+    throw new ProvisioningError('INVALID_PROFILE', 'VLESS REALITY SNI/public key is missing');
+  }
   const outbound = {
     type: 'vless',
     server: uri.hostname,
@@ -289,13 +253,16 @@ function parseShadowsocks(raw) {
   let host;
   let port;
   if (body.includes('@')) {
-    const [auth, endpoint] = body.split('@');
+    const split = body.split('@');
+    const auth = split.shift();
+    const endpoint = split.join('@');
     let plainAuth = decodeURIComponent(auth);
     if (!plainAuth.includes(':')) {
       plainAuth = Buffer.from(normalizeBase64(plainAuth), 'base64').toString('utf8');
     }
-    [method, ...password] = plainAuth.split(':');
-    password = password.join(':');
+    const parts = plainAuth.split(':');
+    method = parts.shift();
+    password = parts.join(':');
     const endpointUrl = new URL(`ss://${endpoint}`);
     host = endpointUrl.hostname;
     port = Number(endpointUrl.port);
