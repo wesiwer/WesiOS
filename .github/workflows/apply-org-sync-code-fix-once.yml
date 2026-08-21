@@ -1,5 +1,5 @@
 name: Diagnose PR 241 full analyze
-# trigger: pr241-analyze-v3-start-marker
+# trigger: pr241-analyze-v4-start-marker
 
 on:
   push:
