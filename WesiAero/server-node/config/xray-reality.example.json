@@ -14,7 +14,9 @@
     },
     "system": {
       "statsInboundUplink": true,
-      "statsInboundDownlink": true
+      "statsInboundDownlink": true,
+      "statsOutboundUplink": true,
+      "statsOutboundDownlink": true
     }
   },
   "inbounds": [
@@ -26,8 +28,8 @@
       "settings": {
         "clients": [
           {
-            "id": "REPLACE_WITH_USER_UUID",
-            "email": "opaque-user-id",
+            "id": "REPLACE_WITH_VLESS_USER_UUID",
+            "email": "wesi-vless",
             "flow": "xtls-rprx-vision"
           }
         ],
@@ -48,6 +50,25 @@
             "REPLACE_WITH_HEX_SHORT_ID"
           ]
         }
+      }
+    },
+    {
+      "tag": "vmess-xray",
+      "listen": "0.0.0.0",
+      "port": 8444,
+      "protocol": "vmess",
+      "settings": {
+        "clients": [
+          {
+            "id": "REPLACE_WITH_VMESS_USER_UUID",
+            "email": "wesi-vmess",
+            "alterId": 0
+          }
+        ]
+      },
+      "streamSettings": {
+        "network": "raw",
+        "security": "none"
       }
     }
   ],
