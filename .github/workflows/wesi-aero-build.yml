@@ -17,6 +17,23 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  server-tests:
+    name: Server integration tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: WesiAero/server-node
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Verify keys, payments, limits and encryption
+        run: node --test --test-reporter=spec
+
   android:
     name: Android APK
     runs-on: ubuntu-latest
