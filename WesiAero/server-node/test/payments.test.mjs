@@ -25,7 +25,7 @@ describe('verified payment adapters', () => {
 
   afterEach(() => database.close());
 
-  it('verifies Crypto Pay HMAC, timestamp, payload and deduplicates webhook', async () => {
+  it('verifies Crypto Pay HMAC, ISO timestamp, payload and deduplicates webhook', async () => {
     commerce.setPaymentSetting({
       provider: 'crypto_pay',
       enabled: true,
@@ -52,7 +52,7 @@ describe('verified payment adapters', () => {
     const raw = Buffer.from(JSON.stringify({
       update_id: 1001,
       update_type: 'invoice_paid',
-      request_date: Math.floor(now / 1000),
+      request_date: new Date(now).toISOString(),
       payload: {
         invoice_id: 777001,
         status: 'paid',
