@@ -30,6 +30,29 @@ try {
     ) | Set-Content $AndroidGradle
   }
 
+  $AndroidManifest = Join-Path $ProjectRoot "android/app/src/main/AndroidManifest.xml"
+  if (Test-Path $AndroidManifest) {
+    $ManifestText = Get-Content $AndroidManifest -Raw
+    if (-not $ManifestText.Contains('android:scheme="wesi-aero"')) {
+      $Needle = "        </activity>"
+      $DeepLink = @"
+            <meta-data
+                android:name="flutter_deeplinking_enabled"
+                android:value="false" />
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="wesi-aero"
+                    android:host="payment-return" />
+            </intent-filter>
+"@
+      $ManifestText = $ManifestText.Replace($Needle, "$DeepLink`r`n$Needle")
+      Set-Content $AndroidManifest $ManifestText
+    }
+  }
+
   Push-Location $ProjectRoot
   try {
     flutter pub get
