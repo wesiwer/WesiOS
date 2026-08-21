@@ -1,9 +1,8 @@
 {
-  "status": "failure",
-  "checkedAt": "2026-08-21T04:14:44.612024+00:00",
-  "workflowRunId": "32446190117",
-  "commit": "800c1d3fa9f7222f5bdf0a8c89bc2985001b256c",
+  "status": "started",
+  "checkedAt": "2026-08-21T04:16:49.835690+00:00",
+  "workflowRunId": "32446355746",
+  "commit": "f296311eb5ab91cd38152bb9089c83b0b0bcb213",
   "host": "wesi-aero-178-236-247-194.nip.io",
-  "relayIp": "178.236.247.194",
-  "note": "Live deploy/probe failed; inspect this workflow run. No credentials are stored in this marker."
+  "relayIp": "178.236.247.194"
 }
