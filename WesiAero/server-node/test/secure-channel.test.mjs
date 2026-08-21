@@ -44,7 +44,9 @@ describe('application-layer encrypted control channel', () => {
       () => decryptEnvelope(envelope, key, { replayGuard: guard }),
       (error) => error instanceof SecureChannelError && error.code === 'REPLAY_DETECTED',
     );
-    const tampered = { ...envelope, tag: `${envelope.tag.slice(0, -1)}A` };
+    const tamperedTag = Buffer.from(envelope.tag, 'base64url');
+    tamperedTag[0] ^= 0x01;
+    const tampered = { ...envelope, tag: tamperedTag.toString('base64url') };
     assert.throws(
       () => decryptEnvelope(tampered, key),
       (error) => error instanceof SecureChannelError && error.code === 'DECRYPTION_FAILED',

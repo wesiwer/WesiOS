@@ -59,7 +59,7 @@ class SubscriptionScreen extends StatelessWidget {
                                 children: [
                                   Expanded(flex: 5, child: builder),
                                   const SizedBox(width: GatewayTokens.space16),
-                                  Expanded(flex: 3, child: aside),
+                                  const Expanded(flex: 3, child: aside),
                                 ],
                               )
                             else ...[

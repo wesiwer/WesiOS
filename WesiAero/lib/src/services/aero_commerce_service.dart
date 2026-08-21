@@ -62,8 +62,7 @@ class RemoteAeroCommerceService implements AeroCommerceService {
 
   final Uri baseUri;
   final HttpClient _client = HttpClient();
-  final AesGcm _cipher = AesGcm.with256bits();
-  final Hkdf _hkdf = Hkdf(hmac: Hmac.sha256(), outputLength: 32);
+  final AeroSecureEnvelopeCodec _secureCodec = AeroSecureEnvelopeCodec();
 
   @override
   bool get isDemo => false;
@@ -150,7 +149,7 @@ class RemoteAeroCommerceService implements AeroCommerceService {
   }) async {
     final requestId = _uuid();
     final timestamp = DateTime.now().millisecondsSinceEpoch;
-    final envelope = await _encryptEnvelope(
+    final envelope = await _secureCodec.encrypt(
       payload,
       key,
       requestId: requestId,
@@ -163,7 +162,7 @@ class RemoteAeroCommerceService implements AeroCommerceService {
       headers: {'authorization': 'Bearer $key'},
       body: envelope,
     );
-    final clear = await _decryptEnvelope(response, key, direction: 'response');
+    final clear = await _secureCodec.decrypt(response, key, direction: 'response');
     if (clear['ok'] != true) {
       final error = clear['error'] as Map<String, dynamic>? ?? const {};
       throw AeroApiException(
@@ -172,64 +171,6 @@ class RemoteAeroCommerceService implements AeroCommerceService {
       );
     }
     return clear['data'] as Map<String, dynamic>;
-  }
-
-  Future<Map<String, dynamic>> _encryptEnvelope(
-    Map<String, dynamic> payload,
-    String key, {
-    required String requestId,
-    required int timestamp,
-    required String direction,
-  }) async {
-    final salt = _randomBytes(16);
-    final nonce = _randomBytes(12);
-    final derived = await _hkdf.deriveKey(
-      secretKey: SecretKey(utf8.encode(key)),
-      nonce: salt,
-      info: utf8.encode('wesi-aero-control-v1'),
-    );
-    final aad = utf8.encode('1|$requestId|$timestamp|$direction');
-    final box = await _cipher.encrypt(
-      utf8.encode(jsonEncode(payload)),
-      secretKey: derived,
-      nonce: nonce,
-      aad: aad,
-    );
-    return {
-      'v': 1,
-      'requestId': requestId,
-      'timestamp': timestamp,
-      'salt': base64Url.encode(salt).replaceAll('=', ''),
-      'nonce': base64Url.encode(nonce).replaceAll('=', ''),
-      'ciphertext': base64Url.encode(box.cipherText).replaceAll('=', ''),
-      'tag': base64Url.encode(box.mac.bytes).replaceAll('=', ''),
-    };
-  }
-
-  Future<Map<String, dynamic>> _decryptEnvelope(
-    Map<String, dynamic> envelope,
-    String key, {
-    required String direction,
-  }) async {
-    final requestId = envelope['requestId'] as String;
-    final timestamp = (envelope['timestamp'] as num).toInt();
-    final salt = _decodeBase64Url(envelope['salt'] as String);
-    final nonce = _decodeBase64Url(envelope['nonce'] as String);
-    final derived = await _hkdf.deriveKey(
-      secretKey: SecretKey(utf8.encode(key)),
-      nonce: salt,
-      info: utf8.encode('wesi-aero-control-v1'),
-    );
-    final clear = await _cipher.decrypt(
-      SecretBox(
-        _decodeBase64Url(envelope['ciphertext'] as String),
-        nonce: nonce,
-        mac: Mac(_decodeBase64Url(envelope['tag'] as String)),
-      ),
-      secretKey: derived,
-      aad: utf8.encode('1|$requestId|$timestamp|$direction'),
-    );
-    return jsonDecode(utf8.decode(clear)) as Map<String, dynamic>;
   }
 
   Future<Map<String, dynamic>> _request(
@@ -417,6 +358,75 @@ class DemoAeroCommerceService implements AeroCommerceService {
 
   @override
   void close() {}
+}
+
+class AeroSecureEnvelopeCodec {
+  AeroSecureEnvelopeCodec()
+      : _cipher = AesGcm.with256bits(),
+        _hkdf = Hkdf(hmac: Hmac.sha256(), outputLength: 32);
+
+  final AesGcm _cipher;
+  final Hkdf _hkdf;
+
+  Future<Map<String, dynamic>> encrypt(
+    Map<String, dynamic> payload,
+    String key, {
+    required String requestId,
+    required int timestamp,
+    required String direction,
+    List<int>? salt,
+    List<int>? nonce,
+  }) async {
+    final actualSalt = salt ?? _randomBytes(16);
+    final actualNonce = nonce ?? _randomBytes(12);
+    final derived = await _hkdf.deriveKey(
+      secretKey: SecretKey(utf8.encode(key)),
+      nonce: actualSalt,
+      info: utf8.encode('wesi-aero-control-v1'),
+    );
+    final aad = utf8.encode('1|$requestId|$timestamp|$direction');
+    final box = await _cipher.encrypt(
+      utf8.encode(jsonEncode(payload)),
+      secretKey: derived,
+      nonce: actualNonce,
+      aad: aad,
+    );
+    return {
+      'v': 1,
+      'requestId': requestId,
+      'timestamp': timestamp,
+      'salt': base64Url.encode(actualSalt).replaceAll('=', ''),
+      'nonce': base64Url.encode(actualNonce).replaceAll('=', ''),
+      'ciphertext': base64Url.encode(box.cipherText).replaceAll('=', ''),
+      'tag': base64Url.encode(box.mac.bytes).replaceAll('=', ''),
+    };
+  }
+
+  Future<Map<String, dynamic>> decrypt(
+    Map<String, dynamic> envelope,
+    String key, {
+    required String direction,
+  }) async {
+    final requestId = envelope['requestId'] as String;
+    final timestamp = (envelope['timestamp'] as num).toInt();
+    final salt = _decodeBase64Url(envelope['salt'] as String);
+    final nonce = _decodeBase64Url(envelope['nonce'] as String);
+    final derived = await _hkdf.deriveKey(
+      secretKey: SecretKey(utf8.encode(key)),
+      nonce: salt,
+      info: utf8.encode('wesi-aero-control-v1'),
+    );
+    final clear = await _cipher.decrypt(
+      SecretBox(
+        _decodeBase64Url(envelope['ciphertext'] as String),
+        nonce: nonce,
+        mac: Mac(_decodeBase64Url(envelope['tag'] as String)),
+      ),
+      secretKey: derived,
+      aad: utf8.encode('1|$requestId|$timestamp|$direction'),
+    );
+    return jsonDecode(utf8.decode(clear)) as Map<String, dynamic>;
+  }
 }
 
 class AeroApiException implements Exception {
