@@ -5,6 +5,10 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/restart-organization-sync-hotfix-once.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/ops/run-organization-sync-restart-20260821'
 
 permissions:
   contents: read
@@ -22,6 +26,8 @@ jobs:
       url: https://api.wesi-inc.ru
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: main
 
       - name: Validate organization normalization locally
         shell: bash
@@ -29,7 +35,7 @@ jobs:
           set -euo pipefail
           node --check server/pb_hooks/wesi_sync_read.pb.js
           grep -q 'normalizeOrganizationPayload' server/pb_hooks/wesi_sync_read.pb.js
-          grep -q "OrganizationModel.rootId\|org_wesi_inc" server/pb_hooks/wesi_sync_read.pb.js || {
+          grep -q 'org_wesi_inc' server/pb_hooks/wesi_sync_read.pb.js || {
             echo '::error::Root organization normalization marker is missing'; exit 1;
           }
 
@@ -71,28 +77,25 @@ jobs:
           set -euo pipefail
           dst="$HOOK_DIR/wesi_sync_read.pb.js"
 
-          install_file() {
-            if [ -w "$HOOK_DIR" ]; then
-              tmp="$HOOK_DIR/.deploy-wesi_sync_read.$$.$RANDOM.tmp"
-              cat "$REMOTE" > "$tmp"
-              chmod 0644 "$tmp"
-              cmp -s "$REMOTE" "$tmp"
-              mv -f "$tmp" "$dst"
-            elif [ -e "$dst" ] && [ -w "$dst" ]; then
-              cat "$REMOTE" > "$dst"
-            elif command -v sudo >/dev/null 2>&1 && sudo -n true >/dev/null 2>&1; then
-              tmp="$HOOK_DIR/.deploy-wesi_sync_read.$$.$RANDOM.tmp"
-              sudo -n cp "$REMOTE" "$tmp"
-              sudo -n chmod 0644 "$tmp"
-              sudo -n cmp -s "$REMOTE" "$tmp"
-              sudo -n mv -f "$tmp" "$dst"
-            else
-              echo 'Нет прав на установку sync-read hook' >&2
-              exit 3
-            fi
-          }
+          if [ -w "$HOOK_DIR" ]; then
+            tmp="$HOOK_DIR/.deploy-wesi_sync_read.$$.$RANDOM.tmp"
+            cat "$REMOTE" > "$tmp"
+            chmod 0644 "$tmp"
+            cmp -s "$REMOTE" "$tmp"
+            mv -f "$tmp" "$dst"
+          elif [ -e "$dst" ] && [ -w "$dst" ]; then
+            cat "$REMOTE" > "$dst"
+          elif command -v sudo >/dev/null 2>&1 && sudo -n true >/dev/null 2>&1; then
+            tmp="$HOOK_DIR/.deploy-wesi_sync_read.$$.$RANDOM.tmp"
+            sudo -n cp "$REMOTE" "$tmp"
+            sudo -n chmod 0644 "$tmp"
+            sudo -n cmp -s "$REMOTE" "$tmp"
+            sudo -n mv -f "$tmp" "$dst"
+          else
+            echo 'Нет прав на установку sync-read hook' >&2
+            exit 3
+          fi
 
-          install_file
           if cmp -s "$REMOTE" "$dst" 2>/dev/null; then
             echo 'sync-read hook подтверждён byte-for-byte'
           elif command -v sudo >/dev/null 2>&1 && sudo -n cmp -s "$REMOTE" "$dst"; then
