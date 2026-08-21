@@ -1,0 +1,5 @@
+release=0.22.34+109
+verified_at=2026-08-21T21:12:35Z
+android=wesios-android.apk
+windows=wesios-windows-x64.zip
+manifest=app-manifest.json
