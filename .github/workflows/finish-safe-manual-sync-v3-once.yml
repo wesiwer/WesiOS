@@ -7,88 +7,138 @@ on:
       - '.github/workflows/finish-safe-manual-sync-v3-once.yml'
 
 permissions:
-  contents: write
+  contents: read
   issues: write
   pull-requests: write
 
+concurrency:
+  group: verify-pr234-full-final
+  cancel-in-progress: true
+
 jobs:
-  patch-test-commit:
+  start:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mark start
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh pr comment 234 --repo "$GITHUB_REPOSITORY" --body '⏳ FULL GATE STARTED for `4122837`: full analyze/tests + Android + Windows.'
+
+  analyze-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 41228370058f7abc4039bb33144aa7c08e6754e0
+      - name: Confirm exact head and roadmap tree
+        run: |
+          test "$(git rev-parse HEAD)" = "41228370058f7abc4039bb33144aa7c08e6754e0"
+          git status --short
+          git ls-files 'lib/features/roadmap/**'
+      - name: Validate server JavaScript
+        shell: bash
+        run: |
+          set -euo pipefail
+          for file in server/pb_hooks/*.js server/employee-portal/*.js server/wesi-ai-relay/*.mjs server/wesi-ai-stream/*.mjs; do
+            [ -f "$file" ] || continue
+            node --check "$file"
+          done
+      - name: Validate Wesi AI deployment shell
+        shell: bash
+        run: |
+          set -euo pipefail
+          for file in server/wesi-ai-relay/*.sh server/wesi-ai-stream/*.sh; do
+            [ -f "$file" ] || continue
+            bash -n "$file"
+          done
+          test -s .github/workflows/deploy-wesi-ai.yml
+          test -s .github/workflows/deploy-wesi-ai-streaming.yml
+          test ! -e .github/workflows/deploy-wesi-ai-relay.yml
+          grep -q 'Deploy Wesi AI End-to-End' .github/workflows/deploy-wesi-ai.yml
+          grep -q 'Deploy Wesi AI Streaming' .github/workflows/deploy-wesi-ai-streaming.yml
+          grep -q 'configure-relay-https.sh' .github/workflows/deploy-wesi-ai.yml
+          grep -q 'GEMINI_API_KEY' .github/workflows/deploy-wesi-ai.yml
+      - name: Test Wesi AI Relay
+        run: node --test server/wesi-ai-relay/*.test.mjs
+      - name: Test Wesi AI Main streaming gateway
+        run: node --test server/wesi-ai-stream/*.test.mjs
+      - name: Validate Wesi AI persona bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          python server/build-wesi-ai-personas.py
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p = Path('server/pb_hooks/.wesi-ai-personas.json')
+          data = json.loads(p.read_text(encoding='utf-8'))
+          assert len(data['personas']['zane']) >= 200
+          assert len(data['personas']['nirvana']) >= 200
+          p.unlink()
+          PY
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - name: Diagnose roadmap tree after pub get
+        run: |
+          git status --short
+          find lib/features/roadmap -maxdepth 3 -type f -print | sort
+      - name: Full analyze
+        run: flutter analyze --no-fatal-infos
+      - name: Full tests
+        run: flutter test
+
+  android:
     runs-on: ubuntu-latest
     timeout-minutes: 50
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: fix/safe-local-recovery-upload
-          fetch-depth: 1
-          token: ${{ github.token }}
+          ref: 41228370058f7abc4039bb33144aa7c08e6754e0
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
-      - name: Purge legacy plaintext session settings before restore
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 <<'PY'
-          from pathlib import Path
+      - run: flutter pub get
+      - name: Build Android debug APK
+        run: flutter build apk --debug
 
-          path = Path('lib/core/backup/local_backup_service.dart')
-          text = path.read_text(encoding='utf-8')
-          if 'BACKUP_SECRET_PURGE_FAILED' not in text:
-              needle = "\n    if (manageSafety) {\n"
-              replacement = '''
-            // Legacy builds kept the server session in ordinary Hive settings.
-            // Portable business backups must never preserve or resurrect those
-            // plaintext credentials. The active v2 session lives in secure
-            // storage, so removing sync_session* here does not log the user out.
-            try {
-              final settings = Hive.isBoxOpen('wesios_settings')
-                  ? Hive.box<dynamic>('wesios_settings')
-                  : await Hive.openBox<dynamic>('wesios_settings');
-              for (final key in settings.keys.toList(growable: false)) {
-                final name = '$key';
-                if (name == 'sync_session' || name.startsWith('sync_session_')) {
-                  await settings.delete(key);
-                }
-              }
-            } catch (error) {
-              return LocalRestoreReport(
-                ok: false,
-                errorCode: 'BACKUP_SECRET_PURGE_FAILED',
-                message: 'Не удалось удалить устаревшие локальные данные сеанса: $error',
-              );
-            }
+  windows:
+    runs-on: windows-2022
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 41228370058f7abc4039bb33144aa7c08e6754e0
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - run: flutter pub get
+      - name: Build Windows release
+        run: flutter build windows --release
 
-            if (manageSafety) {
-          '''
-              if needle not in text:
-                  raise SystemExit('backup manageSafety anchor not found')
-              text = text.replace(needle, '\n' + replacement, 1)
-              path.write_text(text, encoding='utf-8')
-          PY
-      - name: Reuse robust v2 integration after security patch
+  report:
+    if: always()
+    needs: [start, analyze-test, android, windows]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Report result
         env:
           GH_TOKEN: ${{ github.token }}
+          A: ${{ needs.analyze-test.result }}
+          D: ${{ needs.android.result }}
+          W: ${{ needs.windows.result }}
         shell: bash
         run: |
-          set -euo pipefail
-          git fetch origin main --depth=1
-          git show origin/main:.github/workflows/finish-safe-manual-sync-v2-once.yml > "$RUNNER_TEMP/v2.yml"
-          python3 <<'PY'
-          from pathlib import Path
-          import os
-          src = Path(os.environ['RUNNER_TEMP']) / 'v2.yml'
-          dst = Path(os.environ['RUNNER_TEMP']) / 'v2-run.sh'
-          lines = src.read_text(encoding='utf-8').splitlines()
-          marker = '      - name: Apply robust patch, verify and commit'
-          start = lines.index(marker)
-          run_index = next(i for i in range(start + 1, len(lines)) if lines[i].startswith('        run: |'))
-          out = []
-          for line in lines[run_index + 1:]:
-              if line and len(line) - len(line.lstrip(' ')) <= 8:
-                  break
-              out.append(line[10:] if line.startswith('          ') else line)
-          if not out:
-              raise SystemExit('could not extract v2 run block')
-          dst.write_text('\n'.join(out) + '\n', encoding='utf-8')
-          PY
-          bash "$RUNNER_TEMP/v2-run.sh"
+          if [ "$A" = success ] && [ "$D" = success ] && [ "$W" = success ]; then
+            gh pr comment 234 --repo "$GITHUB_REPOSITORY" --body "✅ FULL GATE GREEN for 4122837: server/Wesi AI validation, full flutter analyze, full flutter test, Android debug build and Windows release build all passed."
+          else
+            gh pr comment 234 --repo "$GITHUB_REPOSITORY" --body "❌ FULL GATE: analyze/test=$A, android=$D, windows=$W. Inspect run $GITHUB_RUN_ID before merge."
+            exit 1
+          fi
