@@ -84,10 +84,10 @@ class _ServersScreenState extends State<ServersScreen> {
         }
 
         if (nodes.isEmpty) {
-          return const Center(
+          return Center(
             child: ConstrainedBox(
-              constraints: BoxConstraints(maxWidth: 920),
-              child: _EmptyServers(),
+              constraints: const BoxConstraints(maxWidth: 920),
+              child: const _EmptyServers(),
             ),
           );
         }
