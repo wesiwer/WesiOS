@@ -66,17 +66,18 @@ class GatewaySecretStore {
   }
 
   Future<String?> readLicenseKey() async {
-    final stored = (await _storage.read(key: _licenseKey))?.trim();
-    if (stored != null && stored.isNotEmpty) return stored;
-
-    // Prototype builds receive a server-issued license at build time. Keeping
-    // the fallback behind a dart-define means normal production builds never
-    // acquire implicit access and continue to require the regular tariff flow.
+    // A Live prototype APK is built against one exact server-backed key. It
+    // must win over Secure Storage so an older installed build cannot leave a
+    // stale key behind and poison the next update. Normal production builds
+    // do not define this value and therefore continue to use Secure Storage.
     const prototypeLicense = String.fromEnvironment(
       'WESI_AERO_PROTOTYPE_LICENSE',
     );
-    final fallback = prototypeLicense.trim();
-    return fallback.isEmpty ? null : fallback;
+    final embedded = prototypeLicense.trim();
+    if (embedded.isNotEmpty) return embedded;
+
+    final stored = (await _storage.read(key: _licenseKey))?.trim();
+    return stored == null || stored.isEmpty ? null : stored;
   }
 
   Future<void> saveLicenseKey(String value) =>
