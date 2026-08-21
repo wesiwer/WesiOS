@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wesi_aero/src/models/gateway_models.dart';
 
@@ -6,7 +8,8 @@ void main() {
     test('accepts VLESS REALITY URI', () {
       final config = GatewayConfigParser.parse(
         'vless://123e4567-e89b-42d3-a456-426614174000@example.com:443'
-        '?security=reality&encryption=none#Frankfurt',
+        '?security=reality&encryption=none&pbk=server-public-key&sni=example.com'
+        '#Frankfurt',
       );
       expect(config.protocol, GatewayProtocol.vlessReality);
       expect(config.displayName, 'Frankfurt');
@@ -18,6 +21,34 @@ void main() {
           'vless://123e4567-e89b-42d3-a456-426614174000@example.com:443'
           '?security=tls',
         ),
+        throwsFormatException,
+      );
+    });
+
+    test('accepts standard VMess base64 JSON URI', () {
+      final payload = base64.encode(
+        utf8.encode(
+          jsonEncode({
+            'v': '2',
+            'ps': 'Wesi Aero VMess',
+            'add': 'wesi.example',
+            'port': '8444',
+            'id': '123e4567-e89b-42d3-a456-426614174000',
+            'aid': '0',
+            'scy': 'auto',
+            'net': 'tcp',
+            'tls': '',
+          }),
+        ),
+      );
+      final config = GatewayConfigParser.parse('vmess://$payload');
+      expect(config.protocol, GatewayProtocol.vmessXray);
+      expect(config.displayName, 'Wesi Aero VMess');
+    });
+
+    test('rejects malformed VMess URI', () {
+      expect(
+        () => GatewayConfigParser.parse('vmess://not-base64'),
         throwsFormatException,
       );
     });
