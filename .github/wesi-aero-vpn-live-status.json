@@ -1,8 +1,26 @@
 {
-  "status": "started",
-  "checkedAt": "2026-08-21T13:44:01.715264+00:00",
+  "status": "success",
+  "checkedAt": "2026-08-21T13:45:07.423743+00:00",
   "workflowRunId": "32488373777",
   "commit": "9f880e5c09322e09e0551311ef2416ef34404e0b",
   "host": "wesi-aero-178-236-247-194.nip.io",
-  "relayIp": "178.236.247.194"
+  "relayIp": "178.236.247.194",
+  "controlPlaneHttps": true,
+  "paymentsDisabled": true,
+  "wesiAiPreserved": true,
+  "protocols": {
+    "vlessReality": {
+      "port": 8443,
+      "externalEgressVerified": true
+    },
+    "vmessXray": {
+      "port": 8444,
+      "externalEgressVerified": true
+    },
+    "wireGuard": {
+      "port": 51820,
+      "handshakeVerified": true,
+      "externalEgressVerified": true
+    }
+  }
 }
