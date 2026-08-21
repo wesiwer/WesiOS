@@ -15,6 +15,10 @@ function intFromEnv(environment, name, fallback, {
 
 export function loadConfig(environment = process.env) {
   const cwd = process.cwd();
+  const publicBaseUrl = environment.WESI_AERO_PUBLIC_BASE_URL ||
+    'http://127.0.0.1:8790';
+  const paymentReturnUrl = environment.WESI_AERO_PAYMENT_RETURN_URL ||
+    new URL('/v1/payment-return', publicBaseUrl).toString();
   return Object.freeze({
     host: environment.WESI_AERO_HOST || '127.0.0.1',
     port: intFromEnv(environment, 'WESI_AERO_PORT', 8790, {
@@ -39,9 +43,8 @@ export function loadConfig(environment = process.env) {
       max: 1_048_576,
     }),
     technicalLogs: environment.WESI_AERO_TECHNICAL_LOGS !== 'false',
-    publicBaseUrl: environment.WESI_AERO_PUBLIC_BASE_URL || 'http://127.0.0.1:8790',
-    paymentReturnUrl: environment.WESI_AERO_PAYMENT_RETURN_URL ||
-      'https://example.invalid/wesi-aero/payment-return',
+    publicBaseUrl,
+    paymentReturnUrl,
     allowMockPayments: environment.WESI_AERO_ALLOW_MOCK_PAYMENTS !== 'false',
     yookassaShopId: environment.WESI_AERO_YOOKASSA_SHOP_ID || null,
     yookassaSecretKey: environment.WESI_AERO_YOOKASSA_SECRET_KEY || null,
