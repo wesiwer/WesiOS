@@ -86,7 +86,7 @@ fi
 # secure device id after reinstall/data reset. Keep the same key stable, but
 # reclaim old prototype-only device seats if all five slots are already used.
 devices_json="$(admin_get "/v1/admin/licenses/$license_id/devices")"
-device_count="$(printf '%s' "$devices_json" | jq 'length')"
+device_count="$(printf '%s' "$devices_json" | jq '.devices | length')"
 if [[ "$device_count" -ge 5 ]]; then
   echo "Prototype license has $device_count bound devices; reclaiming stale prototype seats." >&2
   while IFS= read -r device_id; do
@@ -94,7 +94,7 @@ if [[ "$device_count" -ge 5 ]]; then
     # Device IDs are validated by the server to [A-Za-z0-9._:-], so they are
     # already safe as a single URL path segment and need no external encoder.
     admin_delete "/v1/admin/licenses/$license_id/devices/$device_id"
-  done < <(printf '%s' "$devices_json" | jq -r '.[].deviceId')
+  done < <(printf '%s' "$devices_json" | jq -r '.devices[].deviceId')
 fi
 
 # Final server-side equality check. A Live APK must never be produced with a
