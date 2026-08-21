@@ -1,4 +1,5 @@
 name: Validate legacy JSON restore
+# retrigger: legacy-json-v1-support
 
 on:
   push:
