@@ -31,6 +31,15 @@ function prepared(overrides = {}) {
   };
 }
 
+function fetchResponse({json, text = '', status = 200} = {}) {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    json: async () => json,
+    text: async () => text,
+  };
+}
+
 test('planner may select zero agents', async () => {
   const result = await runDynamicSubagents({
     prepared: prepared(),
@@ -181,4 +190,75 @@ test('manual named subagent bypasses planner and runs requested role', async () 
   assert.equal(result.results.length, 1);
   assert.equal(result.results[0].spec.role, 'Security Reviewer');
   assert.ok(events.some((event) => event.phase === 'planned' && event.name === 'Security Reviewer'));
+});
+
+test('Zane and Nirvana both plan and execute nested The Agency game-development profiles', async () => {
+  const originalFetch = globalThis.fetch;
+  const agencyTree = {
+    tree: [
+      {type: 'blob', path: 'game-development/unity/unity-architect.md', sha: 'sha-unity'},
+      {type: 'blob', path: 'game-development/godot/godot-shader-developer.md', sha: 'sha-godot'},
+      {type: 'blob', path: 'engineering/engineering-backend-architect.md', sha: 'sha-backend'},
+      {type: 'blob', path: 'design/design-ui-designer.md', sha: 'sha-ui'},
+    ],
+  };
+
+  globalThis.fetch = async (url) => {
+    const target = String(url);
+    if (target.includes('/git/trees/')) return fetchResponse({json: agencyTree});
+    if (target.endsWith('/game-development/unity/unity-architect.md')) {
+      return fetchResponse({text: '---\nname: Unity Architect\ndescription: Unity systems specialist\n---\nDesign modular Unity runtime architecture.'});
+    }
+    if (target.endsWith('/game-development/godot/godot-shader-developer.md')) {
+      return fetchResponse({text: '---\nname: Godot Shader Developer\ndescription: Godot shader specialist\n---\nBuild efficient Godot shader systems.'});
+    }
+    throw new Error(`unexpected fetch: ${target}`);
+  };
+
+  try {
+    const cases = [
+      {
+        persona: 'zane',
+        message: 'Нужна архитектура Unity для игровой системы',
+        role: 'Unity Architect',
+        marker: 'Design modular Unity runtime architecture.',
+      },
+      {
+        persona: 'nirvana',
+        message: 'Нужен Godot shader для визуальной части игры',
+        role: 'Godot Shader Developer',
+        marker: 'Build efficient Godot shader systems.',
+      },
+    ];
+
+    for (const item of cases) {
+      const p = prepared({persona: item.persona, tier: 'pro', message: item.message});
+      p.subagents.maxAgents = 1;
+      p.subagents.maxToolTurns = 0;
+      const result = await runDynamicSubagents({
+        prepared: p,
+        invokeModel: async ({phase, input, spec}) => {
+          if (phase === 'subagent-plan') {
+            assert.match(input.system, /WESI_AI_AGENCY_AGENT_CANDIDATES/);
+            assert.ok(input.system.includes(`"name":"${item.role}"`));
+            return JSON.stringify({subagents: [{role: item.role, task: item.message}]});
+          }
+          assert.equal(spec.role, item.role);
+          assert.match(input.system, /WESI_AI_AGENCY_AGENT_ADAPTER/);
+          assert.ok(input.system.includes(item.marker));
+          return JSON.stringify({summary: `${item.role} completed`, findings: [], risks: [], recommendation: 'ok'});
+        },
+        invokeTool: async () => { throw new Error('tool must not run'); },
+      });
+
+      assert.equal(result.ok, true);
+      assert.equal(result.results.length, 1);
+      assert.equal(result.results[0].ok, true);
+      assert.equal(result.results[0].spec.role, item.role);
+      assert.equal(result.results[0].agency.repository, 'msitarzewski/agency-agents');
+      assert.ok(result.results[0].agency.sourcePath.startsWith('game-development/'));
+    }
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
