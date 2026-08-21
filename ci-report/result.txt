@@ -1,0 +1,4 @@
+source=failure
+inspect=skipped
+build=skipped
+apk=skipped
