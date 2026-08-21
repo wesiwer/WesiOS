@@ -115,6 +115,19 @@ jobs:
                   sys.exit(20 + (port - 8443))
           PY
 
+      - name: Resolve relay outbound NAT address
+        run: |
+          set -euo pipefail
+          SSH=(-i "$HOME/.ssh/wesi_aero_relay_key" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/wesi_aero_known_hosts" -o StrictHostKeyChecking=yes)
+          relay_egress_ip="$(ssh "${SSH[@]}" "$RELAY_SSH_USER@$RELAY_SSH_HOST" \
+            "curl -4 --fail --silent --show-error --max-time 15 https://api.ipify.org")"
+          python3 - "$relay_egress_ip" <<'PY'
+          import ipaddress, sys
+          ipaddress.ip_address(sys.argv[1].strip())
+          PY
+          echo "Relay outbound NAT address resolved."
+          echo "RELAY_EGRESS_IP=$relay_egress_ip" >> "$GITHUB_ENV"
+
       - name: Retrieve ephemeral client verification configs
         run: |
           set -euo pipefail
@@ -141,6 +154,7 @@ jobs:
       - name: End-to-end VLESS and VMess egress verification
         run: |
           set -euo pipefail
+          [ -n "${RELAY_EGRESS_IP:-}" ] || { echo '::error::Relay egress IP was not resolved'; exit 1; }
           verify_protocol() {
             name="$1"
             config="$2"
@@ -161,14 +175,14 @@ jobs:
             [ "$ready" = 1 ] || { echo "::error::$name local SOCKS listener did not start"; tail -n 30 "$log"; return 1; }
             proxy_ip=$(curl --fail --silent --show-error --max-time 20 \
               --socks5-hostname 127.0.0.1:10808 https://api.ipify.org)
-            [ "$proxy_ip" = "$EXPECTED_RELAY_IP" ] || {
-              echo "::error::$name egress IP mismatch: $proxy_ip"
+            [ "$proxy_ip" = "$RELAY_EGRESS_IP" ] || {
+              echo "::error::$name egress IP does not match the relay's measured NAT address"
               tail -n 30 "$log" || true
               return 1
             }
             cleanup
             trap - RETURN
-            echo "$name handshake and egress verified through $proxy_ip"
+            echo "$name handshake and relay egress verified."
           }
           verify_protocol vless "$RUNNER_TEMP/vless-client.json"
           verify_protocol vmess "$RUNNER_TEMP/vmess-client.json"
