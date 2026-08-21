@@ -67,7 +67,7 @@ class _WesiAiSubagentsSheetState extends State<WesiAiSubagentsSheet> {
     _AgencyDivision('Project Management', 'Delivery, планирование, процессы, сроки и координация.', Icons.assignment_outlined),
     _AgencyDivision('Design', 'UI, UX, визуальная система, бренд и creative direction.', Icons.palette_outlined),
     _AgencyDivision('Marketing', 'Growth, content, social, lifecycle и маркетинговая стратегия.', Icons.campaign_outlined),
-    _AgencyDivision('Paid Media', 'Реклама, performance campaigns и paid acquisition.', Icons.ads_click_outlined),
+    _AgencyDivision('Paid Media', 'Реклама, performance campaigns и paid acquisition.', Icons.touch_app_outlined),
     _AgencyDivision('Finance', 'Финансовый анализ, модели, бюджетирование и прогнозы.', Icons.account_balance_outlined),
     _AgencyDivision('Sales', 'Продажи, лиды, сделки, revenue-процессы и enablement.', Icons.trending_up_rounded),
     _AgencyDivision('Support', 'Customer support, service operations и клиентский опыт.', Icons.support_agent_outlined),
@@ -178,135 +178,114 @@ class _WesiAiSubagentsSheetState extends State<WesiAiSubagentsSheet> {
 
   String _submitError(WesiAiMessageSubmitResult result) => switch (result) {
         WesiAiMessageSubmitResult.queueFull => 'Очередь Wesi AI заполнена.',
-        WesiAiMessageSubmitResult.invalidAttachments =>
-          'Некорректные вложения.',
-        WesiAiMessageSubmitResult.persistenceFailed =>
-          'Не удалось сохранить задачу в очередь.',
-        WesiAiMessageSubmitResult.unavailable => 'Сейчас субагент недоступен.',
+        WesiAiMessageSubmitResult.failed => 'Не удалось отправить задачу.',
         WesiAiMessageSubmitResult.accepted => '',
       };
 
-  Widget _baselineList(String? reason) => ListView.separated(
-        padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
-        itemCount: _agents.length,
-        separatorBuilder: (_, __) => const SizedBox(height: 8),
-        itemBuilder: (context, index) {
-          final agent = _agents[index];
-          return Card(
-            margin: EdgeInsets.zero,
-            child: ListTile(
-              leading: CircleAvatar(child: Icon(agent.icon)),
-              title: Text(agent.name),
-              subtitle: Text(agent.description),
-              trailing: FilledButton.tonal(
-                onPressed: reason == null ? () => _invoke(agent) : null,
-                child: const Text('Позвать'),
-              ),
-            ),
-          );
-        },
-      );
-
-  Widget _agencyList(String? reason) => ListView(
-        padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
-        children: [
-          Card(
-            margin: EdgeInsets.zero,
-            child: ListTile(
-              leading: const CircleAvatar(
-                child: Icon(Icons.auto_awesome_rounded),
-              ),
-              title: const Text('Автоподбор специалиста'),
-              subtitle: const Text(
-                'Wesi AI найдёт наиболее узкую подходящую роль во всём каталоге The Agency.',
-              ),
-              trailing: FilledButton.tonal(
-                onPressed: reason == null ? () => _invokeAgency(null) : null,
-                child: const Text('Подобрать'),
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
-          ..._agencyDivisions.map(
-            (division) => Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Card(
-                margin: EdgeInsets.zero,
-                child: ListTile(
-                  leading: CircleAvatar(child: Icon(division.icon)),
-                  title: Text(division.name),
-                  subtitle: Text(division.description),
-                  trailing: const Icon(Icons.chevron_right_rounded),
-                  onTap: reason == null ? () => _invokeAgency(division) : null,
-                ),
-              ),
-            ),
-          ),
-        ],
-      );
-
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final reason = _unavailableReason;
+    final unavailable = _unavailableReason;
     return DefaultTabController(
       length: 2,
       child: SafeArea(
-        child: SizedBox(
-          height: MediaQuery.sizeOf(context).height * 0.86,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Субагенты',
-                      style: theme.textTheme.headlineSmall?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      'Базовые специалисты и большая библиотека The Agency. В Pro и Maximum Wesi AI также подбирает узкие роли автоматически.',
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                    if (reason != null) ...[
-                      const SizedBox(height: 12),
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: theme.colorScheme.secondaryContainer,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Text(reason),
-                      ),
-                    ],
-                  ],
-                ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 8),
+            Container(
+              width: 42,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.outlineVariant,
+                borderRadius: BorderRadius.circular(999),
               ),
-              const TabBar(
-                tabs: [
-                  Tab(text: 'Базовые'),
-                  Tab(text: 'The Agency'),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 10),
+              child: Row(
+                children: [
+                  const Icon(Icons.hub_outlined),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Субагенты',
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Закрыть',
+                    onPressed: () => Navigator.of(context).pop(),
+                    icon: const Icon(Icons.close_rounded),
+                  ),
                 ],
               ),
-              const Divider(height: 1),
-              Expanded(
-                child: TabBarView(
-                  children: [
-                    _baselineList(reason),
-                    _agencyList(reason),
-                  ],
+            ),
+            if (unavailable != null)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.errorContainer,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(unavailable),
                 ),
               ),
-            ],
-          ),
+            const TabBar(
+              tabs: [
+                Tab(text: 'Базовые'),
+                Tab(text: 'The Agency'),
+              ],
+            ),
+            Flexible(
+              child: TabBarView(
+                children: [
+                  ListView.separated(
+                    shrinkWrap: true,
+                    padding: const EdgeInsets.fromLTRB(12, 12, 12, 20),
+                    itemCount: _agents.length,
+                    separatorBuilder: (_, __) => const Divider(height: 1),
+                    itemBuilder: (context, index) {
+                      final agent = _agents[index];
+                      return ListTile(
+                        enabled: unavailable == null,
+                        leading: Icon(agent.icon),
+                        title: Text(agent.name),
+                        subtitle: Text(agent.description),
+                        trailing: const Icon(Icons.chevron_right_rounded),
+                        onTap: unavailable == null ? () => _invoke(agent) : null,
+                      );
+                    },
+                  ),
+                  ListView(
+                    shrinkWrap: true,
+                    padding: const EdgeInsets.fromLTRB(12, 12, 12, 20),
+                    children: [
+                      ListTile(
+                        enabled: unavailable == null,
+                        leading: const Icon(Icons.auto_awesome_rounded),
+                        title: const Text('Автоподбор специалиста'),
+                        subtitle: const Text('Wesi AI выберет наиболее подходящего агента из всего каталога The Agency.'),
+                        trailing: const Icon(Icons.chevron_right_rounded),
+                        onTap: unavailable == null ? () => _invokeAgency(null) : null,
+                      ),
+                      const Divider(height: 1),
+                      ..._agencyDivisions.map((division) => ListTile(
+                            enabled: unavailable == null,
+                            leading: Icon(division.icon),
+                            title: Text(division.name),
+                            subtitle: Text(division.description),
+                            trailing: const Icon(Icons.chevron_right_rounded),
+                            onTap: unavailable == null ? () => _invokeAgency(division) : null,
+                          )),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );
