@@ -1,0 +1,83 @@
+name: WesiMark Final APK Check
+
+on:
+  pull_request:
+    branches:
+      - wesimark/apk-build-v2.4.0
+    paths:
+      - '.wesimark-apk/final-trigger.txt'
+
+permissions:
+  contents: read
+
+jobs:
+  build-final-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Download original WesiMark source
+        shell: bash
+        run: |
+          set -euxo pipefail
+          curl -fL --retry 3 --retry-delay 2 'https://drive.usercontent.google.com/download?id=1ScMR7JUANdpGTha1hqUN-IXAh9UlVTvy&export=download&confirm=t' -o /tmp/wesimark-source.zip
+          unzip -t /tmp/wesimark-source.zip >/dev/null
+          rm -rf /tmp/wesimark-src && mkdir -p /tmp/wesimark-src
+          unzip -q /tmp/wesimark-source.zip -d /tmp/wesimark-src
+          PUBSPEC="$(find /tmp/wesimark-src -name pubspec.yaml -type f | head -n1)"
+          test -n "$PUBSPEC"
+          APP_DIR="$(dirname "$PUBSPEC")"
+          echo "APP_DIR=$APP_DIR" >> "$GITHUB_ENV"
+          grep -F 'version: 2.4.0+14' "$PUBSPEC"
+          test -d "$APP_DIR/android/app/src/main/res"
+          test -f "$APP_DIR/lib/main.dart"
+      - name: Verify original launcher icon
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cd "$APP_DIR"
+          find android/app/src/main/res -type f \( -name 'ic_launcher*' -o -name '*launcher*' \) -print | sort
+          test "$(find android/app/src/main/res -type f \( -name 'ic_launcher*' -o -name '*launcher*' \) | wc -l)" -gt 0
+      - name: Inspect signing configuration
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cd "$APP_DIR"
+          grep -RInE 'signingConfig|storeFile|keyAlias|key.properties' android 2>/dev/null || true
+          find android -type f \( -name '*.jks' -o -name '*.keystore' -o -name 'key.properties' \) -print
+      - name: Build release APK from original Android project
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cd "$APP_DIR"
+          flutter pub get
+          flutter build apk --release --build-name=2.4.0 --build-number=14
+      - name: Verify APK signature
+        shell: bash
+        run: |
+          set -euxo pipefail
+          APK="$APP_DIR/build/app/outputs/flutter-apk/app-release.apk"
+          test -s "$APK"
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -n1)"
+          "$APKSIGNER" verify --verbose --print-certs "$APK"
+          mkdir -p final-apk
+          cp "$APK" final-apk/WesiMark-2.4.0+14.apk
+          sha256sum final-apk/WesiMark-2.4.0+14.apk
+          stat -c 'APK size: %s bytes' final-apk/WesiMark-2.4.0+14.apk
+      - name: Upload final APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: WesiMark-2.4.0+14-final-apk
+          path: final-apk/WesiMark-2.4.0+14.apk
+          if-no-files-found: error
+          retention-days: 30
