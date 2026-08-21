@@ -24,19 +24,26 @@ class GatewayOrb extends StatefulWidget {
 }
 
 class _GatewayOrbState extends State<GatewayOrb>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   late final AnimationController _controller;
+  AppLifecycleState _lifecycleState = AppLifecycleState.resumed;
   bool _hovered = false;
   bool _pressed = false;
+
+  bool get _shouldAnimate =>
+      !widget.reducedMotion && _lifecycleState == AppLifecycleState.resumed;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _lifecycleState =
+        WidgetsBinding.instance.lifecycleState ?? AppLifecycleState.resumed;
     _controller = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 5),
     );
-    if (!widget.reducedMotion) _controller.repeat();
+    _syncTicker();
   }
 
   @override
@@ -47,12 +54,27 @@ class _GatewayOrbState extends State<GatewayOrb>
       _controller.stop();
       _controller.value = 0.18;
     } else {
-      _controller.repeat();
+      _syncTicker();
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _lifecycleState = state;
+    _syncTicker();
+  }
+
+  void _syncTicker() {
+    if (_shouldAnimate) {
+      if (!_controller.isAnimating) _controller.repeat();
+    } else if (_controller.isAnimating) {
+      _controller.stop();
     }
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _controller.dispose();
     super.dispose();
   }
@@ -114,7 +136,7 @@ class _GatewayOrbState extends State<GatewayOrb>
                     isDark: Theme.of(context).brightness == Brightness.dark,
                   ),
                   isComplex: true,
-                  willChange: !widget.reducedMotion,
+                  willChange: _shouldAnimate,
                   child: Center(
                     child: AnimatedContainer(
                       duration: GatewayTokens.expressive,
@@ -258,10 +280,6 @@ class _OrbPainter extends CustomPainter {
 
     canvas.drawCircle(_center, _outerRadius, _basePaint);
 
-    // Keep one sweep-gradient shader for the lifetime of this painter and
-    // rotate the canvas instead of allocating a fresh shader every frame. The
-    // arc itself keeps its original busy/idle angular velocity by compensating
-    // its local start angle for the canvas rotation.
     final arcRotation = rotation * (_busy ? 1 : 0.12);
     final arcSweep = _busy ? math.pi * 1.24 : math.pi * 1.72;
     canvas.save();
