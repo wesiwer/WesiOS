@@ -1,0 +1,6 @@
+target_sha=752929569ef607b4754c3f70a9900eaedbf80e9c
+run_id=32538384285
+status=completed
+conclusion=failure
+url=https://github.com/wesiwer/WesiOS/actions/runs/32538384285
+checked_at=2026-08-21T23:54:10Z
