@@ -1,0 +1,65 @@
+name: Apply Telegram Foreign Relay Migration Once
+
+on:
+  push:
+    branches:
+      - agent/telegram-foreign-relay
+    paths:
+      - 'scripts/apply_telegram_foreign_relay_migration.py'
+      - '.github/workflows/apply-telegram-foreign-relay-once.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: telegram-foreign-relay-migration
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/telegram-foreign-relay
+          fetch-depth: 0
+
+      - name: Apply guarded source migration
+        run: |
+          set -euo pipefail
+          python3 scripts/apply_telegram_foreign_relay_migration.py
+
+      - name: Validate migrated sources before commit
+        run: |
+          set -euo pipefail
+          node --check server/pb_hooks/wesi_telegram_transport.js
+          node --check server/pb_hooks/wesi_telegram_store.js
+          node --check server/pb_hooks/wesi_telegram_gateway.js
+          node --check server/pb_hooks/wesi_telegram_experience.js
+          node --check server/pb_hooks/wesi_telegram_interactions.js
+          node --check server/pb_hooks/wesi_telegram_morning.js
+          node --check server/pb_hooks/wesi_telegram.pb.js
+          node --check server/wesi-ai-relay/telegram.mjs
+          node --check server/wesi-ai-relay/server.mjs
+          node --test server/wesi-ai-relay/telegram.test.mjs
+          bash -n server/wesi-ai-relay/deploy-relay.sh
+          if grep -R -n -F 'api.telegram.org' server/pb_hooks/wesi_telegram*.js .github/workflows/deploy-wesi-telegram.yml; then
+            echo 'Direct Telegram API access still exists on Main Server' >&2
+            exit 1
+          fi
+          grep -q '/v1/wesi-telegram-webhook' server/wesi-ai-relay/nginx-relay.conf
+          grep -q 'TELEGRAM_RELAY_REQUIRED' server/pb_hooks/wesi_telegram.pb.js
+
+      - name: Commit migration result
+        run: |
+          set -euo pipefail
+          git config user.name 'wesiwer'
+          git config user.email '77644223+wesiwer@users.noreply.github.com'
+          git add -A
+          git diff --cached --check
+          git status --short
+          git commit -m 'feat(telegram): route all traffic through foreign Wesi relay'
+          git push origin HEAD:agent/telegram-foreign-relay
+
+# retrigger: 2026-08-20T14:52+03:00
