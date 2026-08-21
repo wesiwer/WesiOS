@@ -1,10 +1,12 @@
 import '../models/commerce_models.dart';
+import '../services/gateway_engine.dart';
 import '../services/secret_store.dart';
 import 'gateway_controller.dart';
 
 class PrototypeGatewayController extends GatewayController {
   PrototypeGatewayController({GatewaySecretStore? prototypeStore})
-      : _prototypeStore = prototypeStore ?? GatewaySecretStore();
+      : _prototypeStore = prototypeStore ?? GatewaySecretStore(),
+        super(engine: PlatformGatewayEngine());
 
   final GatewaySecretStore _prototypeStore;
 
