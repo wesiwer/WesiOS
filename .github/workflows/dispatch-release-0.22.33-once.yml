@@ -1,5 +1,6 @@
 name: Verify Release 0.22.34 Once
 
+# Trigger revision 2 after workflow registration.
 on:
   push:
     branches: [main]
