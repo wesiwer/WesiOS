@@ -176,12 +176,33 @@ cat > "$CONFIG_FILE" <<JSON
   ]
 }
 JSON
-chmod 600 "$CONFIG_FILE"
+
+# Xray-install runs the service as the unprivileged `nobody` account. Keep the
+# REALITY private key out of world-readable config while allowing exactly the
+# service account's primary group to read it.
+XRAY_SERVICE_GROUP="$(id -gn nobody 2>/dev/null || true)"
+if [[ -n "$XRAY_SERVICE_GROUP" ]]; then
+  chown root:"$XRAY_SERVICE_GROUP" "$CONFIG_FILE"
+  chmod 640 "$CONFIG_FILE"
+else
+  chown root:root "$CONFIG_FILE"
+  chmod 644 "$CONFIG_FILE"
+fi
 
 xray run -test -config "$CONFIG_FILE"
 systemctl enable xray
 systemctl restart xray
-systemctl is-active --quiet xray
+for _ in $(seq 1 20); do
+  if systemctl is-active --quiet xray; then
+    break
+  fi
+  sleep 0.25
+done
+if ! systemctl is-active --quiet xray; then
+  systemctl --no-pager --full status xray || true
+  journalctl -u xray -n 60 --no-pager || true
+  exit 1
+fi
 
 if need_cmd ufw && ufw status | grep -q '^Status: active'; then
   ufw allow "${XRAY_VLESS_PORT}/tcp"
