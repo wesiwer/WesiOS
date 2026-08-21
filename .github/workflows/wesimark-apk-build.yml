@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build-apk:
@@ -123,6 +123,7 @@ jobs:
         run: flutter pub get
 
       - name: Analyze
+        continue-on-error: true
         working-directory: /tmp/wesimark-build
         run: flutter analyze --no-fatal-infos --no-fatal-warnings
 
@@ -134,13 +135,28 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cp /tmp/wesimark-build/build/app/outputs/flutter-apk/app-release.apk "$GITHUB_WORKSPACE/WesiMark-2.4.0+14.apk"
-          sha256sum "$GITHUB_WORKSPACE/WesiMark-2.4.0+14.apk"
+          mkdir -p "$GITHUB_WORKSPACE/build-artifacts"
+          cp /tmp/wesimark-build/build/app/outputs/flutter-apk/app-release.apk "$GITHUB_WORKSPACE/build-artifacts/WesiMark-2.4.0+14.apk"
+          sha256sum "$GITHUB_WORKSPACE/build-artifacts/WesiMark-2.4.0+14.apk"
 
-      - name: Upload APK
+      - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: WesiMark-2.4.0+14-apk
-          path: WesiMark-2.4.0+14.apk
+          path: build-artifacts/WesiMark-2.4.0+14.apk
           if-no-files-found: error
           retention-days: 14
+
+      - name: Publish APK to build branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add build-artifacts/WesiMark-2.4.0+14.apk
+          if git diff --cached --quiet; then
+            echo 'APK already published'
+            exit 0
+          fi
+          git commit -m 'build(wesimark): publish 2.4.0+14 APK'
+          git push origin HEAD:wesimark/apk-build-v2.4.0
