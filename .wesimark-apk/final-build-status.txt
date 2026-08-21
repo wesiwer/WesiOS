@@ -1,0 +1,11 @@
+RUN_ID=32535884798
+RUN_URL=https://github.com/wesiwer/WesiOS/actions/runs/32535884798
+SOURCE=original WesiMark Android project from Drive source zip
+RESULT=FAIL
+EXIT_CODE=9
+--- LOG TAIL ---
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0
+  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0
+100  884k    0  884k    0     0  3353k      0 --:--:-- --:--:-- --:--:-- 3353k
