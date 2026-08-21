@@ -22,6 +22,15 @@ class GlassCard extends StatelessWidget {
   final double blur;
   final Color? color;
 
+  static final Map<double, ImageFilter> _blurFilters = <double, ImageFilter>{};
+
+  static ImageFilter _blurFilter(double sigma) {
+    return _blurFilters.putIfAbsent(
+      sigma,
+      () => ImageFilter.blur(sigmaX: sigma, sigmaY: sigma),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final palette = context.palette;
@@ -30,7 +39,7 @@ class GlassCard extends StatelessWidget {
     return ClipRRect(
       borderRadius: borderRadius,
       child: BackdropFilter.grouped(
-        filter: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
+        filter: _blurFilter(blur),
         child: DecoratedBox(
           decoration: BoxDecoration(
             color: color ?? palette.glass,
