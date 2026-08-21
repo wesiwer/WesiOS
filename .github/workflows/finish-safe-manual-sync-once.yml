@@ -1,0 +1,338 @@
+name: Finish safe manual sync once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/finish-safe-manual-sync-once.yml'
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  patch-test-commit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/safe-local-recovery-upload
+          fetch-depth: 1
+          token: ${{ github.token }}
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Apply, test and commit only on green
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -uo pipefail
+          LOG="$RUNNER_TEMP/safe-sync-check.log"
+          : > "$LOG"
+          fail() {
+            code=$?
+            echo "FAILED ($code)" | tee -a "$LOG"
+            {
+              echo 'Интеграция ручного направления синхронизации не прошла проверку.'
+              echo
+              echo '```text'
+              tail -n 180 "$LOG"
+              echo '```'
+            } > "$RUNNER_TEMP/pr-comment.md"
+            gh pr comment 234 --repo "$GITHUB_REPOSITORY" --body-file "$RUNNER_TEMP/pr-comment.md" || true
+            exit "$code"
+          }
+          trap fail ERR
+          set -e
+
+          python3 <<'PY' 2>&1 | tee -a "$LOG"
+          from pathlib import Path
+          import re
+
+          # sync_manual_direction.dart: SyncRecord/SyncStamp types live in merge/journal.
+          manual = Path('lib/core/sync/sync_manual_direction.dart')
+          text = manual.read_text()
+          anchor = "import 'sync_journal.dart';\n"
+          if "import 'sync_merge.dart';" not in text:
+              if anchor not in text:
+                  raise SystemExit('manual sync import anchor not found')
+              text = text.replace(anchor, anchor + "import 'sync_merge.dart';\n", 1)
+          manual.write_text(text)
+
+          # Real org_wesi_inc(+2) fix: quarantined raw Hive rows are not the sync projection.
+          engine = Path('lib/core/sync/sync_engine.dart')
+          text = engine.read_text()
+          old_lookup = """  static dynamic _localValueBySyncId(
+            SyncCollection<dynamic> c,
+            String id,
+          ) {
+            final box = c.box();
+            if (box != null) {
+              try {
+                final direct = box.get(id);
+                if (direct != null && c.shouldSync(direct) && c.idOf(direct) == id) {
+                  return direct;
+                }
+              } catch (_) {}
+            }
+            try {
+              return c.local()[id];
+            } catch (_) {
+              return null;
+            }
+          }
+          """
+          new_lookup = """  static dynamic _localValueBySyncId(
+            SyncCollection<dynamic> c,
+            String id,
+          ) {
+            // The collection projection is authoritative. Some codecs quarantine
+            // structurally invalid raw Hive rows. Reading the box directly here
+            // made that quarantined row look like a concurrent user edit and
+            // blocked authoritative server repair forever.
+            try {
+              return c.local()[id];
+            } catch (_) {
+              return null;
+            }
+          }
+          """
+          if old_lookup not in text:
+              raise SystemExit('sync_engine lookup block not found')
+          text = text.replace(old_lookup, new_lookup, 1)
+          old_snapshot = """    if (snapshot == null) {
+              return currentValue == null && currentStamp == null;
+            }
+          """
+          new_snapshot = """    if (snapshot == null) {
+              // A quarantined row can become visible after its parent/root is
+              // repaired earlier in this same pass. Visibility is not a local edit;
+              // a real Hive edit is journaled and therefore has a fresh stamp.
+              return currentStamp == null;
+            }
+          """
+          if old_snapshot not in text:
+              raise SystemExit('sync_engine snapshot block not found')
+          text = text.replace(old_snapshot, new_snapshot, 1)
+          engine.write_text(text)
+
+          # Recovery auto-lock must never strand normal employee accounts.
+          recovery = Path('lib/core/sync/sync_recovery.dart')
+          text = recovery.read_text()
+          old = """    if (SyncRecoveryGuard.active || SyncRecoveryGuard.migrationChecked) return;
+
+            var hasMeaningfulData = false;
+          """
+          new = """    if (SyncRecoveryGuard.active || SyncRecoveryGuard.migrationChecked) return;
+
+            final current = TeamService.current;
+            if (current == null) return;
+            if (!current.isOwner) {
+              await SyncRecoveryGuard.markMigrationChecked();
+              return;
+            }
+
+            var hasMeaningfulData = false;
+          """
+          if old not in text:
+              raise SystemExit('sync_recovery arm block not found')
+          recovery.write_text(text.replace(old, new, 1))
+
+          # Manual Sync UI: explicit one-way choice. Backup restore buttons remain intact.
+          screen = Path('lib/features/settings/sync_screen.dart')
+          text = screen.read_text()
+          import_anchor = "import '../../core/sync/sync_endpoint.dart';\n"
+          if 'sync_manual_direction.dart' not in text:
+              if import_anchor not in text:
+                  raise SystemExit('sync_screen import anchor not found')
+              text = text.replace(
+                  import_anchor,
+                  import_anchor + "import '../../core/sync/sync_manual_direction.dart';\n",
+                  1,
+              )
+
+          replacement = r'''  Future<void> _manualUploadDevice() async {
+            if (_busy || !_signedIn || TeamService.current?.isOwner != true) return;
+            final confirmed = await showDialog<bool>(
+              context: context,
+              builder: (dialogContext) => AlertDialog(
+                title: Text(_ru ? 'Отправить данные с устройства?' : 'Upload device data?'),
+                content: Text(
+                  _ru
+                      ? 'Телефон станет источником истины для бизнес-данных. Перед отправкой WesiOS создаст резервную копию, затем отправит локальные записи на сервер без скачивания серверных данных и проверит их обратным чтением. После успешной проверки можно использовать обычную автоматическую синхронизацию.'
+                      : 'This device becomes authoritative for business data. WesiOS creates a backup first, uploads local rows without downloading server data, then verifies them by reading them back. Normal automatic sync can be used after verification.',
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(dialogContext, false),
+                    child: Text(_ru ? 'Отмена' : 'Cancel'),
+                  ),
+                  FilledButton(
+                    onPressed: () => Navigator.pop(dialogContext, true),
+                    child: Text(_ru ? 'Отправить с устройства' : 'Upload device'),
+                  ),
+                ],
+              ),
+            );
+            if (confirmed != true || !mounted) return;
+            setState(() => _busy = true);
+            final report = await SyncManualDirection.uploadDeviceAuthoritative();
+            if (!mounted) return;
+            setState(() => _busy = false);
+            _say(report.describe(russian: _ru), error: !report.ok);
+          }
+
+          Future<void> _manualDownloadServer() async {
+            if (_busy || !_signedIn) return;
+            final confirmed = await showDialog<bool>(
+              context: context,
+              builder: (dialogContext) => AlertDialog(
+                title: Text(_ru ? 'Принять данные с сервера?' : 'Download server data?'),
+                content: Text(
+                  _ru
+                      ? 'WesiOS сначала сохранит защитную локальную копию. Затем серверные записи будут применены на устройстве без отправки локальных данных на сервер. Совпадающие записи могут быть заменены серверной версией; локальные записи, которых на сервере нет, автоматически не удаляются.'
+                      : 'WesiOS saves a local safety backup first. Server rows are then applied to this device without uploading local data. Matching rows may be replaced by the server version; local rows absent from the server are not automatically deleted.',
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(dialogContext, false),
+                    child: Text(_ru ? 'Отмена' : 'Cancel'),
+                  ),
+                  FilledButton(
+                    onPressed: () => Navigator.pop(dialogContext, true),
+                    child: Text(_ru ? 'Принять с сервера' : 'Download server'),
+                  ),
+                ],
+              ),
+            );
+            if (confirmed != true || !mounted) return;
+            setState(() => _busy = true);
+            final report = await SyncManualDirection.downloadServerAuthoritative();
+            if (!mounted) return;
+            setState(() => _busy = false);
+            _say(report.describe(russian: _ru), error: !report.ok);
+          }
+
+          Future<void> _syncNow() async {
+            if (_busy) return;
+            if (!_signedIn) {
+              _say(
+                _ru
+                    ? 'Сеанс WesiOS завершён. Войдите заново.'
+                    : 'Your WesiOS session has ended. Sign in again.',
+                error: true,
+              );
+              await _goToLogin();
+              return;
+            }
+
+            final choice = await showDialog<String>(
+              context: context,
+              builder: (dialogContext) => AlertDialog(
+                title: Text(_ru ? 'Ручная синхронизация' : 'Manual sync'),
+                content: Text(
+                  _ru
+                      ? 'Выберите, какая сторона сейчас является источником данных.'
+                      : 'Choose which side is the data source for this pass.',
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(dialogContext),
+                    child: Text(_ru ? 'Отмена' : 'Cancel'),
+                  ),
+                  OutlinedButton(
+                    onPressed: () => Navigator.pop(dialogContext, 'download'),
+                    child: Text(_ru ? 'Принять с сервера' : 'Download server'),
+                  ),
+                  if (TeamService.current?.isOwner == true)
+                    FilledButton(
+                      onPressed: () => Navigator.pop(dialogContext, 'upload'),
+                      child: Text(_ru ? 'Отправить с устройства' : 'Upload device'),
+                    ),
+                ],
+              ),
+            );
+            if (!mounted) return;
+            if (choice == 'upload') {
+              await _manualUploadDevice();
+            } else if (choice == 'download') {
+              await _manualDownloadServer();
+            }
+          }
+
+          @override
+          Widget build'''
+          pattern = r"  Future<void> _syncNow\(\) async \{.*?\n  \}\n\n  @override\n  Widget build"
+          text, count = re.subn(pattern, replacement, text, count=1, flags=re.S)
+          if count != 1:
+              raise SystemExit(f'sync_screen _syncNow replacement count={count}')
+
+          old_button = """                      _button(
+                                label: _ru
+                                    ? 'Синхронизировать сейчас'
+                                    : 'Synchronise now',
+                                onTap: (_busy || !signedIn || recoveryLocked)
+                                    ? null
+                                    : _syncNow,
+                                filled: true,
+                              ),
+          """
+          new_button = """                      _button(
+                                label: _ru
+                                    ? 'Ручная синхронизация'
+                                    : 'Manual sync',
+                                onTap: (_busy || !signedIn) ? null : _syncNow,
+                                filled: true,
+                              ),
+          """
+          if old_button not in text:
+              raise SystemExit('sync_screen main manual button block not found')
+          screen.write_text(text.replace(old_button, new_button, 1))
+          PY
+
+          git rm -f --ignore-unmatch .github/workflows/implement-manual-direction-sync-once.yml 2>&1 | tee -a "$LOG"
+
+          dart format \
+            lib/core/sync/sync_engine.dart \
+            lib/core/sync/sync_recovery.dart \
+            lib/core/sync/sync_manual_direction.dart \
+            lib/features/settings/sync_screen.dart \
+            test/core/sync/organization_sync_hidden_cache_engine_test.dart \
+            2>&1 | tee -a "$LOG"
+
+          flutter pub get 2>&1 | tee -a "$LOG"
+
+          flutter test \
+            test/core/sync/organization_sync_legacy_root_test.dart \
+            test/core/sync/organization_sync_recovery_test.dart \
+            test/core/sync/organization_sync_server_compat_test.dart \
+            test/core/sync/organization_sync_hidden_cache_engine_test.dart \
+            test/core/sync/sync_recovery_test.dart \
+            test/core/backup/local_backup_service_test.dart \
+            2>&1 | tee -a "$LOG"
+
+          flutter analyze --no-fatal-infos \
+            lib/core/sync/sync_engine.dart \
+            lib/core/sync/sync_recovery.dart \
+            lib/core/sync/sync_manual_direction.dart \
+            lib/core/backup/local_backup_service.dart \
+            lib/features/settings/sync_screen.dart \
+            test/core/sync/organization_sync_hidden_cache_engine_test.dart \
+            2>&1 | tee -a "$LOG"
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          if git diff --cached --quiet; then
+            echo 'No integration changes to commit' | tee -a "$LOG"
+          else
+            git commit -m 'feat(sync): add safe manual direction and repair recovery' 2>&1 | tee -a "$LOG"
+            git push origin HEAD:fix/safe-local-recovery-upload 2>&1 | tee -a "$LOG"
+          fi
+
+          gh pr comment 234 --repo "$GITHUB_REPOSITORY" --body '✅ Ручное направление sync + backup restore + full-engine repair `org_wesi_inc (+2)` прошли целевые тесты и analyzer. Изменения закоммичены в ветку.' || true
