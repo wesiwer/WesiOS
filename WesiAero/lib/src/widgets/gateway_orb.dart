@@ -186,41 +186,46 @@ class _OrbPainter extends CustomPainter {
   final TunnelStatus status;
   final bool isDark;
 
-  @override
-  void paint(Canvas canvas, Size size) {
-    final phase = animation.value;
-    final center = size.center(Offset.zero);
-    final shortest = size.shortestSide;
-    final outerRadius = shortest * 0.44;
-    final rotation = phase * math.pi * 2;
-    final connected = status == TunnelStatus.connected;
-    final busy = status == TunnelStatus.connecting ||
-        status == TunnelStatus.disconnecting;
-    final pulse = (math.sin(rotation * (connected ? 1 : 1.6)) + 1) / 2;
+  Size? _cachedSize;
+  Offset _center = Offset.zero;
+  double _shortest = 0;
+  double _outerRadius = 0;
+  Rect _outerRect = Rect.zero;
 
-    final auraPaint = Paint()
-      ..color = color.withValues(
-        alpha: (connected ? 0.10 : 0.055) + pulse * 0.055,
-      )
-      ..maskFilter = MaskFilter.blur(
-        BlurStyle.normal,
-        shortest * (connected ? 0.095 : 0.065),
-      );
-    canvas.drawCircle(center, outerRadius * (0.94 + pulse * 0.035), auraPaint);
+  final Paint _auraPaint = Paint();
+  final Paint _basePaint = Paint()
+    ..style = PaintingStyle.stroke
+    ..strokeCap = StrokeCap.round;
+  final Paint _gradientPaint = Paint()
+    ..style = PaintingStyle.stroke
+    ..strokeCap = StrokeCap.round;
+  final Paint _innerPaint = Paint()
+    ..style = PaintingStyle.stroke
+    ..strokeWidth = 1.2;
+  final Paint _particlePaint = Paint();
 
-    final basePaint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = shortest * 0.018
-      ..strokeCap = StrokeCap.round
+  bool get _connected => status == TunnelStatus.connected;
+  bool get _busy => status == TunnelStatus.connecting ||
+      status == TunnelStatus.disconnecting;
+
+  void _ensureResources(Size size) {
+    if (_cachedSize == size) return;
+    _cachedSize = size;
+    _center = size.center(Offset.zero);
+    _shortest = size.shortestSide;
+    _outerRadius = _shortest * 0.44;
+    _outerRect = Rect.fromCircle(center: _center, radius: _outerRadius);
+
+    _auraPaint.maskFilter = MaskFilter.blur(
+      BlurStyle.normal,
+      _shortest * (_connected ? 0.095 : 0.065),
+    );
+    _basePaint
+      ..strokeWidth = _shortest * 0.018
       ..color = color.withValues(alpha: 0.16);
-    canvas.drawCircle(center, outerRadius, basePaint);
-
-    final gradientPaint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = shortest * 0.022
-      ..strokeCap = StrokeCap.round
+    _gradientPaint
+      ..strokeWidth = _shortest * 0.022
       ..shader = SweepGradient(
-        transform: GradientRotation(rotation),
         colors: [
           color.withValues(alpha: 0.14),
           color,
@@ -228,32 +233,66 @@ class _OrbPainter extends CustomPainter {
           color.withValues(alpha: 0.14),
         ],
         stops: const [0, 0.36, 0.66, 1],
-      ).createShader(Rect.fromCircle(center: center, radius: outerRadius));
+      ).createShader(_outerRect);
+    _innerPaint.color =
+        Colors.white.withValues(alpha: isDark ? 0.12 : 0.16);
+  }
 
-    final arcSweep = busy ? math.pi * 1.24 : math.pi * 1.72;
-    canvas.drawArc(
-      Rect.fromCircle(center: center, radius: outerRadius),
-      -math.pi / 2 + rotation * (busy ? 1 : 0.12),
-      arcSweep,
-      false,
-      gradientPaint,
+  @override
+  void paint(Canvas canvas, Size size) {
+    _ensureResources(size);
+
+    final phase = animation.value;
+    final rotation = phase * math.pi * 2;
+    final pulse =
+        (math.sin(rotation * (_connected ? 1 : 1.6)) + 1) / 2;
+
+    _auraPaint.color = color.withValues(
+      alpha: (_connected ? 0.10 : 0.055) + pulse * 0.055,
+    );
+    canvas.drawCircle(
+      _center,
+      _outerRadius * (0.94 + pulse * 0.035),
+      _auraPaint,
     );
 
-    final innerPaint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.2
-      ..color = Colors.white.withValues(alpha: isDark ? 0.12 : 0.16);
-    canvas.drawCircle(center, outerRadius * 0.78, innerPaint);
+    canvas.drawCircle(_center, _outerRadius, _basePaint);
+
+    // Keep one sweep-gradient shader for the lifetime of this painter and
+    // rotate the canvas instead of allocating a fresh shader every frame. The
+    // arc itself keeps its original busy/idle angular velocity by compensating
+    // its local start angle for the canvas rotation.
+    final arcRotation = rotation * (_busy ? 1 : 0.12);
+    final arcSweep = _busy ? math.pi * 1.24 : math.pi * 1.72;
+    canvas.save();
+    canvas.translate(_center.dx, _center.dy);
+    canvas.rotate(rotation);
+    canvas.translate(-_center.dx, -_center.dy);
+    canvas.drawArc(
+      _outerRect,
+      -math.pi / 2 + arcRotation - rotation,
+      arcSweep,
+      false,
+      _gradientPaint,
+    );
+    canvas.restore();
+
+    canvas.drawCircle(_center, _outerRadius * 0.78, _innerPaint);
 
     for (var index = 0; index < 8; index += 1) {
-      final particleAngle = rotation * (connected ? 0.22 : 0.48) +
+      final particleAngle = rotation * (_connected ? 0.22 : 0.48) +
           index * math.pi * 2 / 8;
-      final radius = outerRadius * (1.10 + (index.isEven ? 0.025 : 0));
-      final point = center +
+      final radius =
+          _outerRadius * (1.10 + (index.isEven ? 0.025 : 0));
+      final point = _center +
           Offset(math.cos(particleAngle), math.sin(particleAngle)) * radius;
-      final particlePaint = Paint()
-        ..color = color.withValues(alpha: 0.18 + (index % 3) * 0.08);
-      canvas.drawCircle(point, index.isEven ? 1.8 : 1.2, particlePaint);
+      _particlePaint.color =
+          color.withValues(alpha: 0.18 + (index % 3) * 0.08);
+      canvas.drawCircle(
+        point,
+        index.isEven ? 1.8 : 1.2,
+        _particlePaint,
+      );
     }
   }
 
