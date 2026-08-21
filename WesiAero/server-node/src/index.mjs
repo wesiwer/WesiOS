@@ -23,19 +23,21 @@ const payments = new PaymentOrchestrator(commerce, config);
 const provisioner = new StaticProfileProvisioner(config.profileDirectory);
 
 if (process.env.WESI_AERO_SEED_DEMO === 'true') {
+  const relayHost = process.env.WESI_AERO_RELAY_PUBLIC_HOST ||
+    'wesi-aero-178-236-247-194.nip.io';
   commerce.upsertServer({
-    id: 'wesi-foreign-relay-candidate',
+    id: 'wesi-relay',
     displayName: 'Wesi Relay',
     city: 'Wesi Relay',
     country: 'Foreign VPS',
     countryCode: '',
-    endpoint: 'wesi-ai-178-236-247-194.nip.io:8443',
+    endpoint: `${relayHost}:8443`,
     protocols: ['vless-reality', 'vmess-xray', 'amneziawg'],
-    load: 0.2,
+    load: 0.05,
     online: true,
     recommended: true,
     capacity: 500,
-    tags: ['relay', 'xray', 'candidate'],
+    tags: ['relay', 'xray', 'wireguard', 'prototype'],
     notes: 'Primary VLESS/REALITY, VMess/Xray fallback, WireGuard fallback.',
     transportConfig: {
       defaultProtocol: 'vless-reality',
