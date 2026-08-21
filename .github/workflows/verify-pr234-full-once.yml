@@ -1,5 +1,6 @@
 name: Verify PR234 full once
 
+# Trigger revision 2: workflow already exists on main before this push.
 on:
   push:
     branches: [main]
