@@ -6,10 +6,7 @@ class LegacyJsonBackup {
   final DateTime createdAt;
   final Map<String, List<Map<String, dynamic>>> collections;
 
-  const LegacyJsonBackup({
-    required this.createdAt,
-    required this.collections,
-  });
+  const LegacyJsonBackup({required this.createdAt, required this.collections});
 
   static bool looksLike(Object? raw) {
     if (raw is! Map) return false;
@@ -75,8 +72,12 @@ class LegacyJsonBackup {
       final recurring = row['isRecurring'] == true;
       final period = _optionalText(row['recurringPeriod']);
       if (period != null &&
-          !const <String>{'daily', 'weekly', 'monthly', 'yearly'}
-              .contains(period)) {
+          !const <String>{
+            'daily',
+            'weekly',
+            'monthly',
+            'yearly',
+          }.contains(period)) {
         throw const FormatException(
           'В старой копии неизвестный период регулярной операции',
         );
@@ -119,12 +120,20 @@ class LegacyJsonBackup {
     for (final row in _rows(raw, 'tasks')) {
       final status = _text(row, 'status', 'задачи');
       final priority = _text(row, 'priority', 'задачи');
-      if (!const <String>{'backlog', 'inProgress', 'review', 'done'}
-          .contains(status)) {
+      if (!const <String>{
+        'backlog',
+        'inProgress',
+        'review',
+        'done',
+      }.contains(status)) {
         throw const FormatException('В старой копии неизвестный статус задачи');
       }
-      if (!const <String>{'low', 'normal', 'high', 'urgent'}
-          .contains(priority)) {
+      if (!const <String>{
+        'low',
+        'normal',
+        'high',
+        'urgent',
+      }.contains(priority)) {
         throw const FormatException(
           'В старой копии неизвестный приоритет задачи',
         );
@@ -155,7 +164,9 @@ class LegacyJsonBackup {
         'dueDate': _optionalDate(row, 'dueDate', 'задачи')?.toIso8601String(),
         'assignee': _optionalText(row['assignee']),
         'subtasks': subtasks,
-        'tags': rawTags is List ? [for (final tag in rawTags) '$tag'] : <String>[],
+        'tags': rawTags is List
+            ? [for (final tag in rawTags) '$tag']
+            : <String>[],
         'order': 0,
         'organizationId': 'org_wesi_inc',
         'responsibleEmployeeId': null,
@@ -165,8 +176,13 @@ class LegacyJsonBackup {
     final articles = <Map<String, dynamic>>[];
     for (final row in _rows(raw, 'articles')) {
       final section = _text(row, 'section', 'база знаний');
-      if (!const <String>{'about', 'playbook', 'guide', 'finance', 'personal'}
-          .contains(section)) {
+      if (!const <String>{
+        'about',
+        'playbook',
+        'guide',
+        'finance',
+        'personal',
+      }.contains(section)) {
         throw const FormatException(
           'В старой копии неизвестный раздел базы знаний',
         );
@@ -177,7 +193,9 @@ class LegacyJsonBackup {
         'title': _text(row, 'title', 'база знаний'),
         'body': row['body'] is String ? row['body'] : '',
         'section': section,
-        'tags': rawTags is List ? [for (final tag in rawTags) '$tag'] : <String>[],
+        'tags': rawTags is List
+            ? [for (final tag in rawTags) '$tag']
+            : <String>[],
         'createdAt': _date(row, 'createdAt', 'база знаний').toIso8601String(),
         'updatedAt': _date(row, 'updatedAt', 'база знаний').toIso8601String(),
         'builtIn': false,
@@ -189,8 +207,7 @@ class LegacyJsonBackup {
     }
 
     List<Map<String, dynamic>> pack(List<Map<String, dynamic>> values) => [
-      for (final fields in values)
-        {'id': fields['id'], 'fields': fields},
+      for (final fields in values) {'id': fields['id'], 'fields': fields},
     ];
 
     return LegacyJsonBackup(
@@ -232,31 +249,19 @@ class LegacyJsonBackup {
     return out;
   }
 
-  static String _text(
-    Map<String, dynamic> row,
-    String key,
-    String section,
-  ) {
+  static String _text(Map<String, dynamic> row, String key, String section) {
     final value = row[key];
     if (value is String && value.trim().isNotEmpty) return value;
     throw FormatException('Повреждено поле $key раздела $section');
   }
 
-  static double _number(
-    Map<String, dynamic> row,
-    String key,
-    String section,
-  ) {
+  static double _number(Map<String, dynamic> row, String key, String section) {
     final value = row[key];
     if (value is num) return value.toDouble();
     throw FormatException('Повреждено числовое поле $key раздела $section');
   }
 
-  static DateTime _date(
-    Map<String, dynamic> row,
-    String key,
-    String section,
-  ) {
+  static DateTime _date(Map<String, dynamic> row, String key, String section) {
     final value = row[key];
     final parsed = value is String ? DateTime.tryParse(value) : null;
     if (parsed != null) return parsed;

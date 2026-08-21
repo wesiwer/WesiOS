@@ -34,56 +34,56 @@ class _JsonCollection extends SyncCollection<String> {
 }
 
 Uint8List _officialV1() => Uint8List.fromList(
-      utf8.encode(
-        jsonEncode({
-          'format': 1,
-          'app': 'WesiOS',
-          'exportedAt': '2026-07-29T22:16:05.000Z',
-          'transactions': [
-            {
-              'id': 'tx-old-1',
-              'title': 'Старая продажа',
-              'amount': 12500,
-              'type': 'income',
-              'date': '2026-07-20T12:00:00.000Z',
-              'category': 'Продажи',
-              'description': 'Из старой JSON-копии',
-              'isRecurring': false,
-              'recurringPeriod': null,
-              'isAnomaly': false,
-              'accountId': 'main',
-            },
-          ],
-          'tasks': [
-            {
-              'id': 'task-old-1',
-              'title': 'Старая задача',
-              'description': null,
-              'status': 'done',
-              'priority': 'normal',
-              'createdAt': '2026-07-19T10:00:00.000Z',
-              'dueDate': null,
-              'assignee': null,
-              'tags': ['legacy'],
-              'subtasks': <Map<String, dynamic>>[],
-            },
-          ],
-          'accounts': [
-            {
-              'id': 'main',
-              'name': 'Основной',
-              'kind': 'main',
-              'openingBalance': 5000,
-              'colorValue': 0xFFF97316,
-              'createdAt': '2026-07-01T00:00:00.000Z',
-              'archived': false,
-              'note': null,
-            },
-          ],
-          'articles': <Map<String, dynamic>>[],
-        }),
-      ),
-    );
+  utf8.encode(
+    jsonEncode({
+      'format': 1,
+      'app': 'WesiOS',
+      'exportedAt': '2026-07-29T22:16:05.000Z',
+      'transactions': [
+        {
+          'id': 'tx-old-1',
+          'title': 'Старая продажа',
+          'amount': 12500,
+          'type': 'income',
+          'date': '2026-07-20T12:00:00.000Z',
+          'category': 'Продажи',
+          'description': 'Из старой JSON-копии',
+          'isRecurring': false,
+          'recurringPeriod': null,
+          'isAnomaly': false,
+          'accountId': 'main',
+        },
+      ],
+      'tasks': [
+        {
+          'id': 'task-old-1',
+          'title': 'Старая задача',
+          'description': null,
+          'status': 'done',
+          'priority': 'normal',
+          'createdAt': '2026-07-19T10:00:00.000Z',
+          'dueDate': null,
+          'assignee': null,
+          'tags': ['legacy'],
+          'subtasks': <Map<String, dynamic>>[],
+        },
+      ],
+      'accounts': [
+        {
+          'id': 'main',
+          'name': 'Основной',
+          'kind': 'main',
+          'openingBalance': 5000,
+          'colorValue': 0xFFF97316,
+          'createdAt': '2026-07-01T00:00:00.000Z',
+          'archived': false,
+          'note': null,
+        },
+      ],
+      'articles': <Map<String, dynamic>>[],
+    }),
+  ),
+);
 
 void main() {
   late Directory tempDir;
@@ -125,7 +125,9 @@ void main() {
     final raw = jsonDecode(utf8.decode(_officialV1()));
     expect(LegacyJsonBackup.looksLike(raw), isTrue);
 
-    final parsed = LegacyJsonBackup.parse(Map<dynamic, dynamic>.from(raw as Map));
+    final parsed = LegacyJsonBackup.parse(
+      Map<dynamic, dynamic>.from(raw as Map),
+    );
     expect(parsed.collections['transactions'], hasLength(1));
     final fields = parsed.collections['transactions']!.single['fields'] as Map;
     expect(fields['organizationId'], 'org_wesi_inc');
@@ -135,40 +137,43 @@ void main() {
     expect(fields['fxRateToReporting'], 1.0);
   });
 
-  test('legacy JSON restores finance and keeps unrelated current rows', () async {
-    final transactionBox = await transactions.ensureBox();
-    await transactionBox.put(
-      'current-only',
-      jsonEncode({'id': 'current-only', 'value': 'must-survive'}),
-    );
+  test(
+    'legacy JSON restores finance and keeps unrelated current rows',
+    () async {
+      final transactionBox = await transactions.ensureBox();
+      await transactionBox.put(
+        'current-only',
+        jsonEncode({'id': 'current-only', 'value': 'must-survive'}),
+      );
 
-    final backup = _officialV1();
-    final inspection = LocalBackupService.inspect(backup);
-    expect(inspection.records, 3);
-    expect(inspection.counts['transactions'], 1);
-    expect(inspection.counts['accounts'], 1);
+      final backup = _officialV1();
+      final inspection = LocalBackupService.inspect(backup);
+      expect(inspection.records, 3);
+      expect(inspection.counts['transactions'], 1);
+      expect(inspection.counts['accounts'], 1);
 
-    final report = await LocalBackupService.restore(
-      backup,
-      collections: <SyncCollection<dynamic>>[
-        accounts,
-        transactions,
-        tasks,
-        articles,
-      ],
-      manageSafety: false,
-    );
+      final report = await LocalBackupService.restore(
+        backup,
+        collections: <SyncCollection<dynamic>>[
+          accounts,
+          transactions,
+          tasks,
+          articles,
+        ],
+        manageSafety: false,
+      );
 
-    expect(report.ok, isTrue, reason: report.message);
-    expect(report.restored, 3);
-    expect(transactionBox.containsKey('current-only'), isTrue);
-    expect(transactionBox.containsKey('tx-old-1'), isTrue);
+      expect(report.ok, isTrue, reason: report.message);
+      expect(report.restored, 3);
+      expect(transactionBox.containsKey('current-only'), isTrue);
+      expect(transactionBox.containsKey('tx-old-1'), isTrue);
 
-    final restored = jsonDecode(transactionBox.get('tx-old-1')!) as Map;
-    expect(restored['amount'], 12500.0);
-    expect(restored['organizationId'], 'org_wesi_inc');
-    expect(restored['source'], 'import');
-  });
+      final restored = jsonDecode(transactionBox.get('tx-old-1')!) as Map;
+      expect(restored['amount'], 12500.0);
+      expect(restored['organizationId'], 'org_wesi_inc');
+      expect(restored['source'], 'import');
+    },
+  );
 
   test('unrelated JSON is rejected instead of guessed', () {
     final bytes = Uint8List.fromList(

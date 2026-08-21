@@ -122,7 +122,7 @@ class _SyncScreenState extends State<SyncScreen> {
     final picked = await FilePicker.platform.pickFiles(
       allowMultiple: false,
       type: FileType.custom,
-      allowedExtensions: const <String>['wesibackup'],
+      allowedExtensions: const <String>['wesibackup', 'json'],
       withData: true,
     );
     if (picked == null || picked.files.isEmpty || !mounted) return;
@@ -144,8 +144,8 @@ class _SyncScreenState extends State<SyncScreen> {
     } on LocalBackupException catch (error) {
       final text = error.code == 'BACKUP_FORMAT_INVALID'
           ? (_ru
-                ? 'Выберите файл .wesibackup, созданный кнопкой экспорта резервной копии. Служебный JSON восстановить здесь нельзя.'
-                : 'Choose a .wesibackup file created by Backup export. Internal JSON files cannot be restored here.')
+                ? 'Выберите резервную копию WesiOS: новый файл .wesibackup или старый JSON-файл экспорта WesiOS.'
+                : 'Choose a WesiOS backup: a current .wesibackup file or a legacy WesiOS JSON export.')
           : (_ru
                 ? 'Резервная копия не прошла проверку: ${error.message}'
                 : 'Backup validation failed: ${error.message}');
