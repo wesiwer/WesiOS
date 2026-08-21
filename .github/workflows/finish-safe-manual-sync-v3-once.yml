@@ -1,0 +1,100 @@
+name: Finish safe manual sync v3 once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/finish-safe-manual-sync-v3-once.yml'
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  patch-test-commit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/safe-local-recovery-upload
+          fetch-depth: 1
+          token: ${{ github.token }}
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - name: Purge legacy plaintext session settings before restore
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 <<'PY'
+          from pathlib import Path
+
+          path = Path('lib/core/backup/local_backup_service.dart')
+          text = path.read_text(encoding='utf-8')
+          if 'BACKUP_SECRET_PURGE_FAILED' not in text:
+              anchor = '''    for (final name in backup.collections.keys) {
+              if (!available.containsKey(name)) {
+                return LocalRestoreReport(
+                  ok: false,
+                  errorCode: 'BACKUP_COLLECTION_UNSUPPORTED',
+                  message: 'Эта версия WesiOS не умеет восстановить раздел $name',
+                );
+              }
+            }
+          '''
+              insert = anchor + '''
+            // Legacy builds kept the server session in ordinary Hive settings.
+            // Portable business backups must never preserve or resurrect those
+            // plaintext credentials. The active v2 session lives in secure
+            // storage, so removing sync_session* here does not log the user out.
+            try {
+              final settings = Hive.isBoxOpen('wesios_settings')
+                  ? Hive.box<dynamic>('wesios_settings')
+                  : await Hive.openBox<dynamic>('wesios_settings');
+              for (final key in settings.keys.toList(growable: false)) {
+                final name = '$key';
+                if (name == 'sync_session' || name.startsWith('sync_session_')) {
+                  await settings.delete(key);
+                }
+              }
+            } catch (error) {
+              return LocalRestoreReport(
+                ok: false,
+                errorCode: 'BACKUP_SECRET_PURGE_FAILED',
+                message: 'Не удалось удалить устаревшие локальные данные сеанса: $error',
+              );
+            }
+          '''
+              if anchor not in text:
+                  raise SystemExit('backup restore anchor not found')
+              text = text.replace(anchor, insert, 1)
+              path.write_text(text, encoding='utf-8')
+          PY
+      - name: Reuse robust v2 integration after security patch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main --depth=1
+          git show origin/main:.github/workflows/finish-safe-manual-sync-v2-once.yml > "$RUNNER_TEMP/v2.yml"
+          python3 <<'PY'
+          from pathlib import Path
+          src = Path(__import__('os').environ['RUNNER_TEMP']) / 'v2.yml'
+          dst = Path(__import__('os').environ['RUNNER_TEMP']) / 'v2-run.sh'
+          lines = src.read_text(encoding='utf-8').splitlines()
+          marker = '      - name: Apply robust patch, verify and commit'
+          start = lines.index(marker)
+          run_index = next(i for i in range(start + 1, len(lines)) if lines[i].startswith('        run: |'))
+          out = []
+          for line in lines[run_index + 1:]:
+              if line and len(line) - len(line.lstrip(' ')) <= 8:
+                  break
+              out.append(line[10:] if line.startswith('          ') else line)
+          if not out:
+              raise SystemExit('could not extract v2 run block')
+          dst.write_text('\n'.join(out) + '\n', encoding='utf-8')
+          PY
+          bash "$RUNNER_TEMP/v2-run.sh"
