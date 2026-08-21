@@ -5,6 +5,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 AMBIENT = ROOT / "lib/src/widgets/ambient_background.dart"
 VPN_REGRESSION_FIX = ROOT / "scripts/fix_android_vpn_regressions.py"
+HEV_TUN_SETUP = ROOT / "scripts/configure_android_hev_tun.py"
 
 
 def main() -> None:
@@ -20,11 +21,12 @@ def main() -> None:
         AMBIENT.write_text(text, encoding="utf-8")
     print("Applied Flutter 3.47 ambient notifier compatibility patch")
 
-    # Live Android workflows already invoke this compatibility step after the
-    # generated native VPN code is hardened. Apply the regression guard here so
-    # every Live/ARM64 build removes the false Xray startup gate and serializes
-    # the Xray -> WireGuard VpnService handoff.
+    # Live Android workflows invoke this step after generated VPN code is
+    # hardened. Keep the lifecycle regression guard and then replace Xray's
+    # built-in Android TUN with the same hev-socks5-tunnel packet bridge used by
+    # v2rayNG's stable hev-tun mode.
     runpy.run_path(str(VPN_REGRESSION_FIX), run_name="__main__")
+    runpy.run_path(str(HEV_TUN_SETUP), run_name="__main__")
 
 
 if __name__ == "__main__":
