@@ -42,7 +42,7 @@ class PrototypeGatewayController extends GatewayController {
     final profile = await _prototypeStore.readProfile();
     if (profile != null) {
       try {
-        await importConfig(profile);
+        await importConfig(profile.rawValue);
         protocol = profile.protocol;
         importProfileName = profile.displayName;
       } catch (error) {
