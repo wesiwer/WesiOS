@@ -60,25 +60,27 @@ class _AmbientBackgroundState extends State<AmbientBackground>
       child: Stack(
         fit: StackFit.expand,
         children: [
-          // The grid never changes while a theme is active. Isolating it from
-          // the animated glow lets the raster cache keep this full-screen layer
-          // instead of repainting every line on every animation frame.
+          // The grid is static while the theme is unchanged, so it can stay in
+          // the raster cache independently from the moving glow layer.
           RepaintBoundary(
             child: CustomPaint(
               painter: _GridPainter(isDark: isDark),
+              isComplex: true,
             ),
           ),
+          // Drive animation directly through CustomPainter.repaint. This keeps
+          // the exact same glow motion while avoiding a widget build/layout on
+          // every display frame.
           RepaintBoundary(
-            child: AnimatedBuilder(
-              animation: _controller,
-              builder: (context, child) => CustomPaint(
-                painter: _GlowPainter(
-                  phase: _controller.value,
-                  accent: palette.accent,
-                  connected: palette.connected,
-                  isDark: isDark,
-                ),
+            child: CustomPaint(
+              painter: _GlowPainter(
+                animation: _controller,
+                accent: palette.accent,
+                connected: palette.connected,
+                isDark: isDark,
               ),
+              isComplex: true,
+              willChange: !widget.reducedMotion,
             ),
           ),
           RepaintBoundary(child: widget.child),
@@ -89,21 +91,21 @@ class _AmbientBackgroundState extends State<AmbientBackground>
 }
 
 class _GlowPainter extends CustomPainter {
-  const _GlowPainter({
-    required this.phase,
+  _GlowPainter({
+    required this.animation,
     required this.accent,
     required this.connected,
     required this.isDark,
-  });
+  }) : super(repaint: animation);
 
-  final double phase;
+  final Animation<double> animation;
   final Color accent;
   final Color connected;
   final bool isDark;
 
   @override
   void paint(Canvas canvas, Size size) {
-    final angle = phase * math.pi * 2;
+    final angle = animation.value * math.pi * 2;
     final accentCenter = Offset(
       size.width * (0.76 + math.sin(angle) * 0.08),
       size.height * (0.14 + math.cos(angle * 0.7) * 0.05),
@@ -144,7 +146,7 @@ class _GlowPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _GlowPainter oldDelegate) {
-    return oldDelegate.phase != phase ||
+    return oldDelegate.animation != animation ||
         oldDelegate.accent != accent ||
         oldDelegate.connected != connected ||
         oldDelegate.isDark != isDark;

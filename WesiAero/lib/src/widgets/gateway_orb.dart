@@ -106,17 +106,15 @@ class _GatewayOrbState extends State<GatewayOrb>
             child: RepaintBoundary(
               child: SizedBox.square(
                 dimension: widget.size,
-                child: AnimatedBuilder(
-                  animation: _controller,
-                  builder: (context, child) => CustomPaint(
-                    painter: _OrbPainter(
-                      phase: _controller.value,
-                      color: activeColor,
-                      status: widget.status,
-                      isDark: Theme.of(context).brightness == Brightness.dark,
-                    ),
-                    child: child,
+                child: CustomPaint(
+                  painter: _OrbPainter(
+                    animation: _controller,
+                    color: activeColor,
+                    status: widget.status,
+                    isDark: Theme.of(context).brightness == Brightness.dark,
                   ),
+                  isComplex: true,
+                  willChange: !widget.reducedMotion,
                   child: Center(
                     child: AnimatedContainer(
                       duration: GatewayTokens.expressive,
@@ -176,20 +174,21 @@ class _GatewayOrbState extends State<GatewayOrb>
 }
 
 class _OrbPainter extends CustomPainter {
-  const _OrbPainter({
-    required this.phase,
+  _OrbPainter({
+    required this.animation,
     required this.color,
     required this.status,
     required this.isDark,
-  });
+  }) : super(repaint: animation);
 
-  final double phase;
+  final Animation<double> animation;
   final Color color;
   final TunnelStatus status;
   final bool isDark;
 
   @override
   void paint(Canvas canvas, Size size) {
+    final phase = animation.value;
     final center = size.center(Offset.zero);
     final shortest = size.shortestSide;
     final outerRadius = shortest * 0.44;
@@ -260,7 +259,7 @@ class _OrbPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _OrbPainter oldDelegate) {
-    return oldDelegate.phase != phase ||
+    return oldDelegate.animation != animation ||
         oldDelegate.color != color ||
         oldDelegate.status != status ||
         oldDelegate.isDark != isDark;
