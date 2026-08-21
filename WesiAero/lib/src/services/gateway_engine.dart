@@ -1,10 +1,22 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import '../config/aero_infrastructure.dart';
 import '../models/gateway_models.dart';
+
+class GatewayTelemetry {
+  GatewayTelemetry._();
+
+  static final ValueNotifier<SessionStats> stats =
+      ValueNotifier<SessionStats>(const SessionStats());
+
+  static void publish(SessionStats value) {
+    stats.value = value;
+  }
+}
 
 abstract interface class GatewayEngine {
   Stream<GatewaySnapshot> get snapshots;
@@ -39,12 +51,13 @@ class PlatformGatewayEngine implements GatewayEngine {
     'com.wesi.aero/gateway-events',
   );
 
-  late final Stream<GatewaySnapshot> _snapshots = _events
-      .receiveBroadcastStream()
-      .where((event) => event is Map<Object?, Object?>)
-      .cast<Map<Object?, Object?>>()
-      .map(_decodeSnapshot)
-      .asBroadcastStream();
+  late final Stream<GatewaySnapshot> _snapshots = _publishStructuralSnapshots(
+    _events
+        .receiveBroadcastStream()
+        .where((event) => event is Map<Object?, Object?>)
+        .cast<Map<Object?, Object?>>()
+        .map(_decodeSnapshot),
+  ).asBroadcastStream();
 
   @override
   Stream<GatewaySnapshot> get snapshots => _snapshots;
@@ -99,6 +112,32 @@ class PlatformGatewayEngine implements GatewayEngine {
 
   @override
   Future<void> dispose() async {}
+
+  static Stream<GatewaySnapshot> _publishStructuralSnapshots(
+    Stream<GatewaySnapshot> source,
+  ) async* {
+    GatewaySnapshot? lastPublished;
+    await for (final snapshot in source) {
+      GatewayTelemetry.publish(snapshot.stats);
+      final previous = lastPublished;
+      if (previous == null || _structureChanged(previous, snapshot)) {
+        lastPublished = snapshot;
+        yield snapshot;
+      }
+    }
+  }
+
+  static bool _structureChanged(
+    GatewaySnapshot previous,
+    GatewaySnapshot next,
+  ) {
+    return previous.status != next.status ||
+        previous.protocol != next.protocol ||
+        previous.node?.id != next.node?.id ||
+        previous.errorMessage != next.errorMessage ||
+        previous.isDemo != next.isDemo ||
+        previous.stats.connectedAt != next.stats.connectedAt;
+  }
 
   static GatewaySnapshot _decodeSnapshot(Map<Object?, Object?> raw) {
     final status = TunnelStatus.values.firstWhere(
@@ -162,6 +201,7 @@ class PreviewGatewayEngine implements GatewayEngine {
       StreamController<GatewaySnapshot>.broadcast();
   Timer? _ticker;
   GatewaySnapshot _current = const GatewaySnapshot.disconnected(isDemo: true);
+  GatewaySnapshot? _lastPublished;
 
   @override
   Stream<GatewaySnapshot> get snapshots => _controller.stream;
@@ -312,7 +352,12 @@ class PreviewGatewayEngine implements GatewayEngine {
 
   void _emit(GatewaySnapshot snapshot) {
     _current = snapshot;
-    if (!_controller.isClosed) _controller.add(snapshot);
+    GatewayTelemetry.publish(snapshot.stats);
+    final previous = _lastPublished;
+    if (previous == null || PlatformGatewayEngine._structureChanged(previous, snapshot)) {
+      _lastPublished = snapshot;
+      if (!_controller.isClosed) _controller.add(snapshot);
+    }
   }
 
   @override
