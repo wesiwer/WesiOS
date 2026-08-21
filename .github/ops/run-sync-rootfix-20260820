@@ -1,0 +1,3 @@
+trigger=2026-08-20
+purpose=pre-release-0.22.31-current-main-verification
+attempt=exact-flutter-analyze-output
