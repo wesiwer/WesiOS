@@ -78,9 +78,9 @@ export class PaymentOrchestrator {
   async handleCryptoPayWebhook(rawBody, signature) {
     this.#verifyCryptoSignature(rawBody, signature);
     const update = parseJson(rawBody);
-    const requestDate = Number(update.request_date);
-    if (!Number.isFinite(requestDate) ||
-        Math.abs(this.now() - requestDate * 1000) > 10 * 60 * 1000) {
+    const requestDate = parseWebhookTimestamp(update.request_date);
+    if (requestDate === null ||
+        Math.abs(this.now() - requestDate) > 10 * 60 * 1000) {
       throw new PaymentError('STALE_WEBHOOK', 'Crypto Pay webhook timestamp is stale', 401);
     }
     const eventId = String(update.update_id ?? '');
@@ -295,6 +295,20 @@ function parseJson(rawBody) {
   } catch {
     throw new PaymentError('INVALID_WEBHOOK', 'Invalid webhook JSON', 400);
   }
+}
+
+function parseWebhookTimestamp(value) {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value < 1_000_000_000_000 ? value * 1000 : value;
+  }
+  if (typeof value !== 'string' || value.length === 0) return null;
+  if (/^\d+$/.test(value)) {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return null;
+    return numeric < 1_000_000_000_000 ? numeric * 1000 : numeric;
+  }
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function parseAmountMinor(value) {
