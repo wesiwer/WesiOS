@@ -1,7 +1,7 @@
 name: wesi_aero
 description: Wesi Aero private network client in the WesiOS design language.
 publish_to: none
-version: 0.2.2+4
+version: 0.2.3+5
 
 environment:
   sdk: '>=3.8.0 <4.0.0'
