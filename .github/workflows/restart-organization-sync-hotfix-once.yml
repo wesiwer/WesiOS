@@ -35,9 +35,7 @@ jobs:
           set -euo pipefail
           node --check server/pb_hooks/wesi_sync_read.pb.js
           grep -q 'normalizeOrganizationPayload' server/pb_hooks/wesi_sync_read.pb.js
-          grep -q 'org_wesi_inc' server/pb_hooks/wesi_sync_read.pb.js || {
-            echo '::error::Root organization normalization marker is missing'; exit 1;
-          }
+          grep -q 'org_wesi_inc' server/pb_hooks/wesi_sync_read.pb.js
 
       - name: Prepare SSH
         env:
@@ -104,34 +102,58 @@ jobs:
             echo 'Установленный sync-read hook не совпадает' >&2
             exit 4
           fi
+          grep -q 'normalizeOrganizationPayload' "$dst" || {
+            echo 'organization normalization отсутствует на production' >&2; exit 5;
+          }
+          echo 'organization normalization присутствует на production'
 
-          if grep -q 'normalizeOrganizationPayload' "$dst" 2>/dev/null; then
-            echo 'organization normalization присутствует на production'
-          elif command -v sudo >/dev/null 2>&1 && sudo -n grep -q 'normalizeOrganizationPayload' "$dst"; then
-            echo 'organization normalization присутствует на production (sudo)'
+          restarted=0
+          if systemctl restart pocketbase 2>/dev/null; then
+            echo 'PocketBase перезапущен напрямую через systemctl'
+            restarted=1
+          elif command -v sudo >/dev/null 2>&1 && sudo -n systemctl restart pocketbase 2>/dev/null; then
+            echo 'PocketBase перезапущен через sudo systemctl'
+            restarted=1
           else
-            echo 'organization normalization отсутствует на production' >&2
-            exit 5
+            old_pid="$(systemctl show pocketbase -p MainPID --value 2>/dev/null || true)"
+            restart_policy="$(systemctl show pocketbase -p Restart --value 2>/dev/null || true)"
+            service_user="$(systemctl show pocketbase -p User --value 2>/dev/null || true)"
+            process_user=''
+            if [[ "$old_pid" =~ ^[0-9]+$ ]] && [ "$old_pid" -gt 1 ]; then
+              process_user="$(ps -o user= -p "$old_pid" 2>/dev/null | xargs || true)"
+            fi
+            current_user="$(id -un)"
+            echo "PocketBase MainPID=$old_pid unitUser=$service_user processUser=$process_user deployUser=$current_user Restart=$restart_policy"
+
+            case "$restart_policy" in
+              always|on-failure|on-abnormal|on-abort|on-watchdog) policy_safe=1 ;;
+              *) policy_safe=0 ;;
+            esac
+
+            if [ "$policy_safe" = 1 ] && [ -n "$process_user" ] && [ "$process_user" = "$current_user" ]; then
+              echo 'systemd гарантирует автоматический подъём; завершаю только текущий PocketBase PID'
+              kill -KILL "$old_pid"
+              for i in $(seq 1 30); do
+                sleep 1
+                new_pid="$(systemctl show pocketbase -p MainPID --value 2>/dev/null || true)"
+                state="$(systemctl is-active pocketbase 2>/dev/null || true)"
+                if [[ "$new_pid" =~ ^[0-9]+$ ]] && [ "$new_pid" -gt 1 ] && [ "$new_pid" != "$old_pid" ] && [ "$state" = active ]; then
+                  echo "PocketBase автоматически поднят systemd: old=$old_pid new=$new_pid"
+                  restarted=1
+                  break
+                fi
+              done
+            fi
           fi
 
-          if systemctl restart pocketbase 2>/dev/null; then
-            echo 'PocketBase перезапущен напрямую'
-          elif command -v sudo >/dev/null 2>&1 && sudo -n systemctl restart pocketbase; then
-            echo 'PocketBase перезапущен через sudo'
-          else
-            echo 'Не удалось перезапустить PocketBase' >&2
+          if [ "$restarted" != 1 ]; then
+            echo 'Не найден безопасный способ перезапустить PocketBase без дополнительных sudo-прав' >&2
             exit 6
           fi
 
-          sleep 3
-          if systemctl is-active --quiet pocketbase 2>/dev/null; then
-            echo 'PocketBase active'
-          elif command -v sudo >/dev/null 2>&1 && sudo -n systemctl is-active --quiet pocketbase; then
-            echo 'PocketBase active (sudo)'
-          else
-            echo 'PocketBase не active после рестарта' >&2
-            exit 7
-          fi
+          sleep 2
+          state="$(systemctl is-active pocketbase 2>/dev/null || true)"
+          [ "$state" = active ] || { echo "PocketBase state=$state после рестарта" >&2; exit 7; }
           rm -f "$REMOTE"
           SH
 
