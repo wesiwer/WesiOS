@@ -66,6 +66,16 @@ describe('control plane HTTP API', () => {
     assert.equal(response.headers.get('cache-control'), 'no-store');
   });
 
+  it('returns payment completion to the installed Wesi Aero app', async () => {
+    const response = await fetch(`${origin}/v1/payment-return`);
+    assert.equal(response.status, 200);
+    assert.match(response.headers.get('content-type') ?? '', /^text\/html/);
+    assert.equal(response.headers.get('cache-control'), 'no-store');
+    const body = await response.text();
+    assert.match(body, /wesi-aero:\/\/payment-return/);
+    assert.doesNotMatch(body, /claimToken|secretKey|cryptoPayToken/i);
+  });
+
   it('requires a user token and creates a short-lived lease', async () => {
     const denied = await fetch(`${origin}/v1/nodes`);
     assert.equal(denied.status, 401);
@@ -94,4 +104,3 @@ describe('control plane HTTP API', () => {
     assert.match(payload.lease.id, /^[0-9a-f-]{36}$/i);
   });
 });
-
