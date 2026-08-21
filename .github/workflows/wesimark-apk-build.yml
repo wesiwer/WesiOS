@@ -19,32 +19,46 @@ permissions:
 jobs:
   build-apk:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
     steps:
-      - name: Checkout build branch
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Reconstruct and verify WesiMark source
+      - name: Reconstruct verified WesiMark source
         shell: bash
         run: |
           set -euo pipefail
           cat \
-            .wesimark-apk/part00 \
-            .wesimark-apk/part01 \
-            .wesimark-apk/part02 \
-            .wesimark-apk/part03 \
-            .wesimark-apk/part04 \
-            .wesimark-apk/tail00 \
-            .wesimark-apk/tail01 \
-            .wesimark-apk/tail02 \
-            .wesimark-apk/tail03 \
-            .wesimark-apk/tail04 \
-            .wesimark-apk/tail05 \
-            .wesimark-apk/tail06 \
-            .wesimark-apk/tail07 \
+            .wesimark-apk/v2part00 \
+            .wesimark-apk/v2part01 \
+            .wesimark-apk/v2part02 \
+            .wesimark-apk/v2r00 \
+            .wesimark-apk/v2r01 \
+            .wesimark-apk/v2r02 \
+            .wesimark-apk/v2r03 \
+            .wesimark-apk/v2r04 \
+            .wesimark-apk/v2r05 \
+            .wesimark-apk/v2r06 \
+            .wesimark-apk/v2r07 \
+            .wesimark-apk/v2pair08_09 \
+            .wesimark-apk/v2pair10_11 \
+            .wesimark-apk/v2pair12_13 \
+            .wesimark-apk/v2pair14_15 \
+            .wesimark-apk/v2r16 \
+            .wesimark-apk/v2r17 \
+            .wesimark-apk/v2r18 \
+            .wesimark-apk/v2r19 \
+            .wesimark-apk/v2pair20_21 \
+            .wesimark-apk/v2pair22_23 \
+            .wesimark-apk/v2pair24_25 \
+            .wesimark-apk/v2pair26_27 \
+            .wesimark-apk/v2pair28_29 \
+            .wesimark-apk/v2pair30_31 \
+            .wesimark-apk/v2pair32_33 \
             | tr -d '\r\n\t ' \
             | base64 -d > /tmp/wesimark.tar.gz
-          echo '53db8b72115cfad5e8edcc8ca1d21679f1299c8e89ec10f44677c0a03a08c7cb  /tmp/wesimark.tar.gz' | sha256sum -c -
+          echo '50a40a01fe130eb14df3afd8b7f638d10a03cf8c2a08b6cbefc55f046351b2b3  /tmp/wesimark.tar.gz' | sha256sum -c -
+          rm -rf /tmp/wesimark-src
           mkdir -p /tmp/wesimark-src
           tar -xzf /tmp/wesimark.tar.gz -C /tmp/wesimark-src
           grep -q '^version: 2.4.0+14$' /tmp/wesimark-src/pubspec.yaml
@@ -56,13 +70,13 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Flutter stable
+      - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: stable
           cache: true
 
-      - name: Create Android project and apply WesiMark source
+      - name: Create Android project
         shell: bash
         run: |
           set -euo pipefail
@@ -70,19 +84,24 @@ jobs:
           rm -rf /tmp/wesimark-build
           flutter create --platforms=android --org ru.wesi --project-name wesimark /tmp/wesimark-build
           cp /tmp/wesimark-src/pubspec.yaml /tmp/wesimark-build/pubspec.yaml
-          rm -rf /tmp/wesimark-build/lib /tmp/wesimark-build/assets
+          rm -rf /tmp/wesimark-build/lib /tmp/wesimark-build/test
           cp -a /tmp/wesimark-src/lib /tmp/wesimark-build/lib
-          cp -a /tmp/wesimark-src/assets /tmp/wesimark-build/assets
 
-          FONT="$(find /usr/share/fonts -type f -iname 'DejaVuSans.ttf' | head -n 1 || true)"
-          if [ -z "$FONT" ]; then
-            echo 'DejaVuSans.ttf was not found on the runner' >&2
-            exit 1
+          mkdir -p /tmp/wesimark-build/assets/fonts /tmp/wesimark-build/assets/products
+          FONT_REG='/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'
+          FONT_BOLD='/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf'
+          if [ ! -f "$FONT_REG" ]; then
+            sudo apt-get update
+            sudo apt-get install -y fonts-dejavu-core
           fi
           cd /tmp/wesimark-build
           grep -oE 'assets/fonts/[^[:space:]]+\.(ttf|otf)' pubspec.yaml | sort -u | while read -r font_path; do
             mkdir -p "$(dirname "$font_path")"
-            cp "$FONT" "$font_path"
+            if [[ "$font_path" == *Bold* ]]; then
+              cp "$FONT_BOLD" "$font_path"
+            else
+              cp "$FONT_REG" "$font_path"
+            fi
           done
 
           cat > android/app/src/main/AndroidManifest.xml <<'EOF'
@@ -92,7 +111,6 @@ jobs:
               <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
               <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
               <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" android:maxSdkVersion="30" />
-              <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
               <application
                   android:label="WesiMark"
                   android:name="${applicationName}"
@@ -127,16 +145,11 @@ jobs:
         working-directory: /tmp/wesimark-build
         run: flutter pub get
 
-      - name: Analyze
-        continue-on-error: true
-        working-directory: /tmp/wesimark-build
-        run: flutter analyze --no-fatal-infos --no-fatal-warnings
-
       - name: Build release APK
         working-directory: /tmp/wesimark-build
         run: flutter build apk --release --build-name=2.4.0 --build-number=14
 
-      - name: Prepare APK artifact
+      - name: Prepare APK
         shell: bash
         run: |
           set -euo pipefail
@@ -152,11 +165,16 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-      - name: Publish APK to build branch
+      - name: Publish direct APK to build branch
         if: github.event_name == 'push'
         shell: bash
         run: |
           set -euo pipefail
+          cp "$GITHUB_WORKSPACE/build-artifacts/WesiMark-2.4.0+14.apk" /tmp/WesiMark-2.4.0+14.apk
+          git fetch origin wesimark/apk-build-v2.4.0
+          git checkout -B wesimark/apk-build-v2.4.0 origin/wesimark/apk-build-v2.4.0
+          mkdir -p build-artifacts
+          cp /tmp/WesiMark-2.4.0+14.apk build-artifacts/WesiMark-2.4.0+14.apk
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add build-artifacts/WesiMark-2.4.0+14.apk
@@ -164,5 +182,5 @@ jobs:
             echo 'APK already published'
             exit 0
           fi
-          git commit -m 'build(wesimark): publish 2.4.0+14 APK'
+          git commit -m 'build(wesimark): publish 2.4.0+14 APK [skip ci]'
           git push origin HEAD:wesimark/apk-build-v2.4.0
