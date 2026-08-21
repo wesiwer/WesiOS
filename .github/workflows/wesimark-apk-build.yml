@@ -6,6 +6,11 @@ on:
       - 'wesimark/apk-build-v2.4.0'
     paths:
       - '.github/workflows/wesimark-apk-build.yml'
+  pull_request:
+    branches:
+      - 'wesimark/apk-build-v2.4.0'
+    paths:
+      - '.wesimark-apk/trigger.txt'
   workflow_dispatch:
 
 permissions:
@@ -148,6 +153,7 @@ jobs:
           retention-days: 14
 
       - name: Publish APK to build branch
+        if: github.event_name == 'push'
         shell: bash
         run: |
           set -euo pipefail
