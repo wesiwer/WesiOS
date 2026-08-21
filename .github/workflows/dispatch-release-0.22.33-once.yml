@@ -7,7 +7,7 @@ on:
 
 permissions:
   actions: write
-  contents: read
+  contents: write
 
 jobs:
   dispatch:
@@ -24,3 +24,20 @@ jobs:
             -f notes='Исправлена синхронизация организаций и восстановление дерева организаций.' \
             -f deploy_to_server=true
           echo 'Release workflow dispatched for 0.22.33+108'
+
+      - name: Record successful dispatch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p .github/ops
+          printf 'release=0.22.33+108\ndispatched_at=%s\nsource_sha=%s\n' \
+            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$GITHUB_SHA" > /tmp/release-dispatched.txt
+          CONTENT=$(base64 -w0 /tmp/release-dispatched.txt)
+          gh api \
+            --method PUT \
+            -H 'Accept: application/vnd.github+json' \
+            "/repos/$GITHUB_REPOSITORY/contents/.github/ops/release-0.22.33-dispatched.txt" \
+            -f message='ops(release): record 0.22.33 dispatch' \
+            -f content="$CONTENT" \
+            -f branch='main'
