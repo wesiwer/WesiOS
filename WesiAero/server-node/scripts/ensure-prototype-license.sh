@@ -91,13 +91,9 @@ if [[ "$device_count" -ge 5 ]]; then
   echo "Prototype license has $device_count bound devices; reclaiming stale prototype seats." >&2
   while IFS= read -r device_id; do
     [[ -n "$device_id" ]] || continue
-    encoded="$(python3 - "$device_id" <<'PY'
-import sys
-from urllib.parse import quote
-print(quote(sys.argv[1], safe=''))
-PY
-)"
-    admin_delete "/v1/admin/licenses/$license_id/devices/$encoded"
+    # Device IDs are validated by the server to [A-Za-z0-9._:-], so they are
+    # already safe as a single URL path segment and need no external encoder.
+    admin_delete "/v1/admin/licenses/$license_id/devices/$device_id"
   done < <(printf '%s' "$devices_json" | jq -r '.[].deviceId')
 fi
 
