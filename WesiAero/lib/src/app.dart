@@ -20,10 +20,14 @@ class WesiAeroApp extends StatefulWidget {
 
 class _WesiAeroAppState extends State<WesiAeroApp> {
   late ThemeMode _themeMode;
+  late final ThemeData _lightTheme;
+  late final ThemeData _darkTheme;
 
   @override
   void initState() {
     super.initState();
+    _lightTheme = GatewayTheme.light();
+    _darkTheme = GatewayTheme.dark();
     _themeMode = widget.controller.themeMode;
     widget.controller.addListener(_handleControllerChanged);
   }
@@ -56,8 +60,8 @@ class _WesiAeroAppState extends State<WesiAeroApp> {
       child: MaterialApp(
         debugShowCheckedModeBanner: false,
         title: 'Wesi Aero',
-        theme: GatewayTheme.light(),
-        darkTheme: GatewayTheme.dark(),
+        theme: _lightTheme,
+        darkTheme: _darkTheme,
         themeMode: _themeMode,
         themeAnimationDuration: GatewayTokens.expressive,
         themeAnimationCurve: Curves.easeOutCubic,
