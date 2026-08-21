@@ -85,6 +85,7 @@ jobs:
           python3 scripts/download_xray_aar.py
           python3 scripts/configure_android_xray.py
           python3 scripts/harden_android_xray_datapath.py
+          python3 scripts/optimize_flutter_control_plane.py
           for density in mdpi hdpi xhdpi xxhdpi xxxhdpi; do
             cp assets/branding/wesi_aero_mark.png "android/app/src/main/res/mipmap-$density/ic_launcher.png"
           done
@@ -97,6 +98,8 @@ jobs:
           grep -q 'NET_CAPABILITY_NOT_VPN' android/app/src/main/kotlin/com/wesi/wesi_aero/AeroXrayVpnService.kt
           grep -q 'measureDelay("https://cp.cloudflare.com/generate_204")' android/app/src/main/kotlin/com/wesi/wesi_aero/AeroXrayVpnService.kt
           grep -q 'put("outboundTag", "proxy")' android/app/src/main/kotlin/com/wesi/wesi_aero/AeroXrayVpnService.kt
+          grep -q 'Duration(seconds: 60)' lib/src/state/gateway_controller.dart
+          grep -q 'if (changed || clearedError) notifyListeners();' lib/src/state/gateway_controller.dart
           test -s android/app/libs/libv2ray.aar
 
       - name: Load prototype license from Wesi Relay
