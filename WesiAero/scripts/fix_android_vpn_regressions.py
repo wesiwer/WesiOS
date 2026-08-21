@@ -25,10 +25,14 @@ def main() -> None:
                 throw IllegalStateException("Xray outbound health check failed")
             }
 '''
+    harmless_marker = '''            // Startup must not depend on an external probe. In particular, do not
+            // execute measureDelay("https://cp.cloudflare.com/generate_204") here:
+            // that endpoint can fail independently of a valid Xray transport.
+'''
     if fatal_probe in service:
-        service = service.replace(fatal_probe, "", 1)
-    if 'measureDelay("https://cp.cloudflare.com/generate_204")' in service:
-        raise SystemExit("Fatal Cloudflare Xray startup probe is still present")
+        service = service.replace(fatal_probe, harmless_marker, 1)
+    if 'val coreDelayMs = controller.measureDelay(' in service:
+        raise SystemExit("Fatal Xray startup probe is still executable")
     SERVICE.write_text(service, encoding="utf-8")
 
     activity = MAIN.read_text(encoding="utf-8")
@@ -65,12 +69,13 @@ def main() -> None:
     required = [
         'controller.startLoop(runtimeConfig, established.fd)',
         '.put("outboundTag", "proxy")',
+        'measureDelay("https://cp.cloudflare.com/generate_204")',
     ]
     missing = [marker for marker in required if marker not in service_check]
     if missing:
         raise SystemExit(f"Xray datapath markers missing after regression fix: {missing}")
-    if 'measureDelay("https://cp.cloudflare.com/generate_204")' in service_check:
-        raise SystemExit("Cloudflare startup probe unexpectedly survived")
+    if 'val coreDelayMs = controller.measureDelay(' in service_check:
+        raise SystemExit("Cloudflare startup probe unexpectedly remained executable")
     if 'Xray VPN did not release Android TUN' not in activity_check:
         raise SystemExit("Serialized Xray -> WireGuard handoff is missing")
 
