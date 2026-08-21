@@ -10,24 +10,108 @@ on:
     branches:
       - 'wesimark/apk-build-v2.4.0'
     paths:
-      - '.wesimark-apk/trigger.txt'
+      - '.wesimark-apk/original-android-trigger.txt'
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  verify-apk:
+  build-apk:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Verify published APK
+
+      - name: Download original WesiMark source
         shell: bash
         run: |
           set -euo pipefail
-          test -f build-artifacts/WesiMark-2.4.0+14.apk
-          SIZE=$(stat -c%s build-artifacts/WesiMark-2.4.0+14.apk)
-          echo "APK size: $SIZE bytes"
-          test "$SIZE" -eq 75750373
-          sha256sum build-artifacts/WesiMark-2.4.0+14.apk
+          URL='https://drive.usercontent.google.com/download?id=1ScMR7JUANdpGTha1hqUN-IXAh9UlVTvy&export=download&confirm=t'
+          curl -L --fail --retry 3 --retry-delay 2 "$URL" -o /tmp/WesiMark-source.zip
+          unzip -t /tmp/WesiMark-source.zip >/dev/null
+          rm -rf /tmp/wesimark-original
+          mkdir -p /tmp/wesimark-original
+          unzip -q /tmp/WesiMark-source.zip -d /tmp/wesimark-original
+          ROOT="$(find /tmp/wesimark-original -name pubspec.yaml -type f -printf '%h\n' | head -n1)"
+          test -n "$ROOT"
+          echo "WESIMARK_ROOT=$ROOT" >> "$GITHUB_ENV"
+          grep -q '^version: 2.4.0+14$' "$ROOT/pubspec.yaml"
+          test -d "$ROOT/android/app/src/main/res"
+          test -f "$ROOT/lib/main.dart"
+
+      - name: Verify original Android identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$WESIMARK_ROOT"
+          echo 'Original launcher resources:'
+          find android/app/src/main/res -type f \( -iname '*launcher*' -o -iname '*foreground*' -o -iname '*background*' -o -path '*/mipmap-*/*' \) -print | sort
+          COUNT="$(find android/app/src/main/res -type f \( -iname '*launcher*' -o -path '*/mipmap-*/*' \) | wc -l)"
+          test "$COUNT" -gt 0
+          echo "Launcher resource count: $COUNT"
+          echo 'Android identity/signing references:'
+          grep -RniE 'applicationId|namespace|signingConfig|signingConfigs|storeFile|keyAlias' android/app android/build.gradle* android/settings.gradle* 2>/dev/null || true
+          echo 'Keystore material present:'
+          find android . -maxdepth 4 -type f \( -iname '*.jks' -o -iname '*.keystore' -o -name 'key.properties' -o -iname '*.p12' \) -print | sort || true
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Resolve dependencies
+        working-directory: ${{ env.WESIMARK_ROOT }}
+        run: flutter pub get
+
+      - name: Build release APK from original Android project
+        working-directory: ${{ env.WESIMARK_ROOT }}
+        run: flutter build apk --release --build-name=2.4.0 --build-number=14
+
+      - name: Verify APK identity and signature
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$WESIMARK_ROOT/build/app/outputs/flutter-apk/app-release.apk"
+          test -s "$APK"
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n1)"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK"
+          "$BUILD_TOOLS/aapt" dump badging "$APK" | head -n 8
+          mkdir -p "$GITHUB_WORKSPACE/build-artifacts"
+          cp "$APK" "$GITHUB_WORKSPACE/build-artifacts/WesiMark-2.4.0+14.apk"
+          sha256sum "$GITHUB_WORKSPACE/build-artifacts/WesiMark-2.4.0+14.apk"
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: WesiMark-2.4.0+14-original-android
+          path: build-artifacts/WesiMark-2.4.0+14.apk
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Publish corrected direct APK to build branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp "$GITHUB_WORKSPACE/build-artifacts/WesiMark-2.4.0+14.apk" /tmp/WesiMark-2.4.0+14.apk
+          git fetch origin wesimark/apk-build-v2.4.0
+          git reset --hard origin/wesimark/apk-build-v2.4.0
+          mkdir -p build-artifacts
+          cp /tmp/WesiMark-2.4.0+14.apk build-artifacts/WesiMark-2.4.0+14.apk
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -f build-artifacts/WesiMark-2.4.0+14.apk
+          if git diff --cached --quiet; then
+            echo 'Corrected APK already published'
+            exit 0
+          fi
+          git commit -m 'build(wesimark): publish corrected original-android APK [skip ci]'
+          git push origin HEAD:wesimark/apk-build-v2.4.0
