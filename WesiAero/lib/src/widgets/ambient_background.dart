@@ -20,17 +20,24 @@ class AmbientBackground extends StatefulWidget {
 }
 
 class _AmbientBackgroundState extends State<AmbientBackground>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   late final AnimationController _controller;
+  AppLifecycleState _lifecycleState = AppLifecycleState.resumed;
+
+  bool get _shouldAnimate =>
+      !widget.reducedMotion && _lifecycleState == AppLifecycleState.resumed;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _lifecycleState =
+        WidgetsBinding.instance.lifecycleState ?? AppLifecycleState.resumed;
     _controller = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 18),
     );
-    if (!widget.reducedMotion) _controller.repeat();
+    _syncTicker();
   }
 
   @override
@@ -41,12 +48,28 @@ class _AmbientBackgroundState extends State<AmbientBackground>
       _controller.stop();
       _controller.value = 0.25;
     } else {
-      _controller.repeat();
+      _syncTicker();
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _lifecycleState = state;
+    _syncTicker();
+  }
+
+  void _syncTicker() {
+    if (_shouldAnimate) {
+      if (!_controller.isAnimating) _controller.repeat();
+    } else if (_controller.isAnimating) {
+      // Preserve the current visual phase while Wesi Aero is not visible.
+      _controller.stop();
     }
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _controller.dispose();
     super.dispose();
   }
@@ -76,7 +99,7 @@ class _AmbientBackgroundState extends State<AmbientBackground>
                 isDark: isDark,
               ),
               isComplex: true,
-              willChange: !widget.reducedMotion,
+              willChange: _shouldAnimate,
             ),
           ),
           RepaintBoundary(child: widget.child),
@@ -158,9 +181,6 @@ class _GlowPainter extends CustomPainter {
       size.height * math.sin(angle * 0.55) * 0.05,
     );
 
-    // Move cached radial layers instead of allocating two new gradient shaders
-    // and painting two full-screen rectangles every frame. The glow radii,
-    // alpha and motion are unchanged.
     canvas.save();
     canvas.translate(accentOffset.dx, accentOffset.dy);
     canvas.drawCircle(_accentBase, _accentRadius, _accentPaint);
