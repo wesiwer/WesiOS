@@ -6,6 +6,25 @@ import {
   verifySecret,
 } from './credentials.mjs';
 
+export const SUPPORTED_PROTOCOLS = Object.freeze([
+  'vless-reality',
+  'vmess',
+  'trojan',
+  'shadowsocks',
+  'hysteria2',
+  'tuic',
+  'wireguard',
+  'amneziawg',
+]);
+
+const SUPPORTED_PROTOCOL_SET = new Set(SUPPORTED_PROTOCOLS);
+
+export function normalizeProtocol(protocol) {
+  // Compatibility with profiles/catalog rows created by the old prototype.
+  if (protocol === 'vmess-xray') return 'vmess';
+  return protocol;
+}
+
 export class RepositoryError extends Error {
   constructor(code, message, statusCode = 400) {
     super(message);
@@ -71,7 +90,11 @@ export class GatewayRepository {
   }
 
   upsertNode(node) {
-    validateNode(node);
+    const normalizedNode = {
+      ...node,
+      protocols: [...new Set(node.protocols.map(normalizeProtocol))],
+    };
+    validateNode(normalizedNode);
     this.database.prepare(`
       INSERT INTO nodes (
         id, city, country, country_code, endpoint, protocols_json,
@@ -88,18 +111,18 @@ export class GatewayRepository {
         recommended = excluded.recommended,
         updated_at = excluded.updated_at
     `).run(
-      node.id,
-      node.city,
-      node.country,
-      node.countryCode.toUpperCase(),
-      node.endpoint,
-      JSON.stringify([...new Set(node.protocols)]),
-      node.load ?? 0,
-      node.online === false ? 0 : 1,
-      node.recommended === true ? 1 : 0,
+      normalizedNode.id,
+      normalizedNode.city,
+      normalizedNode.country,
+      normalizedNode.countryCode.toUpperCase(),
+      normalizedNode.endpoint,
+      JSON.stringify(normalizedNode.protocols),
+      normalizedNode.load ?? 0,
+      normalizedNode.online === false ? 0 : 1,
+      normalizedNode.recommended === true ? 1 : 0,
       this.now(),
     );
-    return this.getNode(node.id);
+    return this.getNode(normalizedNode.id);
   }
 
   getNode(id) {
@@ -139,7 +162,8 @@ export class GatewayRepository {
 
   reserveLease({ user, deviceId, nodeId, protocol }) {
     validateDeviceId(deviceId);
-    if (!['vless-reality', 'vmess-xray', 'amneziawg'].includes(protocol)) {
+    protocol = normalizeProtocol(protocol);
+    if (!SUPPORTED_PROTOCOL_SET.has(protocol)) {
       throw new RepositoryError('INVALID_PROTOCOL', 'Unsupported protocol');
     }
 
@@ -333,7 +357,7 @@ function mapNode(row) {
     country: row.country,
     countryCode: row.country_code,
     endpoint: row.endpoint,
-    protocols: JSON.parse(row.protocols_json),
+    protocols: [...new Set(JSON.parse(row.protocols_json).map(normalizeProtocol))],
     load: row.load,
     online: row.online === 1,
     recommended: row.recommended === 1,
@@ -359,8 +383,7 @@ function validateNode(node) {
     throw new RepositoryError('INVALID_NODE', 'Invalid node id');
   }
   if (!Array.isArray(node.protocols) || node.protocols.length === 0 ||
-      node.protocols.some((value) =>
-        !['vless-reality', 'vmess-xray', 'amneziawg'].includes(value))) {
+      node.protocols.some((value) => !SUPPORTED_PROTOCOL_SET.has(value))) {
     throw new RepositoryError('INVALID_NODE', 'Invalid node protocols');
   }
   if (node.load !== undefined &&
