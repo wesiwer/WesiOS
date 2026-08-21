@@ -9,6 +9,10 @@ class PrototypeGatewayController extends GatewayController {
       : _prototypeStore = prototypeStore ?? GatewaySecretStore(),
         super(engine: PlatformGatewayEngine());
 
+  static const String _embeddedPrototypeLicense = String.fromEnvironment(
+    'WESI_AERO_PROTOTYPE_LICENSE',
+  );
+
   final GatewaySecretStore _prototypeStore;
 
   @override
@@ -18,18 +22,33 @@ class PrototypeGatewayController extends GatewayController {
   Future<void> initialize() async {
     await super.initialize();
 
-    // Billing is deliberately bypassed for the networking prototype. Keep the
-    // normal commerce implementation intact so it can be re-enabled later.
-    licenseKey = null;
-    license = _prototypeLicense();
+    // Live prototype builds carry a server-issued key. Never replace a real
+    // redeemed license with a synthetic local license: PlatformGatewayEngine
+    // provisions every lease through the control plane and therefore needs the
+    // exact same server-backed credential.
+    final embeddedKey = _embeddedPrototypeLicense.trim();
+    if (embeddedKey.isEmpty) {
+      license = null;
+      licenseKey = null;
+      commerceError = 'Эта сборка Wesi Aero не содержит служебный ключ доступа.';
+    } else if (license?.isActive != true || licenseKey != embeddedKey) {
+      try {
+        await redeemLicenseKey(embeddedKey, silent: true);
+      } catch (_) {
+        license = null;
+        licenseKey = null;
+        commerceError =
+            'Служебный ключ этой сборки не подтверждён сервером. Обновите Wesi Aero.';
+      }
+    }
 
     if (selectedNode == null) {
       const prototypeNode = GatewayNode(
-        id: 'wesi-relay-01',
+        id: 'wesi-relay',
         city: 'Wesi Relay',
         country: 'Wesi Aero',
         countryCode: '',
-        endpoint: 'wesi-ai-178-236-247-194.nip.io:8443',
+        endpoint: 'wesi-aero-178-236-247-194.nip.io:8443',
         pingMs: 0,
         load: 0,
         protocols: {
@@ -65,20 +84,15 @@ class PrototypeGatewayController extends GatewayController {
 
   @override
   Future<void> removeLicense() async {
-    licenseKey = null;
-    license = _prototypeLicense();
-    notifyListeners();
+    // Prototype access is build-managed. Re-assert the embedded server key
+    // instead of leaving the engine with a synthetic/local-only license.
+    final embeddedKey = _embeddedPrototypeLicense.trim();
+    if (embeddedKey.isEmpty) {
+      license = null;
+      licenseKey = null;
+      notifyListeners();
+      return;
+    }
+    await redeemLicenseKey(embeddedKey, silent: true);
   }
-
-  AeroLicense _prototypeLicense() => AeroLicense(
-        id: 'prototype-access',
-        planId: null,
-        ipMode: AeroIpMode.shared,
-        deviceLimit: 1,
-        deviceCount: 1,
-        durationDays: 365,
-        status: 'active',
-        expiresAt: DateTime.now().add(const Duration(days: 3650)),
-        maskedKey: 'PROTOTYPE',
-      );
 }
