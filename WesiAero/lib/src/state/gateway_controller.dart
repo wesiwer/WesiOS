@@ -23,6 +23,7 @@ class GatewayController extends ChangeNotifier {
   final AeroCommerceService _commerce;
   StreamSubscription<GatewaySnapshot>? _subscription;
   Timer? _catalogTimer;
+  Timer? _checkoutTimer;
 
   GatewaySnapshot snapshot = const GatewaySnapshot.disconnected(isDemo: true);
   List<GatewayNode> nodes = const [];
@@ -50,6 +51,7 @@ class GatewayController extends ChangeNotifier {
   String? commerceError;
   String? deviceId;
   int _quoteGeneration = 0;
+  bool _checkoutRefreshBusy = false;
 
   List<RoutingRule> rules = const [
     RoutingRule(
@@ -123,6 +125,16 @@ class GatewayController extends ChangeNotifier {
           await redeemLicenseKey(storedKey, silent: true);
         } catch (_) {
           await _secretStore.clearLicenseKey();
+        }
+      }
+      if (license?.isActive == true) {
+        await _secretStore.clearPendingOrder();
+      } else {
+        final pending = await _secretStore.readPendingOrder();
+        if (pending != null) {
+          activeOrder = pending;
+          _startCheckoutPolling();
+          unawaited(refreshCheckout());
         }
       }
     } catch (error) {
@@ -234,6 +246,8 @@ class GatewayController extends ChangeNotifier {
         durationDays: selectedDurationDays,
         provider: provider,
       );
+      await _secretStore.savePendingOrder(activeOrder!);
+      _startCheckoutPolling();
       return activeOrder!;
     } catch (error) {
       commerceError = _friendlyCommerceError(error);
@@ -244,14 +258,36 @@ class GatewayController extends ChangeNotifier {
     }
   }
 
+  void _startCheckoutPolling() {
+    _checkoutTimer?.cancel();
+    _checkoutTimer = Timer.periodic(
+      const Duration(seconds: 2),
+      (_) => unawaited(refreshCheckout()),
+    );
+  }
+
   Future<bool> refreshCheckout() async {
     final order = activeOrder;
     if (order == null) return false;
+    if (_checkoutRefreshBusy) return activeOrder?.paid == true;
+    _checkoutRefreshBusy = true;
     try {
       activeOrder = await _commerce.refreshOrder(order);
+      await _secretStore.savePendingOrder(activeOrder!);
       if (activeOrder!.paid) {
         await redeemLicenseKey(activeOrder!.key!, silent: true);
+        await _secretStore.clearPendingOrder();
+        _checkoutTimer?.cancel();
         return true;
+      }
+      if (const {'canceled', 'expired', 'failed'}.contains(activeOrder!.status)) {
+        await _secretStore.clearPendingOrder();
+        _checkoutTimer?.cancel();
+        commerceError = switch (activeOrder!.status) {
+          'canceled' => 'Платёж отменён.',
+          'expired' => 'Срок оплаты истёк. Создайте новый заказ.',
+          _ => 'Платёж не удалось завершить.',
+        };
       }
       notifyListeners();
       return false;
@@ -259,6 +295,8 @@ class GatewayController extends ChangeNotifier {
       commerceError = _friendlyCommerceError(error);
       notifyListeners();
       return false;
+    } finally {
+      _checkoutRefreshBusy = false;
     }
   }
 
@@ -299,7 +337,11 @@ class GatewayController extends ChangeNotifier {
     license = null;
     licenseKey = null;
     activeOrder = null;
-    await _secretStore.clearLicenseKey();
+    _checkoutTimer?.cancel();
+    await Future.wait([
+      _secretStore.clearLicenseKey(),
+      _secretStore.clearPendingOrder(),
+    ]);
     notifyListeners();
   }
 
@@ -395,7 +437,7 @@ class GatewayController extends ChangeNotifier {
   void toggleRule(String id, bool enabled) {
     if (isConnected || isBusy) return;
     rules = rules
-        .map((rule) => rule.id == id ? rule.copyWith(enabled: enabled) : rule)
+        .map((rule) => rule.id == id ? rule.copyWith(enabled: enabled))
         .toList(growable: false);
     notifyListeners();
   }
@@ -492,6 +534,7 @@ class GatewayController extends ChangeNotifier {
   @override
   void dispose() {
     _catalogTimer?.cancel();
+    _checkoutTimer?.cancel();
     unawaited(_subscription?.cancel());
     unawaited(_engine.dispose());
     _commerce.close();
