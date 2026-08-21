@@ -103,7 +103,7 @@ void main() {
     final envelope = Map<String, dynamic>.from(
       jsonDecode(utf8.decode(backup.bytes)) as Map,
     );
-    envelope['payloadSha256'] = '0' * 64;
+    envelope['payloadSha256'] = List<String>.filled(64, '0').join();
     final corrupted = Uint8List.fromList(utf8.encode(jsonEncode(envelope)));
 
     final report = await LocalBackupService.restore(
