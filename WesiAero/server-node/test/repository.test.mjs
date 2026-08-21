@@ -22,7 +22,7 @@ describe('GatewayRepository', () => {
       country: 'Germany',
       countryCode: 'DE',
       endpoint: 'gateway.example:443',
-      protocols: ['vless-reality', 'amneziawg'],
+      protocols: ['vless-reality', 'vmess-xray', 'amneziawg'],
       load: 0.2,
       online: true,
       recommended: true,
@@ -45,6 +45,23 @@ describe('GatewayRepository', () => {
     const row = database.prepare('SELECT token_hash FROM users WHERE id = ?').get(created.id);
     assert.ok(ArrayBuffer.isView(row.token_hash));
     assert.equal(Buffer.from(row.token_hash).includes(Buffer.from(created.token)), false);
+  });
+
+  it('accepts VMess/Xray as a first-class lease protocol', () => {
+    const created = repository.createUser({
+      displayName: 'VMess User',
+      maxSessions: 1,
+      quotaBytes: 0,
+    });
+    const user = repository.authenticate(created.token);
+    const lease = repository.reserveLease({
+      user,
+      deviceId: 'android-vmess-001',
+      nodeId: 'de-fra-01',
+      protocol: 'vmess-xray',
+    });
+    assert.equal(lease.protocol, 'vmess-xray');
+    assert.equal(lease.node.protocols.includes('vmess-xray'), true);
   });
 
   it('enforces the concurrent session limit atomically', () => {
