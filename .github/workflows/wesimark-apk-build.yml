@@ -166,7 +166,6 @@ jobs:
           retention-days: 14
 
       - name: Publish direct APK to build branch
-        if: github.event_name == 'push'
         shell: bash
         run: |
           set -euo pipefail
