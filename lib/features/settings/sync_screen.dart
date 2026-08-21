@@ -6,6 +6,8 @@ import '../../core/localization/wesi_locale.dart';
 import '../../core/sync/sync_auto.dart';
 import '../../core/sync/sync_codec.dart';
 import '../../core/sync/sync_endpoint.dart';
+import '../../core/sync/sync_recovery.dart';
+import '../../core/sync/sync_recovery_guard.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/wesi_wordmark.dart';
 import '../../core/widgets/window_controls.dart';
@@ -79,6 +81,73 @@ class _SyncScreenState extends State<SyncScreen> {
     Navigator.of(context).pushNamedAndRemoveUntil('/login', (_) => false);
   }
 
+  Future<void> _runRecovery() async {
+    if (_busy || !_signedIn) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(_ru ? 'Безопасный перенос' : 'Protected local upload'),
+        content: Text(
+          _ru
+              ? 'Сначала будет создана отдельная локальная резервная копия. Затем данные этого устройства отправятся на сервер без скачивания серверных записей и без удаления локальных данных. Обычная синхронизация останется заблокированной до полной проверки.'
+              : 'A separate local backup will be created first. This device will then upload its business data without pulling server rows or deleting local data. Normal sync stays locked until verification completes.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: Text(_ru ? 'Отмена' : 'Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text(_ru ? 'Создать копию и перенести' : 'Back up and upload'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _busy = true);
+    final report = await SyncRecovery.run();
+    if (!mounted) return;
+    setState(() => _busy = false);
+    _say(report.describe(russian: _ru), error: !report.ok);
+  }
+
+  Future<void> _releaseRecoveryLock() async {
+    if (_busy || !SyncRecovery.verified) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(_ru ? 'Серверная копия проверена' : 'Server copy verified'),
+        content: Text(
+          _ru
+              ? 'Все локальные записи из защитного снимка совпали с сервером. Снять блокировку обычной синхронизации? Автосинхронизация останется выключенной, пока вы сами её не включите.'
+              : 'Every local row in the protected snapshot matches the server. Release the normal-sync lock? Automatic sync will remain off until you enable it yourself.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: Text(_ru ? 'Оставить защиту' : 'Keep locked'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text(_ru ? 'Снять блокировку' : 'Release lock'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() => _busy = true);
+    await SyncRecovery.releaseVerifiedSafetyLock();
+    if (!mounted) return;
+    setState(() => _busy = false);
+    _say(
+      _ru
+          ? 'Защитная блокировка снята. Автоматическая синхронизация всё ещё выключена.'
+          : 'Recovery lock released. Automatic sync is still disabled.',
+    );
+  }
+
   Future<void> _syncNow() async {
     if (_busy) return;
     if (!_signedIn) {
@@ -118,6 +187,7 @@ class _SyncScreenState extends State<SyncScreen> {
       valueListenable: SyncEndpoint.revision,
       builder: (context, _, __) {
         final signedIn = _signedIn;
+        final recoveryLocked = SyncRecoveryGuard.active;
         _scheduleExpiryRefresh();
         return Scaffold(
           backgroundColor: AppTheme.background,
@@ -164,9 +234,49 @@ class _SyncScreenState extends State<SyncScreen> {
                         label: _ru
                             ? 'Синхронизировать сейчас'
                             : 'Synchronise now',
-                        onTap: (_busy || !signedIn) ? null : _syncNow,
+                        onTap: (_busy || !signedIn || recoveryLocked)
+                            ? null
+                            : _syncNow,
                         filled: true,
                       ),
+                      if (signedIn && TeamService.current?.isOwner == true) ...[
+                        const SizedBox(height: 10),
+                        _button(
+                          label: recoveryLocked
+                              ? (SyncRecovery.verified
+                                    ? (_ru
+                                          ? 'Серверная копия проверена — снять защиту'
+                                          : 'Server copy verified — release lock')
+                                    : (_ru
+                                          ? 'Безопасно перенести данные с телефона'
+                                          : 'Safely upload this device'))
+                              : (_ru
+                                    ? 'Создать защитную копию на сервере'
+                                    : 'Create protected server copy'),
+                          onTap: _busy
+                              ? null
+                              : (recoveryLocked && SyncRecovery.verified
+                                    ? _releaseRecoveryLock
+                                    : _runRecovery),
+                        ),
+                      ],
+                      if (recoveryLocked) ...[
+                        const SizedBox(height: 10),
+                        Text(
+                          SyncRecovery.verified
+                              ? (_ru
+                                    ? 'Защитный режим: серверная копия уже проверена. Обычный pull всё ещё заблокирован.'
+                                    : 'Recovery mode: the server copy is verified. Normal pull is still locked.')
+                              : (_ru
+                                    ? 'Защитный режим: обычная синхронизация отключена, локальные бизнес-данные не будут заменены серверными.'
+                                    : 'Recovery mode: normal sync is disabled and local business data cannot be replaced by server rows.'),
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            height: 1.4,
+                            color: AppTheme.accent,
+                          ),
+                        ),
+                      ],
                       if (!signedIn) ...[
                         const SizedBox(height: 10),
                         _button(
@@ -372,7 +482,11 @@ class _SyncScreenState extends State<SyncScreen> {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  signedIn
+                  SyncRecoveryGuard.active
+                      ? (_ru
+                            ? 'Заблокирована защитным переносом'
+                            : 'Locked by protected upload')
+                      : signedIn
                       ? (_ru
                             ? 'Данные отправляются после изменений и при запуске'
                             : 'Data is sent after changes and on launch')
@@ -385,9 +499,9 @@ class _SyncScreenState extends State<SyncScreen> {
             ),
           ),
           Switch(
-            value: on && signedIn,
+            value: on && signedIn && !SyncRecoveryGuard.active,
             activeColor: AppTheme.accent,
-            onChanged: signedIn
+            onChanged: signedIn && !SyncRecoveryGuard.active
                 ? (value) async {
                     await SyncEndpoint.setEnabled(value);
                     if (value) {
