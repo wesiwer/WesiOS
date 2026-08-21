@@ -57,6 +57,9 @@ describe('verified payment adapters', () => {
       payload: {
         invoice_id: 777001,
         status: 'paid',
+        currency_type: 'fiat',
+        fiat: 'RUB',
+        amount: '349.00',
         payload: order.id,
         paid_asset: 'USDT',
         paid_amount: '3.50',
@@ -90,6 +93,9 @@ describe('verified payment adapters', () => {
       payload: {
         invoice_id: 777002,
         status: 'paid',
+        currency_type: 'fiat',
+        fiat: 'RUB',
+        amount: '349.00',
         payload: secondOrder.id,
         paid_asset: 'TON',
         paid_amount: '2.75',
@@ -110,6 +116,55 @@ describe('verified payment adapters', () => {
       (error) => error instanceof PaymentError &&
         error.code === 'INVALID_WEBHOOK_SIGNATURE',
     );
+  });
+
+  it('rejects a signed Crypto Pay invoice with the wrong amount', async () => {
+    commerce.setPaymentSetting({
+      provider: 'crypto_pay',
+      enabled: true,
+      testMode: true,
+      publicConfig: { label: 'Crypto test' },
+    });
+    const order = commerce.createPayment({
+      provider: 'crypto_pay',
+      planId: 'aero-flex',
+      ipMode: 'shared',
+      deviceLimit: 1,
+      durationDays: 30,
+      idempotencyKey: 'crypto-order-wrong-amount',
+    });
+    commerce.attachProviderPayment(order.id, {
+      externalId: '777003',
+      checkoutUrl: 'https://t.me/CryptoTestnetBot?start=invoice3',
+    });
+    const token = 'crypto-pay-test-token-000000000000';
+    const orchestrator = new PaymentOrchestrator(commerce, {
+      cryptoPayToken: token,
+      cryptoPayTestnet: true,
+    }, { now: () => now });
+    const raw = Buffer.from(JSON.stringify({
+      update_id: 1002,
+      update_type: 'invoice_paid',
+      request_date: new Date(now).toISOString(),
+      payload: {
+        invoice_id: 777003,
+        status: 'paid',
+        currency_type: 'fiat',
+        fiat: 'RUB',
+        amount: '1.00',
+        payload: order.id,
+        paid_asset: 'USDT',
+        paid_amount: '0.01',
+      },
+    }));
+    const secret = createHash('sha256').update(token).digest();
+    const signature = createHmac('sha256', secret).update(raw).digest('hex');
+    await assert.rejects(
+      () => orchestrator.handleCryptoPayWebhook(raw, signature),
+      (error) => error instanceof PaymentError &&
+        error.code === 'PAYMENT_AMOUNT_MISMATCH',
+    );
+    assert.equal(commerce.getPayment(order.id).status, 'pending');
   });
 
   it('does not trust YooKassa callback data and rechecks payment status', async () => {
