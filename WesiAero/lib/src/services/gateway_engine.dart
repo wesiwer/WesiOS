@@ -6,6 +6,8 @@ import 'package:flutter/services.dart';
 
 import '../config/aero_infrastructure.dart';
 import '../models/gateway_models.dart';
+import 'aero_commerce_service.dart';
+import 'secret_store.dart';
 
 class GatewayTelemetry {
   GatewayTelemetry._();
@@ -51,6 +53,13 @@ class PlatformGatewayEngine implements GatewayEngine {
     'com.wesi.aero/gateway-events',
   );
 
+  final GatewaySecretStore _secretStore = GatewaySecretStore();
+  AeroCommerceService? _leaseCommerce;
+  Timer? _leaseHeartbeatTimer;
+  String? _activeLeaseId;
+  String? _activeLicenseKey;
+  String? _activeDeviceId;
+
   late final Stream<GatewaySnapshot> _snapshots = _publishStructuralSnapshots(
     _events
         .receiveBroadcastStream()
@@ -81,25 +90,174 @@ class PlatformGatewayEngine implements GatewayEngine {
     if (!Platform.isAndroid && !Platform.isWindows) {
       throw UnsupportedError('TUN поддерживается только на Android и Windows.');
     }
-    await _methods.invokeMethod<void>('connect', {
-      'nodeId': node.id,
-      'protocol': protocol.wireName,
-      'splitMode': splitMode.name,
-      'killSwitch': killSwitch,
-      'rules': rules
-          .where((rule) => rule.enabled)
-          .map(
-            (rule) => {
-              'kind': rule.kind.name,
-              'value': rule.value,
-            },
-          )
-          .toList(growable: false),
-    });
+
+    final resolvedProtocol = _preferredProtocol(node, protocol);
+    await _provisionProfile(node: node, protocol: resolvedProtocol);
+
+    try {
+      await _methods.invokeMethod<void>('connect', {
+        'nodeId': node.id,
+        'protocol': resolvedProtocol.wireName,
+        'splitMode': splitMode.name,
+        'killSwitch': killSwitch,
+        'rules': rules
+            .where((rule) => rule.enabled)
+            .map(
+              (rule) => {
+                'kind': rule.kind.name,
+                'value': rule.value,
+              },
+            )
+            .toList(growable: false),
+      });
+    } catch (_) {
+      _stopLeaseHeartbeat();
+      rethrow;
+    }
+  }
+
+  Future<void> _provisionProfile({
+    required GatewayNode node,
+    required GatewayProtocol protocol,
+  }) async {
+    final key = await _secretStore.readLicenseKey();
+    if (key == null || key.isEmpty) {
+      throw const AeroApiException(
+        'INVALID_LICENSE_KEY',
+        'Для подключения нужен действующий ключ Wesi Aero.',
+      );
+    }
+    final deviceId = await _secretStore.getOrCreateDeviceId();
+    final commerce = _leaseCommerce ??= createAeroCommerceService();
+    if (commerce.isDemo) {
+      throw const AeroApiException(
+        'CONTROL_PLANE_UNAVAILABLE',
+        'Рабочий сервер Wesi Aero не настроен в этой сборке.',
+      );
+    }
+
+    final response = await commerce.secureCall(
+      key: key,
+      payload: {
+        'action': 'lease.create',
+        'deviceId': deviceId,
+        'nodeId': node.id,
+        'protocol': protocol.wireName,
+      },
+    );
+
+    final profile = response['profile'];
+    if (profile is! Map<String, dynamic>) {
+      throw const AeroApiException(
+        'PROFILE_NOT_PROVISIONED',
+        'Сервер не выдал профиль подключения.',
+      );
+    }
+    final rawConfig = profile['clientConfig'];
+    if (rawConfig is! String || rawConfig.trim().isEmpty) {
+      throw const AeroApiException(
+        'PROFILE_NOT_PROVISIONED',
+        'Сервер вернул пустой профиль подключения.',
+      );
+    }
+
+    final parsed = GatewayConfigParser.parse(rawConfig);
+    if (parsed.protocol != protocol) {
+      throw const AeroApiException(
+        'PROFILE_PROTOCOL_MISMATCH',
+        'Протокол серверного профиля не совпадает с выбранным.',
+      );
+    }
+    await importConfig(parsed);
+    await _secretStore.saveProfile(parsed);
+
+    final lease = response['lease'];
+    final leaseId = lease is Map<String, dynamic> ? lease['id'] as String? : null;
+    if (leaseId == null || leaseId.isEmpty) {
+      throw const AeroApiException(
+        'LEASE_NOT_CREATED',
+        'Сервер не создал сессию подключения.',
+      );
+    }
+
+    _activeLeaseId = leaseId;
+    _activeLicenseKey = key;
+    _activeDeviceId = deviceId;
+    _startLeaseHeartbeat();
+  }
+
+  GatewayProtocol _preferredProtocol(
+    GatewayNode node,
+    GatewayProtocol requested,
+  ) {
+    if (requested != GatewayProtocol.automatic) {
+      if (!node.protocols.contains(requested)) {
+        throw const AeroApiException(
+          'PROTOCOL_UNAVAILABLE',
+          'Выбранный протокол недоступен на этом сервере.',
+        );
+      }
+      return requested;
+    }
+    if (node.protocols.contains(GatewayProtocol.vlessReality)) {
+      return GatewayProtocol.vlessReality;
+    }
+    if (node.protocols.contains(GatewayProtocol.vmessXray)) {
+      return GatewayProtocol.vmessXray;
+    }
+    if (node.protocols.contains(GatewayProtocol.amneziaWg)) {
+      return GatewayProtocol.amneziaWg;
+    }
+    throw const AeroApiException(
+      'PROTOCOL_UNAVAILABLE',
+      'На сервере нет поддерживаемого протокола.',
+    );
+  }
+
+  void _startLeaseHeartbeat() {
+    _leaseHeartbeatTimer?.cancel();
+    _leaseHeartbeatTimer = Timer.periodic(
+      const Duration(seconds: 45),
+      (_) => unawaited(_heartbeatLease()),
+    );
+  }
+
+  Future<void> _heartbeatLease() async {
+    final leaseId = _activeLeaseId;
+    final key = _activeLicenseKey;
+    final deviceId = _activeDeviceId;
+    final commerce = _leaseCommerce;
+    if (leaseId == null || key == null || deviceId == null || commerce == null) {
+      return;
+    }
+    try {
+      await commerce.secureCall(
+        key: key,
+        payload: {
+          'action': 'lease.heartbeat',
+          'leaseId': leaseId,
+          'deviceId': deviceId,
+        },
+      );
+    } catch (_) {
+      // The tunnel should not be torn down because of one transient heartbeat
+      // failure. The next tick retries while the actual VPN remains active.
+    }
+  }
+
+  void _stopLeaseHeartbeat() {
+    _leaseHeartbeatTimer?.cancel();
+    _leaseHeartbeatTimer = null;
+    _activeLeaseId = null;
+    _activeLicenseKey = null;
+    _activeDeviceId = null;
   }
 
   @override
-  Future<void> disconnect() => _methods.invokeMethod<void>('disconnect');
+  Future<void> disconnect() async {
+    _stopLeaseHeartbeat();
+    await _methods.invokeMethod<void>('disconnect');
+  }
 
   @override
   Future<void> importConfig(ImportedGatewayConfig config) {
@@ -111,7 +269,11 @@ class PlatformGatewayEngine implements GatewayEngine {
   }
 
   @override
-  Future<void> dispose() async {}
+  Future<void> dispose() async {
+    _stopLeaseHeartbeat();
+    _leaseCommerce?.close();
+    _leaseCommerce = null;
+  }
 
   static Stream<GatewaySnapshot> _publishStructuralSnapshots(
     Stream<GatewaySnapshot> source,
