@@ -178,7 +178,12 @@ class _WesiAiSubagentsSheetState extends State<WesiAiSubagentsSheet> {
 
   String _submitError(WesiAiMessageSubmitResult result) => switch (result) {
         WesiAiMessageSubmitResult.queueFull => 'Очередь Wesi AI заполнена.',
-        WesiAiMessageSubmitResult.failed => 'Не удалось отправить задачу.',
+        WesiAiMessageSubmitResult.invalidAttachments =>
+          'Не удалось отправить задачу: некорректные вложения.',
+        WesiAiMessageSubmitResult.persistenceFailed =>
+          'Не удалось сохранить задачу в очереди Wesi AI.',
+        WesiAiMessageSubmitResult.unavailable =>
+          'Wesi AI сейчас не может принять эту задачу.',
         WesiAiMessageSubmitResult.accepted => '',
       };
 
