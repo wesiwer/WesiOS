@@ -1,0 +1,90 @@
+name: WesiMark Final Build Monitor
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - wesimark/printer-pairing-v2.4
+    paths:
+      - '.github/workflows/wesimark-final-build-monitor.yml'
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: wesimark/printer-pairing-v2.4
+
+      - name: Wait for verified WesiMark build
+        id: wait
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_SHA: 752929569ef607b4754c3f70a9900eaedbf80e9c
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .ci
+          RUN_ID=''
+          STATUS=''
+          CONCLUSION=''
+          URL=''
+          for attempt in $(seq 1 90); do
+            RUNS="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow wesimark-final-correct-build.yml --branch wesimark/printer-pairing-v2.4 --limit 20 --json databaseId,headSha,status,conclusion,url,createdAt)"
+            RUN_ID="$(jq -r --arg sha "$TARGET_SHA" '[.[] | select(.headSha == $sha)][0].databaseId // empty' <<<"$RUNS")"
+            if [ -n "$RUN_ID" ]; then
+              STATUS="$(jq -r --arg sha "$TARGET_SHA" '[.[] | select(.headSha == $sha)][0].status // empty' <<<"$RUNS")"
+              CONCLUSION="$(jq -r --arg sha "$TARGET_SHA" '[.[] | select(.headSha == $sha)][0].conclusion // empty' <<<"$RUNS")"
+              URL="$(jq -r --arg sha "$TARGET_SHA" '[.[] | select(.headSha == $sha)][0].url // empty' <<<"$RUNS")"
+              echo "run=$RUN_ID status=$STATUS conclusion=$CONCLUSION"
+              if [ "$STATUS" = completed ]; then
+                break
+              fi
+            fi
+            sleep 10
+          done
+          if [ -z "$RUN_ID" ]; then
+            STATUS=not_found
+            CONCLUSION=not_found
+          elif [ "$STATUS" != completed ]; then
+            CONCLUSION=timeout
+          fi
+          {
+            echo "target_sha=$TARGET_SHA"
+            echo "run_id=$RUN_ID"
+            echo "status=$STATUS"
+            echo "conclusion=$CONCLUSION"
+            echo "url=$URL"
+            echo "checked_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          } > .ci/wesimark-final-run.txt
+
+          if [ "$STATUS" = completed ] && [ "$CONCLUSION" = success ]; then
+            rm -rf "$RUNNER_TEMP/wesimark-apk"
+            mkdir -p "$RUNNER_TEMP/wesimark-apk"
+            gh run download "$RUN_ID" --repo "$GITHUB_REPOSITORY" --name WesiMark-2.4.0+14-WP9520 --dir "$RUNNER_TEMP/wesimark-apk"
+            APK="$(find "$RUNNER_TEMP/wesimark-apk" -type f -name '*.apk' | head -n1)"
+            test -s "$APK"
+            echo "apk_sha256=$(sha256sum "$APK" | awk '{print $1}')" >> .ci/wesimark-final-run.txt
+            echo "apk_size=$(stat -c%s "$APK")" >> .ci/wesimark-final-run.txt
+          fi
+
+      - name: Commit monitor result to branch
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s .ci/wesimark-final-run.txt || {
+            mkdir -p .ci
+            printf 'status=monitor_failed\nchecked_at=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > .ci/wesimark-final-run.txt
+          }
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -- .ci/wesimark-final-run.txt
+          git diff --cached --quiet && exit 0
+          git commit -m 'ci(wesimark): record final APK verification run'
+          git push origin HEAD:wesimark/printer-pairing-v2.4
