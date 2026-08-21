@@ -34,17 +34,8 @@ jobs:
           path = Path('lib/core/backup/local_backup_service.dart')
           text = path.read_text(encoding='utf-8')
           if 'BACKUP_SECRET_PURGE_FAILED' not in text:
-              anchor = '''    for (final name in backup.collections.keys) {
-              if (!available.containsKey(name)) {
-                return LocalRestoreReport(
-                  ok: false,
-                  errorCode: 'BACKUP_COLLECTION_UNSUPPORTED',
-                  message: 'Эта версия WesiOS не умеет восстановить раздел $name',
-                );
-              }
-            }
-          '''
-              insert = anchor + '''
+              needle = "\n    if (manageSafety) {\n"
+              replacement = '''
             // Legacy builds kept the server session in ordinary Hive settings.
             // Portable business backups must never preserve or resurrect those
             // plaintext credentials. The active v2 session lives in secure
@@ -66,10 +57,12 @@ jobs:
                 message: 'Не удалось удалить устаревшие локальные данные сеанса: $error',
               );
             }
+
+            if (manageSafety) {
           '''
-              if anchor not in text:
-                  raise SystemExit('backup restore anchor not found')
-              text = text.replace(anchor, insert, 1)
+              if needle not in text:
+                  raise SystemExit('backup manageSafety anchor not found')
+              text = text.replace(needle, '\n' + replacement, 1)
               path.write_text(text, encoding='utf-8')
           PY
       - name: Reuse robust v2 integration after security patch
@@ -82,8 +75,9 @@ jobs:
           git show origin/main:.github/workflows/finish-safe-manual-sync-v2-once.yml > "$RUNNER_TEMP/v2.yml"
           python3 <<'PY'
           from pathlib import Path
-          src = Path(__import__('os').environ['RUNNER_TEMP']) / 'v2.yml'
-          dst = Path(__import__('os').environ['RUNNER_TEMP']) / 'v2-run.sh'
+          import os
+          src = Path(os.environ['RUNNER_TEMP']) / 'v2.yml'
+          dst = Path(os.environ['RUNNER_TEMP']) / 'v2-run.sh'
           lines = src.read_text(encoding='utf-8').splitlines()
           marker = '      - name: Apply robust patch, verify and commit'
           start = lines.index(marker)
