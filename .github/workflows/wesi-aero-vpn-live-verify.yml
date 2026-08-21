@@ -1,0 +1,101 @@
+name: Wesi Aero Live VPN Verify
+
+on:
+  push:
+    branches:
+      - codex/wesi-aero-build-20260821
+    paths:
+      - '.github/workflows/wesi-aero-vpn-live-verify.yml'
+      - '.github/wesi-aero-vpn-live-verify.trigger'
+      - 'WesiAero/server-node/scripts/ci-deploy-live-prototype.sh'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wesi-aero-vpn-production-prototype
+  cancel-in-progress: true
+
+jobs:
+  deploy-verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      AERO_HOST: wesi-aero-178-236-247-194.nip.io
+      AI_HOST: wesi-ai-178-236-247-194.nip.io
+      EXPECTED_RELAY_IP: 178.236.247.194
+      RELAY_SSH_HOST: ${{ secrets.WESI_RELAY_SSH_HOST }}
+      RELAY_SSH_USER: ${{ secrets.WESI_RELAY_SSH_USER }}
+      RELAY_SSH_KEY: ${{ secrets.WESI_RELAY_SSH_KEY }}
+      RELAY_SSH_KNOWN_HOSTS: ${{ secrets.WESI_RELAY_SSH_KNOWN_HOSTS }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: codex/wesi-aero-build-20260821
+          fetch-depth: 0
+
+      - name: Deploy and verify real VPN egress
+        id: live
+        run: |
+          set -euo pipefail
+          chmod +x WesiAero/server-node/scripts/ci-deploy-live-prototype.sh
+          WesiAero/server-node/scripts/ci-deploy-live-prototype.sh
+
+      - name: Write success marker
+        if: success()
+        run: |
+          python3 - <<'PY'
+          import json, os
+          from datetime import datetime, timezone
+          payload = {
+              "status": "success",
+              "checkedAt": datetime.now(timezone.utc).isoformat(),
+              "workflowRunId": os.environ.get("GITHUB_RUN_ID"),
+              "commit": os.environ.get("GITHUB_SHA"),
+              "host": os.environ["AERO_HOST"],
+              "relayIp": os.environ["EXPECTED_RELAY_IP"],
+              "controlPlaneHttps": True,
+              "wesiAiPreserved": True,
+              "protocols": {
+                  "vlessReality": {"port": 8443, "externalEgressVerified": True},
+                  "vmessXray": {"port": 8444, "externalEgressVerified": True},
+                  "wireGuard": {"port": 51820, "handshakeVerified": True, "externalEgressVerified": True},
+              },
+          }
+          with open('.github/wesi-aero-vpn-live-status.json', 'w', encoding='utf-8') as f:
+              json.dump(payload, f, ensure_ascii=False, indent=2)
+              f.write('\n')
+          PY
+
+      - name: Write failure marker
+        if: failure()
+        run: |
+          python3 - <<'PY'
+          import json, os
+          from datetime import datetime, timezone
+          payload = {
+              "status": "failure",
+              "checkedAt": datetime.now(timezone.utc).isoformat(),
+              "workflowRunId": os.environ.get("GITHUB_RUN_ID"),
+              "commit": os.environ.get("GITHUB_SHA"),
+              "host": os.environ["AERO_HOST"],
+              "relayIp": os.environ["EXPECTED_RELAY_IP"],
+              "note": "Live deploy/probe failed; inspect this workflow run. No credentials are stored in this marker.",
+          }
+          with open('.github/wesi-aero-vpn-live-status.json', 'w', encoding='utf-8') as f:
+              json.dump(payload, f, ensure_ascii=False, indent=2)
+              f.write('\n')
+          PY
+
+      - name: Commit verification marker
+        if: always()
+        run: |
+          set -euo pipefail
+          test -s .github/wesi-aero-vpn-live-status.json
+          git config user.name 'wesiwer'
+          git config user.email '77644223+wesiwer@users.noreply.github.com'
+          git add .github/wesi-aero-vpn-live-status.json
+          git diff --cached --check
+          git commit -m 'chore(aero): record live VPN verification'
+          git push origin HEAD:codex/wesi-aero-build-20260821
