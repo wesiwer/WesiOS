@@ -25,18 +25,27 @@ class PrototypeGatewayController extends GatewayController {
 
     if (selectedNode == null) {
       const prototypeNode = GatewayNode(
-        id: 'imported-wireguard',
-        city: 'Wesi Aero',
-        country: 'WireGuard',
+        id: 'wesi-relay-01',
+        city: 'Wesi Relay',
+        country: 'Wesi Aero',
         countryCode: '',
-        endpoint: 'Imported profile',
+        endpoint: 'wesi-ai-178-236-247-194.nip.io:8443',
         pingMs: 0,
         load: 0,
-        protocols: {GatewayProtocol.amneziaWg},
+        protocols: {
+          GatewayProtocol.vlessReality,
+          GatewayProtocol.vmessXray,
+          GatewayProtocol.amneziaWg,
+        },
         recommended: true,
       );
       nodes = const [prototypeNode];
       selectedNode = prototypeNode;
+    }
+
+    final node = selectedNode;
+    if (node != null && node.protocols.contains(GatewayProtocol.vlessReality)) {
+      protocol = GatewayProtocol.vlessReality;
     }
 
     final profile = await _prototypeStore.readProfile();
