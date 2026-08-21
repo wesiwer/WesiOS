@@ -67,7 +67,106 @@ export function openDatabase(filename) {
       created_at INTEGER NOT NULL,
       details_json TEXT NOT NULL DEFAULT '{}'
     ) STRICT;
+
+    CREATE TABLE IF NOT EXISTS app_meta (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    ) STRICT;
+    INSERT OR IGNORE INTO app_meta (key, value) VALUES ('catalog_revision', '1');
+
+    CREATE TABLE IF NOT EXISTS node_admin (
+      node_id TEXT PRIMARY KEY REFERENCES nodes(id) ON DELETE CASCADE,
+      display_name TEXT NOT NULL,
+      capacity INTEGER NOT NULL DEFAULT 0 CHECK (capacity >= 0),
+      tags_json TEXT NOT NULL DEFAULT '[]',
+      notes TEXT NOT NULL DEFAULT '',
+      transport_json TEXT NOT NULL DEFAULT '{}',
+      updated_at INTEGER NOT NULL
+    ) STRICT;
+
+    CREATE TABLE IF NOT EXISTS plans (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      currency TEXT NOT NULL DEFAULT 'RUB',
+      enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+      pricing_json TEXT NOT NULL,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      updated_at INTEGER NOT NULL
+    ) STRICT;
+
+    CREATE TABLE IF NOT EXISTS licenses (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL UNIQUE REFERENCES users(id),
+      key_prefix TEXT NOT NULL,
+      key_salt BLOB NOT NULL,
+      key_hash BLOB NOT NULL,
+      encrypted_key TEXT NOT NULL,
+      plan_id TEXT REFERENCES plans(id),
+      source TEXT NOT NULL CHECK (source IN ('payment', 'admin', 'migration')),
+      ip_mode TEXT NOT NULL CHECK (ip_mode IN ('shared', 'dedicated')),
+      device_limit INTEGER NOT NULL CHECK (device_limit BETWEEN 1 AND 5),
+      duration_days INTEGER NOT NULL CHECK (duration_days IN (7, 30, 90, 180, 365)),
+      status TEXT NOT NULL CHECK (status IN ('active', 'revoked')),
+      issued_at INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL,
+      payment_id TEXT,
+      dedicated_ip TEXT,
+      note TEXT NOT NULL DEFAULT ''
+    ) STRICT;
+    CREATE INDEX IF NOT EXISTS licenses_prefix_idx ON licenses(key_prefix);
+    CREATE INDEX IF NOT EXISTS licenses_status_expiry_idx
+      ON licenses(status, expires_at);
+
+    CREATE TABLE IF NOT EXISTS license_devices (
+      license_id TEXT NOT NULL REFERENCES licenses(id) ON DELETE CASCADE,
+      device_id TEXT NOT NULL,
+      device_name TEXT NOT NULL,
+      platform TEXT NOT NULL,
+      first_seen_at INTEGER NOT NULL,
+      last_seen_at INTEGER NOT NULL,
+      revoked_at INTEGER,
+      PRIMARY KEY (license_id, device_id)
+    ) STRICT;
+
+    CREATE TABLE IF NOT EXISTS payments (
+      id TEXT PRIMARY KEY,
+      provider TEXT NOT NULL CHECK (provider IN ('mock', 'yookassa', 'crypto_pay')),
+      status TEXT NOT NULL CHECK (status IN ('pending', 'paid', 'canceled', 'expired', 'failed')),
+      amount_minor INTEGER NOT NULL CHECK (amount_minor >= 0),
+      currency TEXT NOT NULL,
+      plan_id TEXT NOT NULL REFERENCES plans(id),
+      ip_mode TEXT NOT NULL CHECK (ip_mode IN ('shared', 'dedicated')),
+      device_limit INTEGER NOT NULL CHECK (device_limit BETWEEN 1 AND 5),
+      duration_days INTEGER NOT NULL CHECK (duration_days IN (7, 30, 90, 180, 365)),
+      checkout_url TEXT,
+      external_id TEXT,
+      license_id TEXT REFERENCES licenses(id),
+      customer_ref TEXT,
+      idempotency_key TEXT NOT NULL UNIQUE,
+      claim_salt BLOB NOT NULL,
+      claim_hash BLOB NOT NULL,
+      provider_json TEXT NOT NULL DEFAULT '{}',
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    ) STRICT;
+    CREATE UNIQUE INDEX IF NOT EXISTS payments_external_idx
+      ON payments(provider, external_id) WHERE external_id IS NOT NULL;
+
+    CREATE TABLE IF NOT EXISTS payment_settings (
+      provider TEXT PRIMARY KEY CHECK (provider IN ('mock', 'yookassa', 'crypto_pay')),
+      enabled INTEGER NOT NULL DEFAULT 0 CHECK (enabled IN (0, 1)),
+      test_mode INTEGER NOT NULL DEFAULT 1 CHECK (test_mode IN (0, 1)),
+      public_json TEXT NOT NULL DEFAULT '{}',
+      updated_at INTEGER NOT NULL
+    ) STRICT;
+
+    CREATE TABLE IF NOT EXISTS processed_webhooks (
+      provider TEXT NOT NULL,
+      event_id TEXT NOT NULL,
+      received_at INTEGER NOT NULL,
+      PRIMARY KEY (provider, event_id)
+    ) STRICT;
   `);
   return database;
 }
-

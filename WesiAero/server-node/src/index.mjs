@@ -1,8 +1,11 @@
 import { createApiServer } from './api.mjs';
+import { CommerceRepository } from './commerce.mjs';
 import { loadConfig } from './config.mjs';
 import { openDatabase } from './database.mjs';
 import { StaticProfileProvisioner } from './provisioner.mjs';
 import { GatewayRepository } from './repository.mjs';
+import { PaymentOrchestrator } from './payments.mjs';
+import { SecretVault } from './secret-vault.mjs';
 
 const config = loadConfig();
 if (config.adminToken && config.adminToken.length < 32) {
@@ -13,11 +16,16 @@ const database = openDatabase(config.databasePath);
 const repository = new GatewayRepository(database, {
   leaseTtlSeconds: config.leaseTtlSeconds,
 });
+const secretVault = new SecretVault(config.masterKey);
+const commerce = new CommerceRepository(database, repository, { secretVault });
+commerce.seedDefaults();
+const payments = new PaymentOrchestrator(commerce, config);
 const provisioner = new StaticProfileProvisioner(config.profileDirectory);
 
 if (process.env.WESI_AERO_SEED_DEMO === 'true') {
-  repository.upsertNode({
+  commerce.upsertServer({
     id: 'wesi-foreign-relay-candidate',
+    displayName: 'Wesi Relay',
     city: 'Wesi Relay',
     country: 'Foreign VPS',
     countryCode: '',
@@ -26,10 +34,23 @@ if (process.env.WESI_AERO_SEED_DEMO === 'true') {
     load: 0.2,
     online: true,
     recommended: true,
+    capacity: 500,
+    tags: ['relay', 'candidate'],
+    notes: 'Public relay target; tunnel profile must be provisioned separately.',
+    transportConfig: {
+      realityPort: 8443,
+      amneziaWgPort: 51820,
+    },
   });
 }
 
-const server = createApiServer({ repository, provisioner, config });
+const server = createApiServer({
+  repository,
+  commerce,
+  payments,
+  provisioner,
+  config,
+});
 server.listen(config.port, config.host, () => {
   process.stdout.write(
     `Wesi Aero control plane listening on http://${config.host}:${config.port}\n`,

@@ -115,6 +115,28 @@ export class GatewayRepository {
     `).all().map(mapNode);
   }
 
+  listAllNodes() {
+    return this.database.prepare(`
+      SELECT * FROM nodes
+      ORDER BY recommended DESC, online DESC, load ASC, city ASC
+    `).all().map(mapNode);
+  }
+
+  deleteNode(id) {
+    const active = this.database.prepare(`
+      SELECT COUNT(*) AS count FROM leases
+      WHERE node_id = ? AND ended_at IS NULL AND expires_at > ?
+    `).get(id, this.now()).count;
+    if (active > 0) {
+      throw new RepositoryError(
+        'NODE_HAS_ACTIVE_LEASES',
+        'Server node has active sessions',
+        409,
+      );
+    }
+    return this.database.prepare('DELETE FROM nodes WHERE id = ?').run(id).changes === 1;
+  }
+
   reserveLease({ user, deviceId, nodeId, protocol }) {
     validateDeviceId(deviceId);
     if (!['vless-reality', 'amneziawg'].includes(protocol)) {
@@ -345,4 +367,3 @@ function validateNode(node) {
     throw new RepositoryError('INVALID_NODE', 'Node load must be 0..1');
   }
 }
-

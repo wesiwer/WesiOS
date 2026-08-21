@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'design/gateway_theme.dart';
 import 'screens/app_shell.dart';
+import 'screens/subscription_screen.dart';
 import 'state/gateway_controller.dart';
 import 'state/gateway_scope.dart';
 
@@ -60,8 +61,28 @@ class _WesiAeroAppState extends State<WesiAeroApp> {
         themeMode: _themeMode,
         themeAnimationDuration: GatewayTokens.expressive,
         themeAnimationCurve: Curves.easeOutCubic,
-        home: const Scaffold(body: AppShell()),
+        home: const Scaffold(body: _RootGate()),
       ),
+    );
+  }
+}
+
+class _RootGate extends StatelessWidget {
+  const _RootGate();
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = GatewayScope.of(context);
+    if (controller.commerceLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    return AnimatedSwitcher(
+      duration: GatewayTokens.expressive,
+      switchInCurve: Curves.easeOutCubic,
+      switchOutCurve: Curves.easeInCubic,
+      child: controller.needsSubscription
+          ? const SubscriptionScreen(key: ValueKey('subscription'))
+          : const AppShell(key: ValueKey('app-shell')),
     );
   }
 }

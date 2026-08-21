@@ -39,5 +39,16 @@ export function loadConfig(environment = process.env) {
       max: 1_048_576,
     }),
     technicalLogs: environment.WESI_AERO_TECHNICAL_LOGS !== 'false',
+    publicBaseUrl: environment.WESI_AERO_PUBLIC_BASE_URL || 'http://127.0.0.1:8790',
+    paymentReturnUrl: environment.WESI_AERO_PAYMENT_RETURN_URL ||
+      'https://example.invalid/wesi-aero/payment-return',
+    allowMockPayments: environment.WESI_AERO_ALLOW_MOCK_PAYMENTS !== 'false',
+    yookassaShopId: environment.WESI_AERO_YOOKASSA_SHOP_ID || null,
+    yookassaSecretKey: environment.WESI_AERO_YOOKASSA_SECRET_KEY || null,
+    cryptoPayToken: environment.WESI_AERO_CRYPTO_PAY_TOKEN || null,
+    cryptoPayTestnet: environment.WESI_AERO_CRYPTO_PAY_TESTNET !== 'false',
+    masterKey: environment.WESI_AERO_MASTER_KEY ||
+      environment.WESI_AERO_ADMIN_TOKEN ||
+      'development-only-wesi-aero-master-key-change-me',
   });
 }

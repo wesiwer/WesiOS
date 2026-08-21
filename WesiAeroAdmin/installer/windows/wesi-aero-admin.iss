@@ -5,34 +5,31 @@
   #define SourceDir "installer-src"
 #endif
 
-#define MyAppName "Wesi Aero"
+#define MyAppName "Wesi Aero Admin"
 #define MyAppPublisher "Wesi Inc."
-#define MyAppExeName "wesi_aero.exe"
+#define MyAppExeName "wesi_aero_admin.exe"
 
 [Setup]
-AppId={{A95C14F0-8E4A-4D29-A118-EBF63B0E6C11}
+AppId={{683852D5-2B93-4999-A69A-1F006F9E62F1}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppVerName={#MyAppName} {#MyAppVersion}
 AppPublisher={#MyAppPublisher}
-DefaultDirName={localappdata}\Programs\Wesi Aero
+DefaultDirName={localappdata}\Programs\Wesi Aero Admin
 DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
-OutputBaseFilename=Wesi-Aero-Windows-Setup
+OutputBaseFilename=Wesi-Aero-Admin-Windows-Setup
 Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern
-SetupIconFile=..\..\assets\branding\wesi_aero_mark.ico
+SetupIconFile=..\..\assets\branding\wesi_aero_admin_mark.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
 CloseApplications=force
 RestartApplications=no
-ChangesAssociations=no
-UsePreviousAppDir=yes
-UsePreviousTasks=yes
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
@@ -45,8 +42,8 @@ Name: "desktopicon"; Description: "Создать ярлык на рабочем
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
-Name: "{autoprograms}\Wesi Aero"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"
-Name: "{autodesktop}\Wesi Aero"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"; Tasks: desktopicon
+Name: "{autoprograms}\Wesi Aero Admin"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"
+Name: "{autodesktop}\Wesi Aero Admin"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\{#MyAppExeName}"; Description: "Запустить Wesi Aero"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\{#MyAppExeName}"; Description: "Запустить Wesi Aero Admin"; Flags: nowait postinstall skipifsilent

@@ -9,6 +9,7 @@ import '../design/gateway_theme.dart';
 import '../models/gateway_models.dart';
 import '../state/gateway_scope.dart';
 import '../widgets/glass_card.dart';
+import 'subscription_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -60,6 +61,26 @@ class SettingsScreen extends StatelessWidget {
                       onChanged: controller.setAutoConnect,
                     ),
                   ],
+                ),
+              ),
+              const SizedBox(height: GatewayTokens.space24),
+              Text('Тариф и доступ', style: Theme.of(context).textTheme.titleLarge),
+              const SizedBox(height: GatewayTokens.space12),
+              GlassCard(
+                child: _SettingsAction(
+                  icon: Icons.workspace_premium_outlined,
+                  title: controller.license?.isActive == true
+                      ? 'Тариф активен'
+                      : 'Настроить тариф',
+                  subtitle: controller.license?.isActive == true
+                      ? '${controller.license!.deviceCount}/${controller.license!.deviceLimit} устройств · '
+                          '${controller.license!.maskedKey}'
+                      : 'Оплата или активация ключом',
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const SubscriptionScreen(embedded: true),
+                    ),
+                  ),
                 ),
               ),
               const SizedBox(height: GatewayTokens.space24),

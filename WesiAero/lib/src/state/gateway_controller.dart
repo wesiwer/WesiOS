@@ -1,8 +1,11 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 
 import '../models/gateway_models.dart';
+import '../models/commerce_models.dart';
+import '../services/aero_commerce_service.dart';
 import '../services/gateway_engine.dart';
 import '../services/secret_store.dart';
 
@@ -10,12 +13,16 @@ class GatewayController extends ChangeNotifier {
   GatewayController({
     GatewayEngine? engine,
     GatewaySecretStore? secretStore,
+    AeroCommerceService? commerceService,
   })  : _engine = engine ?? createGatewayEngine(),
-        _secretStore = secretStore ?? GatewaySecretStore();
+        _secretStore = secretStore ?? GatewaySecretStore(),
+        _commerce = commerceService ?? createAeroCommerceService();
 
   final GatewayEngine _engine;
   final GatewaySecretStore _secretStore;
+  final AeroCommerceService _commerce;
   StreamSubscription<GatewaySnapshot>? _subscription;
+  Timer? _catalogTimer;
 
   GatewaySnapshot snapshot = const GatewaySnapshot.disconnected(isDemo: true);
   List<GatewayNode> nodes = const [];
@@ -29,6 +36,20 @@ class GatewayController extends ChangeNotifier {
   bool reducedMotion = false;
   bool loadingNodes = true;
   String? importProfileName;
+  AeroCatalog? catalog;
+  AeroLicense? license;
+  String? licenseKey;
+  CheckoutOrder? activeOrder;
+  AeroQuote? quote;
+  TariffPlan? selectedPlan;
+  AeroIpMode selectedIpMode = AeroIpMode.shared;
+  int selectedDeviceLimit = 1;
+  int selectedDurationDays = 30;
+  bool commerceLoading = true;
+  bool checkoutBusy = false;
+  String? commerceError;
+  String? deviceId;
+  int _quoteGeneration = 0;
 
   List<RoutingRule> rules = const [
     RoutingRule(
@@ -56,13 +77,25 @@ class GatewayController extends ChangeNotifier {
 
   bool get isConnected => snapshot.status == TunnelStatus.connected;
 
+  bool get isCommerceDemo => _commerce.isDemo;
+
+  bool get needsSubscription => !commerceLoading && license?.isActive != true;
+
+  List<AeroPaymentMethod> get paymentMethods =>
+      catalog?.paymentMethods ?? const [];
+
   Future<void> initialize() async {
     _subscription = _engine.snapshots.listen((value) {
       snapshot = value;
       notifyListeners();
     });
+    await _initializeCommerce();
     try {
-      nodes = await _engine.loadNodes();
+      if (catalog?.servers.isNotEmpty == true) {
+        nodes = catalog!.servers;
+      } else {
+        nodes = await _engine.loadNodes();
+      }
       selectedNode = nodes.cast<GatewayNode?>().firstWhere(
             (node) => node?.recommended == true,
             orElse: () => nodes.isEmpty ? null : nodes.first,
@@ -74,12 +107,215 @@ class GatewayController extends ChangeNotifier {
       loadingNodes = false;
       notifyListeners();
     }
+    _catalogTimer = Timer.periodic(
+      const Duration(seconds: 20),
+      (_) => unawaited(syncCatalog(quiet: true)),
+    );
+  }
+
+  Future<void> _initializeCommerce() async {
+    try {
+      deviceId = await _secretStore.getOrCreateDeviceId();
+      await syncCatalog(quiet: true);
+      final storedKey = await _secretStore.readLicenseKey();
+      if (storedKey != null && storedKey.isNotEmpty) {
+        try {
+          await redeemLicenseKey(storedKey, silent: true);
+        } catch (_) {
+          await _secretStore.clearLicenseKey();
+        }
+      }
+    } catch (error) {
+      commerceError = _friendlyCommerceError(error);
+    } finally {
+      commerceLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> syncCatalog({bool quiet = false}) async {
+    try {
+      final next = await _commerce.fetchCatalog();
+      if (catalog?.revision != next.revision) {
+        catalog = next;
+        selectedPlan = next.plans.cast<TariffPlan?>().firstWhere(
+              (item) => item?.id == selectedPlan?.id,
+              orElse: () => next.plans.isEmpty ? null : next.plans.first,
+            );
+        if (next.servers.isNotEmpty) {
+          final selectedId = selectedNode?.id;
+          nodes = next.servers;
+          selectedNode = nodes.cast<GatewayNode?>().firstWhere(
+                (item) => item?.id == selectedId,
+                orElse: () => nodes.cast<GatewayNode?>().firstWhere(
+                      (item) => item?.recommended == true,
+                      orElse: () => nodes.first,
+                    ),
+              );
+        }
+        unawaited(refreshQuote());
+      }
+      commerceError = null;
+      notifyListeners();
+    } catch (error) {
+      if (!quiet) {
+        commerceError = _friendlyCommerceError(error);
+        notifyListeners();
+      }
+    }
+  }
+
+  void setIpMode(AeroIpMode value) {
+    if (selectedIpMode == value) return;
+    selectedIpMode = value;
+    notifyListeners();
+    unawaited(refreshQuote());
+  }
+
+  void setDeviceLimit(int value) {
+    if (value < 1 || value > 5 || selectedDeviceLimit == value) return;
+    selectedDeviceLimit = value;
+    notifyListeners();
+    unawaited(refreshQuote());
+  }
+
+  void setDurationDays(int value) {
+    if (!const [7, 30, 90, 180, 365].contains(value) ||
+        selectedDurationDays == value) {
+      return;
+    }
+    selectedDurationDays = value;
+    notifyListeners();
+    unawaited(refreshQuote());
+  }
+
+  void setPlan(TariffPlan value) {
+    if (selectedPlan?.id == value.id) return;
+    selectedPlan = value;
+    notifyListeners();
+    unawaited(refreshQuote());
+  }
+
+  Future<void> refreshQuote() async {
+    final plan = selectedPlan;
+    if (plan == null) return;
+    final generation = ++_quoteGeneration;
+    try {
+      final next = await _commerce.quote(
+        planId: plan.id,
+        ipMode: selectedIpMode,
+        deviceLimit: selectedDeviceLimit,
+        durationDays: selectedDurationDays,
+      );
+      if (generation != _quoteGeneration) return;
+      quote = next;
+      commerceError = null;
+      notifyListeners();
+    } catch (error) {
+      if (generation != _quoteGeneration) return;
+      commerceError = _friendlyCommerceError(error);
+      notifyListeners();
+    }
+  }
+
+  Future<CheckoutOrder> startCheckout(AeroPaymentProvider provider) async {
+    final plan = selectedPlan;
+    if (plan == null) {
+      throw const AeroApiException('PLAN_UNAVAILABLE', 'Тариф недоступен.');
+    }
+    checkoutBusy = true;
+    commerceError = null;
+    notifyListeners();
+    try {
+      activeOrder = await _commerce.createOrder(
+        planId: plan.id,
+        ipMode: selectedIpMode,
+        deviceLimit: selectedDeviceLimit,
+        durationDays: selectedDurationDays,
+        provider: provider,
+      );
+      return activeOrder!;
+    } catch (error) {
+      commerceError = _friendlyCommerceError(error);
+      rethrow;
+    } finally {
+      checkoutBusy = false;
+      notifyListeners();
+    }
+  }
+
+  Future<bool> refreshCheckout() async {
+    final order = activeOrder;
+    if (order == null) return false;
+    try {
+      activeOrder = await _commerce.refreshOrder(order);
+      if (activeOrder!.paid) {
+        await redeemLicenseKey(activeOrder!.key!, silent: true);
+        return true;
+      }
+      notifyListeners();
+      return false;
+    } catch (error) {
+      commerceError = _friendlyCommerceError(error);
+      notifyListeners();
+      return false;
+    }
+  }
+
+  Future<void> redeemLicenseKey(String key, {bool silent = false}) async {
+    final id = deviceId ?? await _secretStore.getOrCreateDeviceId();
+    deviceId = id;
+    if (!silent) {
+      checkoutBusy = true;
+      commerceError = null;
+      notifyListeners();
+    }
+    try {
+      final activated = await _commerce.redeemKey(
+        key: key,
+        deviceId: id,
+        deviceName: _deviceName(),
+        platform: Platform.operatingSystem,
+      );
+      licenseKey = key.trim();
+      license = activated;
+      await _secretStore.saveLicenseKey(licenseKey!);
+      commerceError = null;
+      notifyListeners();
+    } catch (error) {
+      commerceError = _friendlyCommerceError(error);
+      if (!silent) notifyListeners();
+      rethrow;
+    } finally {
+      if (!silent) {
+        checkoutBusy = false;
+        notifyListeners();
+      }
+    }
+  }
+
+  Future<void> removeLicense() async {
+    if (isConnected) await _engine.disconnect();
+    license = null;
+    licenseKey = null;
+    activeOrder = null;
+    await _secretStore.clearLicenseKey();
+    notifyListeners();
   }
 
   Future<void> toggleConnection() async {
     if (isBusy) return;
     if (isConnected) {
       await _engine.disconnect();
+      return;
+    }
+
+    if (license?.isActive != true) {
+      snapshot = snapshot.copyWith(
+        status: TunnelStatus.error,
+        errorMessage: 'Активируйте тариф или вставьте действующий ключ.',
+      );
+      notifyListeners();
       return;
     }
 
@@ -94,6 +330,16 @@ class GatewayController extends ChangeNotifier {
     }
 
     try {
+      final key = licenseKey;
+      if (key != null) {
+        await _commerce.secureCall(
+          key: key,
+          payload: {
+            'action': 'license.status',
+            'deviceId': deviceId,
+          },
+        );
+      }
       await _engine.connect(
         node: node,
         protocol: protocol,
@@ -104,7 +350,9 @@ class GatewayController extends ChangeNotifier {
     } catch (error) {
       snapshot = snapshot.copyWith(
         status: TunnelStatus.error,
-        errorMessage: _friendlyEngineError(error),
+        errorMessage: error is AeroApiException
+            ? _friendlyCommerceError(error)
+            : _friendlyEngineError(error),
       );
       notifyListeners();
     }
@@ -213,10 +461,40 @@ class GatewayController extends ChangeNotifier {
     return 'Туннельный модуль недоступен. Проверьте нативную интеграцию.';
   }
 
+  String _friendlyCommerceError(Object error) {
+    if (error is AeroApiException) {
+      return switch (error.code) {
+        'DEVICE_LIMIT_EXCEEDED' =>
+          'Достигнут лимит устройств для этого ключа.',
+        'LICENSE_EXPIRED' => 'Срок действия ключа истёк.',
+        'LICENSE_REVOKED' => 'Ключ отозван администратором.',
+        'INVALID_LICENSE_KEY' => 'Ключ не найден или введён неверно.',
+        'PAYMENT_METHOD_UNAVAILABLE' => 'Этот способ оплаты пока недоступен.',
+        _ => error.message,
+      };
+    }
+    if (error is SocketException || error is TimeoutException) {
+      return 'Сервер Wesi Aero временно недоступен.';
+    }
+    return 'Не удалось выполнить запрос. Попробуйте ещё раз.';
+  }
+
+  String _deviceName() {
+    try {
+      return Platform.localHostname.isEmpty
+          ? '${Platform.operatingSystem} device'
+          : Platform.localHostname;
+    } catch (_) {
+      return '${Platform.operatingSystem} device';
+    }
+  }
+
   @override
   void dispose() {
+    _catalogTimer?.cancel();
     unawaited(_subscription?.cancel());
     unawaited(_engine.dispose());
+    _commerce.close();
     super.dispose();
   }
 }

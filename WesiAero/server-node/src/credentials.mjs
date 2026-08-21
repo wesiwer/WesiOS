@@ -20,6 +20,36 @@ export function createAccessCredential() {
   };
 }
 
+export function createLicenseCredential() {
+  const licenseId = randomUUID();
+  const compactId = licenseId.replaceAll('-', '');
+  const secret = randomBytes(24).toString('base64url');
+  const salt = randomBytes(16);
+  return {
+    licenseId,
+    key: `WA1-${compactId}-${secret}`,
+    prefix: `WA1-${compactId.slice(0, 8)}`,
+    salt,
+    hash: hashSecret(secret, salt),
+    secret,
+  };
+}
+
+export function parseLicenseKey(key) {
+  if (typeof key !== 'string') return null;
+  const match = /^WA1-([0-9a-f]{32})-([A-Za-z0-9_-]{24,64})$/i.exec(key.trim());
+  if (!match) return null;
+  const compact = match[1].toLowerCase();
+  const licenseId = [
+    compact.slice(0, 8),
+    compact.slice(8, 12),
+    compact.slice(12, 16),
+    compact.slice(16, 20),
+    compact.slice(20),
+  ].join('-');
+  return { licenseId, secret: match[2] };
+}
+
 export function parseAccessToken(token) {
   if (typeof token !== 'string') return null;
   const parts = token.split('.');
@@ -49,7 +79,7 @@ export function safeEqualText(actual, expected) {
   return left.length === right.length && timingSafeEqual(left, right);
 }
 
-function hashSecret(secret, salt) {
+export function hashSecret(secret, salt) {
   return scryptSync(secret, salt, SCRYPT_KEY_LENGTH, {
     N: 1 << 15,
     r: 8,
