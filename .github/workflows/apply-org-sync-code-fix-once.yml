@@ -1,4 +1,4 @@
-name: Diagnose sync repair patch anchors
+name: Capture exact sync repair failure
 
 on:
   push:
@@ -10,41 +10,72 @@ permissions:
   contents: write
 
 jobs:
-  diagnose:
+  diagnose-and-commit:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
         with:
           ref: fix/recovery-org-canonical-compare
-      - name: Check anchors and persist report
+          fetch-depth: 0
+          token: ${{ github.token }}
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Re-run exact patch and test with durable log
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
-          python3 <<'PY' > /tmp/report.txt
+          git fetch origin main --tags --force
+          git show f567eedc262c49b5ab6cb9ba2d407cebc9d638dc:.github/workflows/apply-org-sync-code-fix-once.yml > /tmp/source-workflow.yml
+          python3 <<'PY'
           from pathlib import Path
-          e=Path('lib/core/sync/sync_engine.dart').read_text(encoding='utf-8')
-          m=Path('lib/core/sync/sync_manual_direction.dart').read_text(encoding='utf-8')
-          t=Path('test/core/sync/organization_sync_hidden_cache_engine_test.dart').read_text(encoding='utf-8')
-          checks={
-            'snapshot_anchor': "return currentStamp == null;" in e,
-            'run_guard_anchor': "if (SyncRecoveryGuard.active) {" in e,
-            'runone_call': "final one = await _runOne(c, t, at, cancelled: cancelled);" in e,
-            'runone_signature': "required bool Function() cancelled," in e,
-            'plan_anchor': "final mergeLocal = firstEverExchange" in e,
-            'snapshot_r_calls': e.count("_localSnapshotStillCurrent(c, r.id, allLocalBefore[r.id])"),
-            'snapshot_id_calls': e.count("_localSnapshotStillCurrent(c, id, allLocalBefore[id])"),
-            'manual_loop': "await SyncJournal.open();\n    var received = 0;\n    try {" in m,
-            'test_anchor': "expect(OrganizationsSync().local(), isEmpty);\n\n      final serverAt" in t,
-          }
-          for k,v in checks.items(): print(f'{k}={v}')
+          lines=Path('/tmp/source-workflow.yml').read_text(encoding='utf-8').splitlines()
+          def extract(name, out):
+              marker=f'      - name: {name}'
+              start=lines.index(marker)
+              run=next(i for i in range(start+1,len(lines)) if lines[i].startswith('        run: |'))
+              block=[]
+              for line in lines[run+1:]:
+                  if line.startswith('      - name: ') or line.startswith('      - uses: '):
+                      break
+                  block.append(line[10:] if line.startswith('          ') else line)
+              Path(out).write_text('\n'.join(block)+'\n',encoding='utf-8')
+          extract('Patch engine and manual download','/tmp/patch.sh')
+          extract('Test and analyze','/tmp/test.sh')
           PY
+          chmod +x /tmp/patch.sh /tmp/test.sh
+          : > /tmp/repair.log
+          set +e
+          bash /tmp/patch.sh >> /tmp/repair.log 2>&1
+          RC=$?
+          if [ "$RC" -eq 0 ]; then
+            bash /tmp/test.sh >> /tmp/repair.log 2>&1
+            RC=$?
+          fi
+          set -e
+          {
+            echo "exit=$RC"
+            echo "head=$(git rev-parse HEAD)"
+            echo "--- last log lines ---"
+            tail -n 220 /tmp/repair.log
+          } > /tmp/report.txt
           cat /tmp/report.txt
           CONTENT=$(base64 -w0 /tmp/report.txt)
-          URL="/repos/$GITHUB_REPOSITORY/contents/.github/ops/sync-repair-anchor-report.txt"
+          URL="/repos/$GITHUB_REPOSITORY/contents/.github/ops/sync-repair-exact-log.txt"
           SHA=$(gh api "$URL" --jq .sha 2>/dev/null || true)
-          ARGS=(--method PUT -H 'Accept: application/vnd.github+json' "$URL" -f message='ops(sync): record patch anchor report' -f content="$CONTENT" -f branch=main)
+          ARGS=(--method PUT -H 'Accept: application/vnd.github+json' "$URL" -f message='ops(sync): record exact repair log' -f content="$CONTENT" -f branch=main)
           if [ -n "$SHA" ]; then ARGS+=( -f sha="$SHA" ); fi
-          gh api "${ARGS[@]}"
+          gh api "${ARGS[@]}" >/dev/null
+          if [ "$RC" -ne 0 ]; then exit "$RC"; fi
+
+          git config user.name 'WesiOS Sync Fix'
+          git config user.email 'actions@users.noreply.github.com'
+          git add lib/core/sync/sync_engine.dart lib/core/sync/sync_manual_direction.dart \
+            test/core/sync/organization_sync_hidden_cache_engine_test.dart \
+            test/core/sync/organization_manual_download_used_device_test.dart
+          git commit -m 'fix(sync): reuse repaired engine for manual server download'
+          git push origin HEAD:fix/recovery-org-canonical-compare
