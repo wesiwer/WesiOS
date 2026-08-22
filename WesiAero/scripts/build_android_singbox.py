@@ -11,6 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = ROOT / "android/app/libs/libbox.aar"
 SING_BOX_REPO = "https://github.com/SagerNet/sing-box.git"
 SING_BOX_TAG = "v1.13.18"
+SING_BOX_COMMIT = "45ca32dcb966f07f97fc888fe8586e359dbe8405"
 GOMOBILE_VERSION = "v0.1.12"
 EXPECTED_GO_PREFIX = "go1.24."
 REQUIRED_NDK = "28.0.13004108"
@@ -132,6 +133,12 @@ def main() -> None:
             str(source),
             env=env,
         )
+        actual_commit = output("git", "rev-parse", "HEAD", cwd=source)
+        if actual_commit != SING_BOX_COMMIT:
+            raise SystemExit(
+                "sing-box tag does not resolve to the approved source commit: "
+                f"expected {SING_BOX_COMMIT}, got {actual_commit}"
+            )
         disable_unused_naive_outbound(source)
         bind_target = os.environ.get("WESI_AERO_SINGBOX_TARGET", "android/arm64")
         run(
@@ -151,7 +158,7 @@ def main() -> None:
         shutil.copy2(aar, OUTPUT)
 
     print(
-        f"Built sing-box {SING_BOX_TAG} libbox Android core: "
+        f"Built sing-box {SING_BOX_TAG}@{SING_BOX_COMMIT[:12]} libbox Android core: "
         f"{OUTPUT} ({OUTPUT.stat().st_size} bytes)"
     )
 
