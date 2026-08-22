@@ -1,0 +1,86 @@
+name: Wesi Aero Ireland BS One-Tap
+
+on:
+  push:
+    branches: [codex/wesi-aero-build-20260821]
+    paths:
+      - '.github/wesi-aero-ireland-one-tap.trigger'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: codex/wesi-aero-build-20260821
+          fetch-depth: 0
+
+      - name: Apply scoped Ireland BS auto policy
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p = Path('WesiAero/lib/src/state/gateway_controller.dart')
+          s = p.read_text(encoding='utf-8')
+
+          old = """  bool get isConnected => snapshot.status == TunnelStatus.connected;\n\n  bool get isCommerceDemo => _commerce.isDemo;"""
+          new = """  bool get isConnected => snapshot.status == TunnelStatus.connected;\n\n  bool get isIrelandBsSelected => selectedNode?.id == 'ireland-bs';\n\n  bool get isCommerceDemo => _commerce.isDemo;"""
+          assert old in s, 'getter anchor changed'
+          s = s.replace(old, new, 1)
+
+          old = """      await _engine.connect(\n        node: node,\n        protocol: protocol,\n        engine: engine,\n        splitMode: splitMode,\n        rules: rules,\n        killSwitch: killSwitch,\n      );"""
+          new = """      final oneTapIreland = node.id == 'ireland-bs';\n      await _engine.connect(\n        node: node,\n        protocol: oneTapIreland ? GatewayProtocol.automatic : protocol,\n        engine: oneTapIreland ? TunnelEngine.automatic : engine,\n        splitMode: splitMode,\n        rules: rules,\n        killSwitch: killSwitch,\n      );"""
+          assert old in s, 'connect anchor changed'
+          s = s.replace(old, new, 1)
+
+          old = """    selectedNode = node;\n    if (protocol != GatewayProtocol.automatic &&\n        !node.protocols.contains(protocol)) {\n      protocol = GatewayProtocol.automatic;\n      engine = TunnelEngine.automatic;\n    }\n    notifyListeners();"""
+          new = """    selectedNode = node;\n    if (node.id == 'ireland-bs') {\n      protocol = GatewayProtocol.automatic;\n      engine = TunnelEngine.automatic;\n    } else if (protocol != GatewayProtocol.automatic &&\n        !node.protocols.contains(protocol)) {\n      protocol = GatewayProtocol.automatic;\n      engine = TunnelEngine.automatic;\n    }\n    notifyListeners();"""
+          assert old in s, 'selectNode anchor changed'
+          s = s.replace(old, new, 1)
+
+          old = """  void setProtocol(GatewayProtocol value) {\n    if (isConnected || isBusy || protocol == value) return;"""
+          new = """  void setProtocol(GatewayProtocol value) {\n    if (isIrelandBsSelected) return;\n    if (isConnected || isBusy || protocol == value) return;"""
+          assert old in s, 'setProtocol anchor changed'
+          s = s.replace(old, new, 1)
+
+          old = """  void setEngine(TunnelEngine value) {\n    if (isConnected || isBusy || engine == value) return;"""
+          new = """  void setEngine(TunnelEngine value) {\n    if (isIrelandBsSelected) return;\n    if (isConnected || isBusy || engine == value) return;"""
+          assert old in s, 'setEngine anchor changed'
+          s = s.replace(old, new, 1)
+          p.write_text(s, encoding='utf-8')
+
+          p = Path('WesiAero/lib/src/screens/settings_screen.dart')
+          s = p.read_text(encoding='utf-8')
+          old = """              Text('Протокол', style: Theme.of(context).textTheme.titleLarge),\n              const SizedBox(height: GatewayTokens.space12),\n              _ProtocolSelector(enabled: !locked),"""
+          new = """              Text('Протокол', style: Theme.of(context).textTheme.titleLarge),\n              const SizedBox(height: GatewayTokens.space12),\n              if (controller.isIrelandBsSelected)\n                const GlassCard(\n                  child: ListTile(\n                    leading: Icon(Icons.auto_awesome_rounded),\n                    title: Text('Автоматический режим · Ирландия БС'),\n                    subtitle: Text('Протокол, движок и REALITY-профиль выбираются автоматически. Ничего перебирать вручную не нужно.'),\n                  ),\n                )\n              else\n                _ProtocolSelector(enabled: !locked),"""
+          assert old in s, 'settings protocol anchor changed'
+          s = s.replace(old, new, 1)
+
+          old = """              const SizedBox(height: GatewayTokens.space12),\n              _EngineSelector(enabled: !locked),\n              const SizedBox(height: GatewayTokens.space24),"""
+          new = """              const SizedBox(height: GatewayTokens.space12),\n              if (!controller.isIrelandBsSelected)\n                _EngineSelector(enabled: !locked),\n              const SizedBox(height: GatewayTokens.space24),"""
+          assert old in s, 'settings engine anchor changed'
+          s = s.replace(old, new, 1)
+          p.write_text(s, encoding='utf-8')
+          PY
+
+      - name: Format and analyze scoped files
+        run: |
+          if command -v dart >/dev/null 2>&1; then
+            dart format WesiAero/lib/src/state/gateway_controller.dart WesiAero/lib/src/screens/settings_screen.dart
+          fi
+          grep -q "isIrelandBsSelected" WesiAero/lib/src/state/gateway_controller.dart
+          grep -q "Автоматический режим · Ирландия БС" WesiAero/lib/src/screens/settings_screen.dart
+
+      - name: Commit changes
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add WesiAero/lib/src/state/gateway_controller.dart WesiAero/lib/src/screens/settings_screen.dart
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m 'feat(aero): make Ireland BS one-tap automatic'
+          git push origin HEAD:codex/wesi-aero-build-20260821
