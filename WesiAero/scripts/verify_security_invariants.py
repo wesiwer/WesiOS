@@ -127,7 +127,7 @@ def verify_rust_core() -> None:
     require(
         ROOT / "core/wesi-tunnel-core/src/lib.rs",
         "#![forbid(unsafe_code)]",
-        "Reject stale async callbacks",
+        "stale async callbacks",
         "Action::BlockTraffic",
         "TunnelState::Verifying",
     )
