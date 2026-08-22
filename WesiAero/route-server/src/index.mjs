@@ -3,6 +3,7 @@ import http from 'node:http';
 import crypto from 'node:crypto';
 import path from 'node:path';
 
+import { selectAutomaticRoute } from './auto-route.mjs';
 import {
   applyProbeResult,
   createRecord,
@@ -53,6 +54,20 @@ function loadConfig(pathLike) {
   parsed.health.stickyTtlMs ??= 30 * 60_000;
   parsed.health.multiTargetQuorum ??= 1;
   parsed.health.expectedStatuses ??= [200, 204];
+  parsed.auto ??= {};
+  parsed.auto.protocolPriority ??= [
+    'vless-reality',
+    'hysteria2',
+    'tuic',
+    'vmess',
+    'trojan',
+    'shadowsocks',
+    'amneziawg',
+    'wireguard',
+  ];
+  parsed.auto.poolPriority ??= parsed.pools.map((pool) => pool.id);
+  parsed.auto.poolPenalty ??= 400;
+  parsed.auto.protocolPenalty ??= 120;
   parsed.listenHost ??= '127.0.0.1';
   parsed.listenPort ??= 8793;
   return parsed;
@@ -68,7 +83,7 @@ async function timedHead(url, timeoutMs) {
       redirect: 'manual',
       cache: 'no-store',
       signal: controller.signal,
-      headers: { 'user-agent': 'WesiAero-RouteServer/0.2' },
+      headers: { 'user-agent': 'WesiAero-RouteServer/0.3' },
     });
     const expected = Array.isArray(config.health.expectedStatuses)
       ? config.health.expectedStatuses.map(Number)
@@ -250,6 +265,29 @@ const server = http.createServer(async (req, res) => {
       });
     }
 
+    if (req.method === 'POST' && url.pathname === '/v1/select-auto') {
+      const body = await readJson(req);
+      const clientId = String(body.clientId || '').trim();
+      if (!clientId) return send(res, 400, { error: 'clientId is required' });
+      const result = selectAutomaticRoute({
+        config,
+        state,
+        sticky,
+        clientId,
+        preferredPoolIds: Array.isArray(body.preferredPoolIds) ? body.preferredPoolIds : null,
+        protocolPriority: Array.isArray(body.protocolPriority) ? body.protocolPriority : null,
+      });
+      if (result.error) {
+        return send(res, result.status, {
+          error: !internetHealthy && result.error === 'NO_AUTOMATIC_ROUTE'
+            ? 'SERVER_CONNECTIVITY_UNAVAILABLE'
+            : result.error,
+        });
+      }
+      persist();
+      return send(res, 200, result);
+    }
+
     if (req.method === 'POST' && url.pathname === '/v1/select') {
       const body = await readJson(req);
       const clientId = String(body.clientId || '').trim();
@@ -274,7 +312,12 @@ const server = http.createServer(async (req, res) => {
       const clientId = String(body.clientId || '').trim();
       const poolId = String(body.poolId || '').trim();
       const protocol = body.protocol == null ? '*' : String(body.protocol).trim();
-      if (!clientId || !poolId) return send(res, 400, { error: 'clientId and poolId are required' });
+      if (!clientId) return send(res, 400, { error: 'clientId is required' });
+      if (!poolId) {
+        sticky.delete(`${clientId}:auto`);
+        persist();
+        return send(res, 200, { released: true, mode: 'automatic' });
+      }
       sticky.delete(`${clientId}:${poolId}:${protocol}`);
       persist();
       return send(res, 200, { released: true });
