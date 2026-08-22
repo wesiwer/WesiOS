@@ -3,15 +3,33 @@ name: Deploy Wesi Aero Ireland BS
 on:
   workflow_dispatch:
     inputs:
-      reality_server_name:
-        description: 'REALITY camouflage SNI/target hostname'
+      reality_profile:
+        description: 'REALITY target profile: auto, wikipedia, microsoft, yahoo, custom'
         required: true
-        default: 'www.cloudflare.com'
+        default: 'auto'
+        type: choice
+        options:
+          - auto
+          - wikipedia
+          - microsoft
+          - yahoo
+          - custom
+      reality_server_name:
+        description: 'Custom REALITY SNI (only for custom profile)'
+        required: false
+        default: ''
+        type: string
+      reality_target:
+        description: 'Custom REALITY target host:port (only for custom profile)'
+        required: false
+        default: ''
         type: string
   push:
     branches: [codex/wesi-aero-build-20260821]
     paths:
       - 'WesiAero/server-deploy/ireland-bs/**'
+      - 'WesiAero/server-deploy/reality-targets.json'
+      - 'WesiAero/server-deploy/select-reality-target.sh'
       - '.github/workflows/deploy-wesi-aero-ireland-bs.yml'
 
 permissions:
@@ -29,7 +47,9 @@ jobs:
       RELAY_SSH_HOST: ${{ secrets.WESI_RELAY_SSH_HOST || '178.236.247.194' }}
       RELAY_SSH_USER: ${{ secrets.WESI_RELAY_SSH_USER }}
       PUBLIC_HOST: '178.236.247.194'
-      REALITY_SERVER_NAME: ${{ inputs.reality_server_name || 'www.cloudflare.com' }}
+      REALITY_PROFILE: ${{ inputs.reality_profile || 'auto' }}
+      CUSTOM_SERVER_NAME: ${{ inputs.reality_server_name || '' }}
+      CUSTOM_TARGET: ${{ inputs.reality_target || '' }}
 
     steps:
       - uses: actions/checkout@v4
@@ -38,7 +58,15 @@ jobs:
         run: |
           set -euo pipefail
           bash -n WesiAero/server-deploy/ireland-bs/deploy.sh
+          bash -n WesiAero/server-deploy/select-reality-target.sh
+          python3 -m json.tool WesiAero/server-deploy/reality-targets.json >/dev/null
           [ -n "${RELAY_SSH_USER:-}" ] || { echo '::error::WESI_RELAY_SSH_USER is missing'; exit 1; }
+          case "$REALITY_PROFILE" in auto|wikipedia|microsoft|yahoo|custom) ;; *) echo '::error::invalid reality profile'; exit 1;; esac
+          if [ "$REALITY_PROFILE" = custom ]; then
+            [ -n "$CUSTOM_SERVER_NAME" ] && [ -n "$CUSTOM_TARGET" ] || {
+              echo '::error::custom profile requires reality_server_name and reality_target'; exit 1;
+            }
+          fi
 
       - name: Prepare SSH
         env:
@@ -68,15 +96,43 @@ jobs:
           echo 'Existing Wesi AI listeners verified; Aero will use TCP/8443 only.'
           REMOTE
 
-      - name: Upload and install Ireland BS
+      - name: Upload Ireland BS deployment bundle
         run: |
           set -euo pipefail
           SSH=(-i "$HOME/.ssh/relay_key" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/relay_known_hosts")
           REMOTE="/tmp/wesi-aero-ireland-bs-$GITHUB_RUN_ID"
+          echo "REMOTE=$REMOTE" >> "$GITHUB_ENV"
           ssh "${SSH[@]}" "$RELAY_SSH_USER@$RELAY_SSH_HOST" "rm -rf '$REMOTE' && mkdir -p '$REMOTE'"
-          scp "${SSH[@]}" WesiAero/server-deploy/ireland-bs/deploy.sh "$RELAY_SSH_USER@$RELAY_SSH_HOST:$REMOTE/deploy.sh"
+          scp "${SSH[@]}" \
+            WesiAero/server-deploy/ireland-bs/deploy.sh \
+            WesiAero/server-deploy/select-reality-target.sh \
+            WesiAero/server-deploy/reality-targets.json \
+            "$RELAY_SSH_USER@$RELAY_SSH_HOST:$REMOTE/"
+
+      - name: Select REALITY target on the actual VPS
+        run: |
+          set -euo pipefail
+          SSH=(-i "$HOME/.ssh/relay_key" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/relay_known_hosts")
+          if [ "$REALITY_PROFILE" = custom ]; then
+            RESULT="$(ssh "${SSH[@]}" "$RELAY_SSH_USER@$RELAY_SSH_HOST" \
+              "WESI_AERO_REALITY_SERVER_NAME='$CUSTOM_SERVER_NAME' WESI_AERO_REALITY_TARGET='$CUSTOM_TARGET' bash '$REMOTE/select-reality-target.sh' custom '$REMOTE/reality-targets.json'")"
+          else
+            RESULT="$(ssh "${SSH[@]}" "$RELAY_SSH_USER@$RELAY_SSH_HOST" \
+              "bash '$REMOTE/select-reality-target.sh' '$REALITY_PROFILE' '$REMOTE/reality-targets.json'")"
+          fi
+          SERVER_NAME="$(printf '%s\n' "$RESULT" | sed -n 's/^SERVER_NAME=//p' | tail -n1)"
+          TARGET="$(printf '%s\n' "$RESULT" | sed -n 's/^TARGET=//p' | tail -n1)"
+          [ -n "$SERVER_NAME" ] && [ -n "$TARGET" ] || { echo '::error::target selector returned incomplete result'; exit 1; }
+          echo "Selected REALITY target: $SERVER_NAME -> $TARGET"
+          echo "REALITY_SERVER_NAME=$SERVER_NAME" >> "$GITHUB_ENV"
+          echo "REALITY_TARGET=$TARGET" >> "$GITHUB_ENV"
+
+      - name: Install Ireland BS
+        run: |
+          set -euo pipefail
+          SSH=(-i "$HOME/.ssh/relay_key" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/relay_known_hosts")
           ssh "${SSH[@]}" "$RELAY_SSH_USER@$RELAY_SSH_HOST" \
-            "WESI_AERO_REALITY_PORT=8443 WESI_AERO_REALITY_SERVER_NAME='$REALITY_SERVER_NAME' WESI_AERO_PUBLIC_HOST='$PUBLIC_HOST' bash '$REMOTE/deploy.sh'"
+            "WESI_AERO_REALITY_PORT=8443 WESI_AERO_REALITY_SERVER_NAME='$REALITY_SERVER_NAME' WESI_AERO_REALITY_TARGET='$REALITY_TARGET' WESI_AERO_PUBLIC_HOST='$PUBLIC_HOST' bash '$REMOTE/deploy.sh'"
           ssh "${SSH[@]}" "$RELAY_SSH_USER@$RELAY_SSH_HOST" "rm -rf '$REMOTE'"
 
       - name: Verify Ireland BS listener and service
