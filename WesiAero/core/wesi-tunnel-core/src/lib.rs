@@ -304,8 +304,7 @@ pub fn default_routes() -> (Route, Vec<Route>) {
 pub fn restrictive_tcp_443_routes() -> (Route, Vec<Route>) {
     (
         Route::new(Protocol::Vmess, Backend::SingBox).with_transport(Transport::TlsWebSocket443),
-        vec![Route::new(Protocol::Vmess, Backend::SingBox)
-            .with_transport(Transport::TlsGrpc443)],
+        vec![Route::new(Protocol::Vmess, Backend::SingBox).with_transport(Transport::TlsGrpc443)],
     )
 }
 
