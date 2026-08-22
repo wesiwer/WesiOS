@@ -1,0 +1,35 @@
+name: Wesi Aero Xray Artifact Baseline
+
+on:
+  push:
+    branches:
+      - codex/wesi-aero-build-20260821
+    paths:
+      - .github/workflows/wesi-aero-xray-baseline.yml
+      - WesiAero/scripts/download_xray_aar.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  baseline:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Download pinned Xray Android release asset
+        run: |
+          set -euo pipefail
+          url='https://github.com/2dust/AndroidLibXrayLite/releases/download/v26.5.19/libv2ray.aar'
+          curl --fail --location --silent --show-error --retry 3 "$url" -o "$RUNNER_TEMP/libv2ray.aar"
+          test "$(stat -c %s "$RUNNER_TEMP/libv2ray.aar")" -gt 1000000
+          sha256sum "$RUNNER_TEMP/libv2ray.aar" | tee "$RUNNER_TEMP/libv2ray.sha256"
+          hash="$(cut -d' ' -f1 "$RUNNER_TEMP/libv2ray.sha256")"
+          echo "XRAY_AAR_SHA256=$hash"
+          {
+            echo '### AndroidLibXrayLite v26.5.19 baseline'
+            echo
+            echo "SHA-256: \`$hash\`"
+            echo 'Source commit: `4c3a3cd051ac6a10d27ba1347a05fff2697ea272`'
+          } >> "$GITHUB_STEP_SUMMARY"
