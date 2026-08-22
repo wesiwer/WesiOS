@@ -102,7 +102,7 @@ class _SyncScreenState extends State<SyncScreen> {
       if (!mounted) return;
       _say(
         _ru
-            ? 'Резервная копия подготовлена: ${backup.records} записей и ${backup.settingsCount} бизнес-настроек. Сохраните файл в «Файлы» или другое надёжное место.'
+            ? 'Резервная копия ${backup.fileName} подготовлена: ${backup.records} записей и ${backup.settingsCount} бизнес-настроек. Сохраните именно этот файл .wesibackup в надёжное место.'
             : 'Backup prepared: ${backup.records} records and ${backup.settingsCount} business settings. Save the file to Files or another safe location.',
       );
     } catch (error) {
@@ -141,11 +141,21 @@ class _SyncScreenState extends State<SyncScreen> {
     LocalBackupInspection inspection;
     try {
       inspection = LocalBackupService.inspect(bytes);
-    } catch (error) {
+    } on LocalBackupException catch (error) {
+      final text = error.code == 'BACKUP_FORMAT_INVALID'
+          ? (_ru
+                ? 'Выберите резервную копию WesiOS: новый файл .wesibackup или старый JSON-файл экспорта WesiOS.'
+                : 'Choose a WesiOS backup: a current .wesibackup file or a legacy WesiOS JSON export.')
+          : (_ru
+                ? 'Резервная копия не прошла проверку: ${error.message}'
+                : 'Backup validation failed: ${error.message}');
+      _say(text, error: true);
+      return;
+    } catch (_) {
       _say(
         _ru
-            ? 'Этот файл нельзя восстановить: $error'
-            : 'This file cannot be restored: $error',
+            ? 'Не удалось прочитать выбранную резервную копию.'
+            : 'Could not read the selected backup.',
         error: true,
       );
       return;
@@ -456,8 +466,8 @@ class _SyncScreenState extends State<SyncScreen> {
                         const SizedBox(height: 10),
                         _button(
                           label: _ru
-                              ? 'Восстановить из локальной копии'
-                              : 'Restore local backup',
+                              ? 'Импортировать резервную копию (.wesibackup)'
+                              : 'Import backup (.wesibackup)',
                           onTap: _busy ? null : _restoreLocalBackup,
                           muted: true,
                         ),
@@ -723,11 +733,27 @@ class _SyncScreenState extends State<SyncScreen> {
   Widget _whatSyncs() {
     final names = _ru
         ? const {
+            'organizations': 'Организации',
+            'organization_grants': 'Права сотрудников',
             'accounts': 'Счета',
             'transactions': 'Операции',
             'tasks': 'Задачи',
-            'articles': 'Ваши статьи',
-            'employees': 'Состав',
+            'articles': 'База знаний',
+            'employees': 'Сотрудники',
+            'calendar_events': 'Календарь',
+            'user_profiles': 'Профили',
+            'task_ai_memory': 'Память задач',
+            'inter_org_transfers': 'Переводы между организациями',
+            'transaction_audit': 'История финансов',
+            'critical_audit': 'Журнал безопасности',
+            'roadmap_projects': 'Roadmap — проекты',
+            'roadmap_items': 'Roadmap — элементы',
+            'crm_clients': 'CRM — клиенты',
+            'crm_deals': 'CRM — сделки',
+            'crm_interactions': 'CRM — взаимодействия',
+            'finance_categories': 'Финансовые категории',
+            'sandbox_transactions': 'Песочница — операции',
+            'what_if_presets': 'Сценарии What-if',
           }
         : const {
             'accounts': 'Accounts',
@@ -748,7 +774,10 @@ class _SyncScreenState extends State<SyncScreen> {
                   Icon(Icons.circle, size: 5, color: AppTheme.textMuted),
                   const SizedBox(width: 8),
                   Text(
-                    names[collection.name] ?? collection.name,
+                    names[collection.name] ??
+                        (_ru
+                            ? 'Системные данные WesiOS'
+                            : 'WesiOS system data'),
                     style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
                   ),
                 ],

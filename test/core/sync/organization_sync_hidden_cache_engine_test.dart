@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
 import 'package:wesios/core/sync/sync_codec.dart';
 import 'package:wesios/core/sync/sync_engine.dart';
+import 'package:wesios/core/sync/sync_journal.dart';
 import 'package:wesios/core/sync/sync_merge.dart';
 import 'package:wesios/core/sync/sync_transport.dart';
 import 'package:wesios/features/organizations/models/organization_model.dart';
@@ -139,6 +140,16 @@ void main() {
       );
 
       expect(OrganizationsSync().local(), isEmpty);
+
+      await SyncJournal.open();
+      final staleStamp = SyncStamp(DateTime.utc(2026, 8, 20, 12));
+      for (final id in <String>[
+        OrganizationModel.rootId,
+        OrganizationModel.wesiBeatsId,
+        'org_it',
+      ]) {
+        await SyncJournal.record('organizations', id, staleStamp);
+      }
 
       final serverAt = DateTime.utc(2026, 8, 17, 13, 19, 24, 672);
       final transport = _MemoryTransport(<String, SyncRecord>{

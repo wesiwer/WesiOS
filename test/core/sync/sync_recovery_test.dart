@@ -47,9 +47,11 @@ class _MemoryTransport implements SyncTransport {
     if (failFetchAfterPush && pushed) {
       return const SyncResult.fail(SyncFailure.offline);
     }
-    return SyncResult.ok(Map<String, SyncRecord>.from(
-      remote[collection] ?? const <String, SyncRecord>{},
-    ));
+    return SyncResult.ok(
+      Map<String, SyncRecord>.from(
+        remote[collection] ?? const <String, SyncRecord>{},
+      ),
+    );
   }
 
   @override
@@ -99,10 +101,8 @@ void main() {
   late _JsonCollection collection;
   late Box<String> business;
 
-  String row(String id, String value) => jsonEncode(<String, dynamic>{
-        'id': id,
-        'value': value,
-      });
+  String row(String id, String value) =>
+      jsonEncode(<String, dynamic>{'id': id, 'value': value});
 
   setUpAll(() async {
     tempDir = await Directory.systemTemp.createTemp('wesios_sync_recovery_');
@@ -128,6 +128,45 @@ void main() {
     await Hive.close();
     if (await tempDir.exists()) await tempDir.delete(recursive: true);
   });
+
+  test(
+    'organization verification accepts server canonical transport shape',
+    () {
+      final collection = OrganizationsSync();
+      final local = <String, dynamic>{
+        'id': 'org_1786636872294887',
+        'name': 'Local organization',
+        'parentId': 'org_wesi_inc',
+        'isRoot': false,
+        'baseCurrency': '',
+        'status': 'active',
+        'createdAt': '2026-08-17T13:19:24.672Z',
+        'updatedAt': '2026-08-17T13:19:24.672Z',
+        'createdBy': '',
+        'code': null,
+        'description': null,
+        'colorValue': null,
+        'sortOrder': 0,
+      };
+      final remote = <String, dynamic>{
+        ...local,
+        'baseCurrency': 'RUB',
+        'createdBy': 'sync-server',
+        'created': '2026-08-17T13:19:24.672Z',
+        'updated': '2026-08-17T13:19:24.672Z',
+        'archived': false,
+      };
+      expect(
+        SyncRecovery.samePayloadForVerification(collection, remote, local),
+        isTrue,
+      );
+      remote['name'] = 'Different business name';
+      expect(
+        SyncRecovery.samePayloadForVerification(collection, remote, local),
+        isFalse,
+      );
+    },
+  );
 
   test('empty server receives snapshot without changing local bytes', () async {
     await business.put('a', row('a', 'phone-a'));
@@ -175,7 +214,10 @@ void main() {
     );
 
     expect(report.ok, isTrue);
-    expect(transport.remote['tasks']!['a']!.fields['value'], 'phone-authoritative');
+    expect(
+      transport.remote['tasks']!['a']!.fields['value'],
+      'phone-authoritative',
+    );
     expect(Map<dynamic, String>.from(business.toMap()), before);
   });
 
@@ -196,23 +238,29 @@ void main() {
     expect(Map<dynamic, String>.from(business.toMap()), before);
   });
 
-  test('edit made during recovery survives and forces a new recovery pass', () async {
-    await business.put('a', row('a', 'snapshot-value'));
-    final transport = _MemoryTransport();
-    transport.onPush = (_, __) async {
-      await business.put('a', row('a', 'newer-local-edit'));
-    };
+  test(
+    'edit made during recovery survives and forces a new recovery pass',
+    () async {
+      await business.put('a', row('a', 'snapshot-value'));
+      final transport = _MemoryTransport();
+      transport.onPush = (_, __) async {
+        await business.put('a', row('a', 'newer-local-edit'));
+      };
 
-    final report = await SyncRecovery.run(
-      transport: transport,
-      collections: <SyncCollection<dynamic>>[collection],
-      requireOwner: false,
-      manageSafety: false,
-    );
+      final report = await SyncRecovery.run(
+        transport: transport,
+        collections: <SyncCollection<dynamic>>[collection],
+        requireOwner: false,
+        manageSafety: false,
+      );
 
-    expect(report.ok, isFalse);
-    expect(report.firstFailure?.code, 'LOCAL_CHANGED_DURING_RECOVERY');
-    expect(jsonDecode(business.get('a')!)['value'], 'newer-local-edit');
-    expect(transport.remote['tasks']!['a']!.fields['value'], 'snapshot-value');
-  });
+      expect(report.ok, isFalse);
+      expect(report.firstFailure?.code, 'LOCAL_CHANGED_DURING_RECOVERY');
+      expect(jsonDecode(business.get('a')!)['value'], 'newer-local-edit');
+      expect(
+        transport.remote['tasks']!['a']!.fields['value'],
+        'snapshot-value',
+      );
+    },
+  );
 }

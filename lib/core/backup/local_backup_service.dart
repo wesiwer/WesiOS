@@ -4,6 +4,8 @@ import 'dart:typed_data';
 import 'package:crypto/crypto.dart';
 import 'package:hive/hive.dart';
 
+import 'legacy_json_backup.dart';
+
 import '../sync/sync_auto.dart';
 import '../sync/sync_clock.dart';
 import '../sync/sync_codec.dart';
@@ -149,7 +151,9 @@ class LocalBackupService {
             '${collection.name}: найдена запись без идентификатора',
           );
         }
-        final fields = Map<String, dynamic>.from(collection.encode(entry.value));
+        final fields = Map<String, dynamic>.from(
+          collection.encode(entry.value),
+        );
         if (fields.isEmpty) {
           throw LocalBackupException(
             'BACKUP_EMPTY_PAYLOAD',
@@ -259,30 +263,30 @@ class LocalBackupService {
       }
     }
 
-
-  // Legacy builds kept the server session in ordinary Hive settings.
-  // Portable business backups must never preserve or resurrect those
-  // plaintext credentials. The active v2 session lives in secure
-  // storage, so removing sync_session* here does not log the user out.
-  try {
-    final settings = Hive.isBoxOpen('wesios_settings')
-        ? Hive.box<dynamic>('wesios_settings')
-        : await Hive.openBox<dynamic>('wesios_settings');
-    for (final key in settings.keys.toList(growable: false)) {
-      final name = '$key';
-      if (name == 'sync_session' || name.startsWith('sync_session_')) {
-        await settings.delete(key);
+    // Legacy builds kept the server session in ordinary Hive settings.
+    // Portable business backups must never preserve or resurrect those
+    // plaintext credentials. The active v2 session lives in secure
+    // storage, so removing sync_session* here does not log the user out.
+    try {
+      final settings = Hive.isBoxOpen('wesios_settings')
+          ? Hive.box<dynamic>('wesios_settings')
+          : await Hive.openBox<dynamic>('wesios_settings');
+      for (final key in settings.keys.toList(growable: false)) {
+        final name = '$key';
+        if (name == 'sync_session' || name.startsWith('sync_session_')) {
+          await settings.delete(key);
+        }
       }
+    } catch (error) {
+      return LocalRestoreReport(
+        ok: false,
+        errorCode: 'BACKUP_SECRET_PURGE_FAILED',
+        message:
+            'Не удалось удалить устаревшие локальные данные сеанса: $error',
+      );
     }
-  } catch (error) {
-    return LocalRestoreReport(
-      ok: false,
-      errorCode: 'BACKUP_SECRET_PURGE_FAILED',
-      message: 'Не удалось удалить устаревшие локальные данные сеанса: $error',
-    );
-  }
 
-  if (manageSafety) {
+    if (manageSafety) {
       final previousEnabled = SyncRecoveryGuard.active
           ? SyncRecoveryGuard.previousEnabled
           : SyncEndpoint.enabled;
@@ -300,7 +304,8 @@ class LocalBackupService {
         return const LocalRestoreReport(
           ok: false,
           errorCode: 'BACKUP_SYNC_BUSY',
-          message: 'Синхронизация не остановилась; локальные данные не изменены',
+          message:
+              'Синхронизация не остановилась; локальные данные не изменены',
         );
       }
     }
@@ -313,13 +318,16 @@ class LocalBackupService {
         await collection.ensureBox();
         before[name] = <String, Map<String, dynamic>>{
           for (final entry in collection.local().entries)
-            entry.key: Map<String, dynamic>.from(collection.encode(entry.value)),
+            entry.key: Map<String, dynamic>.from(
+              collection.encode(entry.value),
+            ),
         };
       }
       if (Hive.isBoxOpen('wesios_settings')) {
         final settings = Hive.box<dynamic>('wesios_settings');
         for (final key in backup.settings.keys) {
-          if (settings.containsKey(key)) beforeSettings[key] = settings.get(key);
+          if (settings.containsKey(key))
+            beforeSettings[key] = settings.get(key);
         }
       }
     } catch (error) {
@@ -347,7 +355,17 @@ class LocalBackupService {
             );
           }
           final fields = Map<String, dynamic>.from(rawFields);
-          final accepted = await collection.applyFields(fields);
+          final decoded = collection.decode(fields);
+          if (decoded == null) {
+            throw LocalBackupException(
+              'BACKUP_ROW_REJECTED',
+              'Не удалось преобразовать ${entry.key}:$id в текущий формат WesiOS',
+            );
+          }
+          final canonicalFields = Map<String, dynamic>.from(
+            collection.encode(decoded),
+          );
+          final accepted = await collection.applyFields(canonicalFields);
           if (!accepted) {
             throw LocalBackupException(
               'BACKUP_ROW_REJECTED',
@@ -355,7 +373,8 @@ class LocalBackupService {
             );
           }
           final restored = collection.local()[id];
-          if (restored == null || !_sameValue(collection.encode(restored), fields)) {
+          if (restored == null ||
+              !_sameValue(collection.encode(restored), canonicalFields)) {
             throw LocalBackupException(
               'BACKUP_VERIFY_FAILED',
               'Проверка восстановленной записи ${entry.key}:$id не прошла',
@@ -400,8 +419,7 @@ class LocalBackupService {
           counts: counts,
         );
         await SyncRecoveryGuard.markFailed(
-          message:
-              'Локальная резервная копия восстановлена. Серверная копия ещё не проверена.',
+          message: 'Локальная резервная копия восстановлена. Серверная копия ещё не проверена.',
         );
       }
 
@@ -409,8 +427,7 @@ class LocalBackupService {
         ok: true,
         restored: counts.values.fold(0, (sum, value) => sum + value),
         counts: Map.unmodifiable(counts),
-        message:
-            'Локальные данные восстановлены. Обычная синхронизация оставлена заблокированной до проверки сервера.',
+        message: 'Локальные данные восстановлены. Обычная синхронизация оставлена заблокированной до проверки сервера.',
       );
     } catch (error) {
       try {
@@ -425,8 +442,7 @@ class LocalBackupService {
         return LocalRestoreReport(
           ok: false,
           errorCode: 'BACKUP_ROLLBACK_FAILED',
-          message:
-              'Восстановление остановилось и автоматический откат не завершился. Не запускайте синхронизацию; используйте исходный файл резервной копии.',
+          message: 'Восстановление остановилось и автоматический откат не завершился. Не запускайте синхронизацию; используйте исходный файл резервной копии.',
         );
       }
       final message = error is LocalBackupException
@@ -457,6 +473,20 @@ class LocalBackupService {
         'BACKUP_JSON_INVALID',
         'Файл не является резервной копией WesiOS',
       );
+    }
+    if (LegacyJsonBackup.looksLike(envelopeRaw)) {
+      try {
+        final parsed = LegacyJsonBackup.parse(
+          Map<dynamic, dynamic>.from(envelopeRaw as Map),
+        );
+        return _DecodedBackup(
+          createdAt: parsed.createdAt,
+          collections: parsed.collections,
+          settings: const <String, dynamic>{},
+        );
+      } on FormatException catch (error) {
+        throw LocalBackupException('BACKUP_LEGACY_INVALID', '${error.message}');
+      }
     }
     if (envelopeRaw is! Map || envelopeRaw['format'] != format) {
       throw const LocalBackupException(
