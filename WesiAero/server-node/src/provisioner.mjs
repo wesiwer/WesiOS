@@ -77,8 +77,11 @@ export class StaticProfileProvisioner {
 }
 
 function profileProtocolCandidates(protocol) {
+  // vmess-xray is only a historical filename alias for the same VMess wire
+  // protocol. WireGuard and AmneziaWG are intentionally NOT aliases: allowing
+  // one to satisfy a lease for the other creates an implicit protocol
+  // substitution and can silently remove AWG obfuscation or break a WG client.
   if (protocol === 'vmess') return ['vmess', 'vmess-xray'];
-  if (protocol === 'wireguard') return ['wireguard', 'amneziawg'];
   return [protocol];
 }
 
@@ -92,8 +95,7 @@ function validateProfile(profile, protocol) {
     throw new ProvisioningError('INVALID_PROFILE', 'Profile must be an object');
   }
   const profileProtocol = canonicalProfileProtocol(profile.protocol);
-  const migrationCompatible = protocol === 'wireguard' && profile.protocol === 'amneziawg';
-  if (profileProtocol !== protocol && !migrationCompatible) {
+  if (profileProtocol !== protocol) {
     throw new ProvisioningError('INVALID_PROFILE', 'Profile protocol mismatch');
   }
   if (typeof profile.clientConfig !== 'string' || profile.clientConfig.length < 16) {
