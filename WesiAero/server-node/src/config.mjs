@@ -19,6 +19,21 @@ export function loadConfig(environment = process.env) {
     'http://127.0.0.1:8790';
   const paymentReturnUrl = environment.WESI_AERO_PAYMENT_RETURN_URL ||
     new URL('/v1/payment-return', publicBaseUrl).toString();
+
+  const allowInsecureDevDefaults =
+    environment.WESI_AERO_ALLOW_INSECURE_DEV_DEFAULTS === 'true';
+  const masterKey = environment.WESI_AERO_MASTER_KEY ||
+    (allowInsecureDevDefaults
+      ? (environment.WESI_AERO_ADMIN_TOKEN || 'development-only-wesi-aero-master-key-change-me')
+      : null);
+  if (typeof masterKey !== 'string' || masterKey.length < 32) {
+    throw new Error(
+      'WESI_AERO_MASTER_KEY with at least 32 characters is required. ' +
+      'Insecure development defaults require explicit ' +
+      'WESI_AERO_ALLOW_INSECURE_DEV_DEFAULTS=true.',
+    );
+  }
+
   return Object.freeze({
     host: environment.WESI_AERO_HOST || '127.0.0.1',
     port: intFromEnv(environment, 'WESI_AERO_PORT', 8790, {
@@ -42,16 +57,17 @@ export function loadConfig(environment = process.env) {
       min: 1024,
       max: 1_048_576,
     }),
-    technicalLogs: environment.WESI_AERO_TECHNICAL_LOGS !== 'false',
+    # Privacy/security-sensitive features are opt-in. A missing environment
+    # variable must never silently enable request metadata logging or mock money
+    # flows in a production-like deployment.
+    technicalLogs: environment.WESI_AERO_TECHNICAL_LOGS === 'true',
     publicBaseUrl,
     paymentReturnUrl,
-    allowMockPayments: environment.WESI_AERO_ALLOW_MOCK_PAYMENTS !== 'false',
+    allowMockPayments: environment.WESI_AERO_ALLOW_MOCK_PAYMENTS === 'true',
     yookassaShopId: environment.WESI_AERO_YOOKASSA_SHOP_ID || null,
     yookassaSecretKey: environment.WESI_AERO_YOOKASSA_SECRET_KEY || null,
     cryptoPayToken: environment.WESI_AERO_CRYPTO_PAY_TOKEN || null,
     cryptoPayTestnet: environment.WESI_AERO_CRYPTO_PAY_TESTNET !== 'false',
-    masterKey: environment.WESI_AERO_MASTER_KEY ||
-      environment.WESI_AERO_ADMIN_TOKEN ||
-      'development-only-wesi-aero-master-key-change-me',
+    masterKey,
   });
 }
