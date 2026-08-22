@@ -1,0 +1,37 @@
+name: Wesi Aero Ireland Health Fast Patch
+
+on:
+  push:
+    branches: [codex/wesi-aero-build-20260821]
+    paths:
+      - '.github/wesi-aero-client-health-fast.trigger'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: codex/wesi-aero-build-20260821
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Apply source patches
+        run: |
+          node WesiAero/server-node/scripts/patch-client-health-api.mjs
+          node WesiAero/scripts/patch-ireland-client-health.mjs
+          node --check WesiAero/server-node/src/api.mjs
+      - name: Commit patches
+        run: |
+          if git diff --quiet -- WesiAero/server-node/src/api.mjs WesiAero/lib/src/state/gateway_controller.dart; then
+            echo 'No changes to commit'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add WesiAero/server-node/src/api.mjs WesiAero/lib/src/state/gateway_controller.dart
+          git commit -m 'feat(aero): wire Ireland continuous tunnel health'
+          git push origin HEAD:codex/wesi-aero-build-20260821
