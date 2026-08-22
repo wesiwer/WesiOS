@@ -110,22 +110,50 @@ EOF
 
 systemctl daemon-reload
 systemctl enable wesi-aero-restrictive-transports.service >/dev/null
-# Clear the previous failed-start rate limiter before attempting the corrected
-# sandbox. This does not hide subsequent failures: readiness below still checks
-# active state and every expected loopback listener.
+# Clear an earlier start-rate limit before attempting the corrected unit. A
+# subsequent crash is still fatal because readiness below checks both the unit
+# and every expected listener.
 systemctl reset-failed wesi-aero-restrictive-transports.service >/dev/null 2>&1 || true
 if ! systemctl restart wesi-aero-restrictive-transports.service; then
   systemctl status wesi-aero-restrictive-transports.service --no-pager >&2 || true
   journalctl -u wesi-aero-restrictive-transports.service -n 40 --no-pager >&2 || true
   exit 1
 fi
-for _ in $(seq 1 40); do
-  systemctl is-active --quiet wesi-aero-restrictive-transports.service && break
+
+has_loopback_listener() {
+  local port="$1"
+  ss -ltnH | awk -v suffix=":$port" '
+    $4 ~ suffix"$" && $4 ~ /^127\.0\.0\.1:/ { found=1 }
+    END { exit(found ? 0 : 1) }
+  '
+}
+
+# systemd reports Type=simple as active immediately after exec(). sing-box still
+# needs a short initialization window before its listeners exist, so service
+# state alone is not a readiness signal. Wait until all three transports are
+# actually bound while continuously rejecting a failed unit.
+ready=false
+for _ in $(seq 1 80); do
+  if systemctl is-failed --quiet wesi-aero-restrictive-transports.service; then
+    echo "Restrictive transport service failed before becoming ready." >&2
+    systemctl status wesi-aero-restrictive-transports.service --no-pager >&2 || true
+    journalctl -u wesi-aero-restrictive-transports.service -n 40 --no-pager >&2 || true
+    exit 1
+  fi
+  if systemctl is-active --quiet wesi-aero-restrictive-transports.service && \
+     has_loopback_listener "$WS_PORT" && \
+     has_loopback_listener "$GRPC_PORT" && \
+     has_loopback_listener "$HTTP2_PORT"; then
+    ready=true
+    break
+  fi
   sleep 0.25
 done
-if ! systemctl is-active --quiet wesi-aero-restrictive-transports.service; then
+if [[ "$ready" != true ]]; then
+  echo "Restrictive transport service did not expose all loopback listeners in time." >&2
   systemctl status wesi-aero-restrictive-transports.service --no-pager >&2 || true
   journalctl -u wesi-aero-restrictive-transports.service -n 40 --no-pager >&2 || true
+  ss -ltnH >&2 || true
   exit 1
 fi
 
@@ -134,15 +162,6 @@ fi
 # entire ss stream in awk so `set -o pipefail` cannot turn a successful match
 # into a SIGPIPE false-negative.
 for port in "$WS_PORT" "$GRPC_PORT" "$HTTP2_PORT"; do
-  if ! ss -ltnH | awk -v suffix=":$port" '
-    $4 ~ suffix"$" && $4 ~ /^127\.0\.0\.1:/ { found=1 }
-    END { exit(found ? 0 : 1) }
-  '; then
-    echo "Restrictive transport port $port is not listening on loopback." >&2
-    systemctl status wesi-aero-restrictive-transports.service --no-pager >&2 || true
-    journalctl -u wesi-aero-restrictive-transports.service -n 40 --no-pager >&2 || true
-    exit 1
-  fi
   if ss -ltnH | awk -v suffix=":$port" '
     $4 ~ suffix"$" && $4 !~ /^127\.0\.0\.1:/ { exposed=1 }
     END { exit(exposed ? 0 : 1) }
