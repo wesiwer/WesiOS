@@ -30,6 +30,13 @@ write_profile() {
 
 protocols=(vless-reality vmess wireguard)
 
+# When the dedicated restrictive transport service is active, the VMess lease
+# uses standards-compliant TLS/443 + WebSocket on the Wesi-owned hostname. The
+# old raw VMess listener remains available server-side as a compatibility path.
+if [[ -s "$STATE_DIR/singbox/clients/vmess-ws443.txt" ]]; then
+  write_profile vmess "$STATE_DIR/singbox/clients/vmess-ws443.txt" vmess
+fi
+
 # Standard WireGuard remains its own profile on UDP 51820.
 if [[ -s /root/wesi-aero-client.conf ]]; then
   write_profile wireguard /root/wesi-aero-client.conf wireguard
@@ -68,8 +75,8 @@ payload="$(jq -n \
     online:true,
     recommended:true,
     capacity:500,
-    tags:["relay","xray","sing-box","wireguard","amneziawg","prototype"],
-    notes:"Multi-engine Wesi Relay: sing-box, Xray, WireGuard and AmneziaWG.",
+    tags:["relay","xray","sing-box","wireguard","amneziawg","https443","prototype"],
+    notes:"Multi-engine Wesi Relay with Wesi-owned TLS/443 restrictive-network transports.",
     transportConfig:{
       defaultProtocol:"vless-reality",
       fallbackProtocol:"wireguard",
@@ -81,7 +88,18 @@ payload="$(jq -n \
       tuicPort:8447,
       wireGuardPort:51820,
       amneziaWgPort:51821,
-      engines:["sing-box","xray","native"]
+      engines:["sing-box","xray","native"],
+      restrictiveNetwork:{
+        enabled:true,
+        publicPort:443,
+        tlsVersions:["TLSv1.2","TLSv1.3"],
+        hostname:$host,
+        primary:{protocol:"vmess",transport:"websocket"},
+        candidates:["websocket","grpc","http2"],
+        domainFronting:false,
+        thirdPartyCdn:false,
+        edgePolicy:"wesi-owned-or-explicitly-authorized"
+      }
     }
   }')"
 
@@ -96,5 +114,12 @@ catalog="$(curl -fsS http://127.0.0.1:8790/v1/catalog)"
 for protocol in "${protocols[@]}"; do
   jq -e --arg p "$protocol" '.servers[] | select(.id=="wesi-relay") | (.protocols | index($p)) != null' <<<"$catalog" >/dev/null
 done
+jq -e --arg host "$PUBLIC_HOST" '
+  .servers[] | select(.id=="wesi-relay") |
+  .transportConfig.restrictiveNetwork.enabled == true and
+  .transportConfig.restrictiveNetwork.publicPort == 443 and
+  .transportConfig.restrictiveNetwork.hostname == $host and
+  .transportConfig.restrictiveNetwork.domainFronting == false
+' <<<"$catalog" >/dev/null
 
 echo "Wesi Relay catalog synchronized: ${protocols[*]}"
