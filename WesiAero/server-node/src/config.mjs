@@ -57,9 +57,9 @@ export function loadConfig(environment = process.env) {
       min: 1024,
       max: 1_048_576,
     }),
-    # Privacy/security-sensitive features are opt-in. A missing environment
-    # variable must never silently enable request metadata logging or mock money
-    # flows in a production-like deployment.
+    // Privacy/security-sensitive features are opt-in. A missing environment
+    // variable must never silently enable request metadata logging or mock money
+    // flows in a production-like deployment.
     technicalLogs: environment.WESI_AERO_TECHNICAL_LOGS === 'true',
     publicBaseUrl,
     paymentReturnUrl,
