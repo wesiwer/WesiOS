@@ -8,6 +8,7 @@ on:
       - WesiAero/server-node/src/**
       - WesiAero/server-node/scripts/setup-singbox-prototype.sh
       - WesiAero/server-node/scripts/setup-restrictive-transports.sh
+      - WesiAero/server-node/scripts/verify-restrictive-transports.sh
       - WesiAero/server-node/scripts/setup-amneziawg-prototype.sh
       - WesiAero/server-node/scripts/setup-control-plane-prototype.sh
       - WesiAero/server-node/scripts/configure-control-plane-https.sh
@@ -112,6 +113,13 @@ jobs:
           "${SUDO[@]}" env WESI_AERO_PUBLIC_HOST="$AERO_HOST" \
             bash "$REMOTE/server-node/scripts/configure-control-plane-https.sh" "$AERO_HOST"
 
+          # Probe each provisioned 443 transport independently through the public
+          # hostname. The verifier prints booleans only; credentials remain local.
+          "${SUDO[@]}" env WESI_AERO_PUBLIC_HOST="$AERO_HOST" \
+            bash "$REMOTE/server-node/scripts/verify-restrictive-transports.sh"
+          test -s /tmp/wesi-aero-restrictive-probe.json
+          jq -e '.websocket == true' /tmp/wesi-aero-restrictive-probe.json >/dev/null
+
           "${SUDO[@]}" env WESI_AERO_PUBLIC_HOST="$AERO_HOST" bash "$REMOTE/server-node/scripts/sync-live-protocols.sh"
 
           systemctl is-active --quiet wesi-aero-singbox.service
@@ -148,9 +156,8 @@ jobs:
           "${SUDO[@]}" grep -q 'proxy_pass http://127.0.0.1:18080;' /etc/nginx/snippets/wesi-aero-transports.conf
           ! "${SUDO[@]}" grep -q 'proxy_add_x_forwarded_for' /etc/nginx/sites-enabled/wesi-aero-control
 
-          # End-to-end public TLS/443 data-plane proof. This client connects to
-          # the public Wesi Aero hostname, traverses nginx -> WS transport ->
-          # sing-box, and must reach an external HTTPS origin through the tunnel.
+          # Independent second proof of the required production floor: public
+          # VMess/WS/TLS/443 must carry external HTTPS traffic end-to-end.
           RESTRICTIVE_UUID="$(cat /var/lib/wesi-aero/singbox/restrictive-vmess.uuid)"
           TEST_CONFIG="$(mktemp)"
           TEST_LOG="$(mktemp)"
