@@ -123,10 +123,23 @@ if ! systemctl is-active --quiet wesi-aero-restrictive-transports.service; then
 fi
 
 # These listeners are deliberately loopback-only. Nginx is the sole public
-# TLS/443 entry point; no firewall hole is created for 18080-18082.
+# TLS/443 entry point; no firewall hole is created for 18080-18082. Consume the
+# entire ss stream in awk so `set -o pipefail` cannot turn a successful match
+# into a SIGPIPE false-negative.
 for port in "$WS_PORT" "$GRPC_PORT" "$HTTP2_PORT"; do
-  ss -ltnH | awk -v suffix=":$port" '$4 ~ suffix"$" && $4 ~ /^127\.0\.0\.1:/ { print $4 }' | grep -q .
-  if ss -ltnH | awk -v suffix=":$port" '$4 ~ suffix"$" && $4 !~ /^127\.0\.0\.1:/ { print $4 }' | grep -q .; then
+  if ! ss -ltnH | awk -v suffix=":$port" '
+    $4 ~ suffix"$" && $4 ~ /^127\.0\.0\.1:/ { found=1 }
+    END { exit(found ? 0 : 1) }
+  '; then
+    echo "Restrictive transport port $port is not listening on loopback." >&2
+    systemctl status wesi-aero-restrictive-transports.service --no-pager >&2 || true
+    journalctl -u wesi-aero-restrictive-transports.service -n 40 --no-pager >&2 || true
+    exit 1
+  fi
+  if ss -ltnH | awk -v suffix=":$port" '
+    $4 ~ suffix"$" && $4 !~ /^127\.0\.0\.1:/ { exposed=1 }
+    END { exit(exposed ? 0 : 1) }
+  '; then
     echo "Restrictive transport port $port is exposed outside loopback." >&2
     exit 1
   fi
