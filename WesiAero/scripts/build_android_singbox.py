@@ -80,18 +80,25 @@ def bootstrap_gomobile(env: dict[str, str]) -> None:
 
 
 def disable_unused_naive_outbound(source: Path) -> None:
-    # The stock Android builder enables NaiveProxy, which pulls a very large
-    # Cronet static archive. Wesi Aero does not expose NaiveProxy. Removing the
-    # tag avoids shipping/compiling an unused browser network stack and keeps
-    # the core limited to the protocols we actually expose.
+    # The stock Android builder enables NaiveProxy in sharedTags. Wesi Aero
+    # does not expose that outbound, so remove only the build tag from the main
+    # Android variant. The remaining string in filterTags(...,
+    # "with_naive_outbound") belongs to sing-box's legacy variant and is not an
+    # enabled feature by itself.
     builder = source / "cmd/internal/build_libbox/main.go"
     text = builder.read_text(encoding="utf-8")
-    if '"with_naive_outbound"' not in text:
-        raise SystemExit("sing-box builder layout changed: with_naive_outbound tag not found")
-    text = text.replace('"with_naive_outbound", ', "", 1)
+    shared_anchor = 'sharedTags = append(sharedTags, "with_gvisor", "with_quic", "with_wireguard", "with_utls", "with_naive_outbound",'
+    shared_replacement = 'sharedTags = append(sharedTags, "with_gvisor", "with_quic", "with_wireguard", "with_utls",'
+    if shared_anchor not in text:
+        raise SystemExit("sing-box builder layout changed: shared NaiveProxy tag not found")
+    text = text.replace(shared_anchor, shared_replacement, 1)
     builder.write_text(text, encoding="utf-8")
-    if '"with_naive_outbound"' in text:
-        raise SystemExit("failed to remove unused NaiveProxy build tag")
+    shared_line = next(
+        (line for line in text.splitlines() if line.strip().startswith("sharedTags = append(sharedTags")),
+        "",
+    )
+    if '"with_naive_outbound"' in shared_line:
+        raise SystemExit("failed to disable NaiveProxy in sing-box shared Android tags")
     print("Disabled unused sing-box NaiveProxy/Cronet feature")
 
 
