@@ -1,0 +1,30 @@
+name: Wesi Aero Route Server CI
+
+on:
+  push:
+    branches:
+      - codex/wesi-aero-build-20260821
+    paths:
+      - 'WesiAero/route-server/**'
+      - 'WesiAero/docs/BS_ROUTE_SERVER_TZ.md'
+      - '.github/workflows/wesi-aero-route-server-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  route-server:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Syntax check
+        working-directory: WesiAero/route-server
+        run: npm run check
+      - name: Unit tests
+        working-directory: WesiAero/route-server
+        run: npm test
