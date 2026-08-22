@@ -1,0 +1,48 @@
+name: Wesi Aero client health scoring patch
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/wesi-aero-build-20260821]
+    paths:
+      - '.github/workflows/wesi-aero-client-health-score-patch.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: codex/wesi-aero-build-20260821
+      - name: Patch auto route call
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('WesiAero/route-server/src/index.mjs')
+          s=p.read_text()
+          old="""        state,
+        sticky,
+        clientId,
+"""
+          new="""        state,
+        sticky,
+        clientHealth,
+        clientId,
+"""
+          if old not in s: raise SystemExit('auto-route call pattern missing')
+          p.write_text(s.replace(old,new,1))
+          PY
+          node --check WesiAero/route-server/src/index.mjs
+          node --check WesiAero/route-server/src/auto-route.mjs
+          git diff --check
+      - name: Commit
+        run: |
+          if git diff --quiet; then exit 0; fi
+          git config user.name 'Wesi Aero Automation'
+          git config user.email 'actions@users.noreply.github.com'
+          git add WesiAero/route-server/src/index.mjs
+          git commit -m 'Wesi Aero: use client health in automatic route scoring'
+          git push origin HEAD:codex/wesi-aero-build-20260821
