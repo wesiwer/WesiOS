@@ -5,10 +5,7 @@ on:
     branches:
       - codex/wesi-aero-build-20260821
     paths:
-      - 'WesiAero/lib/**'
-      - 'WesiAero/scripts/**'
-      - 'WesiAero/server-node/scripts/ensure-prototype-license.sh'
-      - 'WesiAero/pubspec.yaml'
+      - 'WesiAero/**'
       - '.github/workflows/wesi-aero-android-live.yml'
   workflow_dispatch:
 
@@ -29,41 +26,27 @@ env:
 
 jobs:
   android-live:
-    name: Live Android APK
+    name: Universal multi-engine Android APK
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 80
     defaults:
       run:
         working-directory: WesiAero
-
     steps:
       - uses: actions/checkout@v4
         with:
           ref: codex/wesi-aero-build-20260821
-
-      - name: Publish pending build status
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TARGET_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: |
-          set -euo pipefail
-          payload=$(jq -nc --arg state pending --arg target_url "$TARGET_URL" \
-            --arg description "Live Wesi Aero Android VPN is building" \
-            --arg context "wesi-aero/android-live" \
-            '{state:$state,target_url:$target_url,description:$description,context:$context}')
-          curl --fail-with-body --silent --show-error \
-            -X POST \
-            -H "Accept: application/vnd.github+json" \
-            -H "Authorization: Bearer $GH_TOKEN" \
-            -H "X-GitHub-Api-Version: 2022-11-28" \
-            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" \
-            -d "$payload"
 
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
           cache: gradle
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24.x'
+          cache: true
 
       - uses: subosito/flutter-action@v2
         with:
@@ -75,38 +58,25 @@ jobs:
           set -euo pipefail
           flutter create --platforms=android --org com.wesi --project-name wesi_aero .
           rm -f test/widget_test.dart
+          sed -i 's/minSdk = flutter.minSdkVersion/minSdk = 24/' android/app/build.gradle.kts
+          sed -i 's/android:label="wesi_aero"/android:label="Wesi Aero"/' android/app/src/main/AndroidManifest.xml
 
-      - name: Apply Wesi Aero metadata, native VPN runtime and render optimizations
+      - name: Restore pinned universal sing-box core
+        uses: actions/cache@v4
+        with:
+          path: WesiAero/android/app/libs/libbox.aar
+          key: wesi-aero-libbox-v1.13.18-go1.24-ndk28-universal-v2
+
+      - name: Build and configure all Android VPN engines
+        env:
+          WESI_AERO_ANDROID_ABIS: armeabi-v7a arm64-v8a x86_64
+          WESI_AERO_SINGBOX_TARGET: android
         run: |
           set -euo pipefail
-          sed -i 's/minSdk = flutter.minSdkVersion/minSdk = 23/' android/app/build.gradle.kts
-          sed -i 's/android:label="wesi_aero"/android:label="Wesi Aero"/' android/app/src/main/AndroidManifest.xml
-          python3 scripts/configure_payment_return.py
-          python3 scripts/configure_android_wireguard.py
-          python3 scripts/download_xray_aar.py
-          python3 scripts/configure_android_xray.py
-          python3 scripts/harden_android_xray_datapath.py
-          python3 scripts/optimize_flutter_control_plane.py
-          python3 scripts/fix_flutter_perf_compat.py
+          bash scripts/configure_android_all_engines.sh
           for density in mdpi hdpi xhdpi xxhdpi xxxhdpi; do
             cp assets/branding/wesi_aero_mark.png "android/app/src/main/res/mipmap-$density/ic_launcher.png"
           done
-          grep -q 'android:scheme="wesi-aero"' android/app/src/main/AndroidManifest.xml
-          grep -q 'android:name=".AeroXrayVpnService"' android/app/src/main/AndroidManifest.xml
-          grep -q 'android.permission.BIND_VPN_SERVICE' android/app/src/main/AndroidManifest.xml
-          grep -q 'setUnderlyingNetworks(arrayOf(network))' android/app/src/main/kotlin/com/wesi/wesi_aero/AeroXrayVpnService.kt
-          grep -q 'NET_CAPABILITY_NOT_VPN' android/app/src/main/kotlin/com/wesi/wesi_aero/AeroXrayVpnService.kt
-          grep -q 'measureDelay("https://cp.cloudflare.com/generate_204")' android/app/src/main/kotlin/com/wesi/wesi_aero/AeroXrayVpnService.kt
-          grep -q 'put("outboundTag", "proxy")' android/app/src/main/kotlin/com/wesi/wesi_aero/AeroXrayVpnService.kt
-          grep -q 'Duration(seconds: 60)' lib/src/state/gateway_controller.dart
-          grep -q 'if (changed || clearedError) notifyListeners();' lib/src/state/gateway_controller.dart
-          grep -q 'enum _MetricKind { download, upload, total, ping }' lib/src/screens/dashboard_screen.dart
-          grep -q 'child: BackdropGroup(' lib/src/screens/app_shell.dart
-          grep -q 'Duration(milliseconds: 33)' lib/src/widgets/ambient_background.dart
-          grep -q 'final ValueNotifier<double> phase;' lib/src/widgets/ambient_background.dart
-          grep -q 'if (embedded.isNotEmpty) return embedded;' lib/src/services/secret_store.dart
-          bash -n server-node/scripts/ensure-prototype-license.sh
-          test -s android/app/libs/libv2ray.aar
 
       - name: Verify and load current prototype license from Wesi Relay
         shell: bash
@@ -118,8 +88,6 @@ jobs:
               exit 1
             fi
           done
-          mkdir -p "$HOME/.ssh"
-          chmod 700 "$HOME/.ssh"
           keyfile="$RUNNER_TEMP/wesi-aero-relay-key"
           knownhosts="$RUNNER_TEMP/wesi-aero-known-hosts"
           printf '%s\n' "$RELAY_SSH_KEY" > "$keyfile"
@@ -130,14 +98,10 @@ jobs:
             ssh-keyscan -H "$RELAY_SSH_HOST" > "$knownhosts" 2>/dev/null
           fi
           chmod 600 "$knownhosts"
-          prototype_license="$(ssh \
-            -i "$keyfile" \
-            -o BatchMode=yes \
-            -o UserKnownHostsFile="$knownhosts" \
+          prototype_license="$(ssh -i "$keyfile" -o BatchMode=yes -o UserKnownHostsFile="$knownhosts" \
             "$RELAY_SSH_USER@$RELAY_SSH_HOST" \
             'if [ "$(id -u)" -eq 0 ]; then bash -s; else sudo -n bash -s; fi' \
-            < server-node/scripts/ensure-prototype-license.sh \
-            | tr -d '\r\n')"
+            < server-node/scripts/ensure-prototype-license.sh | tr -d '\r\n')"
           if ! printf '%s' "$prototype_license" | grep -Eq '^WA1-[0-9A-Fa-f]{32}-[A-Za-z0-9_-]{24,64}$'; then
             echo '::error::Relay did not return a server-verified Wesi Aero prototype license'
             exit 1
@@ -183,9 +147,9 @@ jobs:
           } > android/key.properties
           python3 scripts/configure_android_signing.py
 
-      - name: Build signed live APK
+      - name: Build signed universal live APK
         env:
-          GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx5G -Dorg.gradle.daemon=false
+          GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx7G -Dorg.gradle.daemon=false
         run: |
           set -euo pipefail
           test -n "${WESI_AERO_PROTOTYPE_LICENSE:-}"
@@ -193,38 +157,33 @@ jobs:
             --dart-define=WESI_AERO_DEMO=false \
             --dart-define=WESI_AERO_CONTROL_URL="$AERO_CONTROL_URL" \
             --dart-define=WESI_AERO_PROTOTYPE_LICENSE="$WESI_AERO_PROTOTYPE_LICENSE"
-          cp build/app/outputs/flutter-apk/app-release.apk Wesi-Aero-Android-Live-0.2.3+5.apk
-          test -s Wesi-Aero-Android-Live-0.2.3+5.apk
+          version="$(awk '$1 == "version:" {print $2}' pubspec.yaml)"
+          test -n "$version"
+          name="Wesi-Aero-Android-Live-${version}-universal.apk"
+          cp build/app/outputs/flutter-apk/app-release.apk "$name"
+          test -s "$name"
+          sha256sum "$name" | tee "$name.sha256"
+          printf 'APK_GLOB=WesiAero/Wesi-Aero-Android-Live-%s-universal.apk*\n' "$version" >> "$GITHUB_ENV"
 
       - uses: actions/upload-artifact@v4
         with:
           name: Wesi-Aero-Android-Live
-          path: WesiAero/Wesi-Aero-Android-Live-0.2.3+5.apk
+          path: ${{ env.APK_GLOB }}
           retention-days: 7
           if-no-files-found: error
 
       - name: Publish final build status
         if: always()
+        working-directory: .
         env:
           GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.sha }}
           TARGET_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           JOB_STATUS: ${{ job.status }}
         run: |
-          set -euo pipefail
-          if [ "$JOB_STATUS" = "success" ]; then
-            state=success
-            description='Live Wesi Aero Android VPN build passed'
-          else
-            state=failure
-            description='Live Wesi Aero Android VPN build failed'
-          fi
-          payload=$(jq -nc --arg state "$state" --arg target_url "$TARGET_URL" \
-            --arg description "$description" --arg context "wesi-aero/android-live" \
-            '{state:$state,target_url:$target_url,description:$description,context:$context}')
-          curl --fail-with-body --silent --show-error \
-            -X POST \
-            -H "Accept: application/vnd.github+json" \
-            -H "Authorization: Bearer $GH_TOKEN" \
+          if [ "$JOB_STATUS" = success ]; then state=success; description='Universal multi-engine APK is ready'; else state=failure; description='Universal multi-engine build failed'; fi
+          payload=$(jq -nc --arg state "$state" --arg target_url "$TARGET_URL" --arg description "$description" --arg context "wesi-aero/android-live" '{state:$state,target_url:$target_url,description:$description,context:$context}')
+          curl --fail-with-body --silent --show-error -X POST \
+            -H "Accept: application/vnd.github+json" -H "Authorization: Bearer $GH_TOKEN" \
             -H "X-GitHub-Api-Version: 2022-11-28" \
-            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" \
-            -d "$payload"
+            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/statuses/$SHA" -d "$payload"
