@@ -29,6 +29,13 @@
     "failurePenaltyRecovery": 25,
     "maxFailurePenalty": 1000
   },
+  "auto": {
+    "poolPriority": ["ireland-bs"],
+    "includeUnlistedPools": false,
+    "protocolPriority": ["vless-reality"],
+    "poolPenalty": 400,
+    "protocolPenalty": 120
+  },
   "pools": [
     {
       "id": "ireland-bs",
@@ -37,7 +44,7 @@
       "maxRttMs": 5000,
       "nodes": [
         {
-          "id": "ireland-bs-01",
+          "id": "ireland-bs",
           "countryCode": "IE",
           "protocols": ["vless-reality"],
           "endpoint": "178.236.247.194:8443",
@@ -47,6 +54,8 @@
           "healthQuorum": 1,
           "cost": 1,
           "load": 0,
+          "softCapacity": 0.75,
+          "hardCapacity": 0.95,
           "maintenance": "online",
           "profileRef": "ireland-bs-vless-reality",
           "enabled": true
