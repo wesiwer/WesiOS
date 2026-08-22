@@ -1,0 +1,48 @@
+name: Wesi Aero Ireland Client Health Patch
+
+on:
+  push:
+    branches: [codex/wesi-aero-build-20260821]
+    paths:
+      - '.github/wesi-aero-client-health.trigger'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: codex/wesi-aero-build-20260821
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.35.1'
+          channel: stable
+      - name: Patch API and client
+        run: |
+          node WesiAero/server-node/scripts/patch-client-health-api.mjs
+          node WesiAero/scripts/patch-ireland-client-health.mjs
+      - name: Validate server syntax
+        run: node --check WesiAero/server-node/src/api.mjs
+      - name: Validate Flutter files
+        working-directory: WesiAero
+        run: |
+          flutter pub get
+          dart format --output=none --set-exit-if-changed lib/src/services/tunnel_health_service.dart lib/src/state/gateway_controller.dart || dart format lib/src/services/tunnel_health_service.dart lib/src/state/gateway_controller.dart
+          flutter analyze lib/src/services/tunnel_health_service.dart lib/src/state/gateway_controller.dart --no-fatal-warnings
+      - name: Commit integration
+        run: |
+          if git diff --quiet -- WesiAero/server-node/src/api.mjs WesiAero/lib/src/state/gateway_controller.dart WesiAero/lib/src/services/tunnel_health_service.dart; then
+            echo 'No changes to commit'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add WesiAero/server-node/src/api.mjs WesiAero/lib/src/state/gateway_controller.dart WesiAero/lib/src/services/tunnel_health_service.dart
+          git commit -m 'feat(aero): monitor Ireland tunnel egress continuously'
+          git push origin HEAD:codex/wesi-aero-build-20260821
