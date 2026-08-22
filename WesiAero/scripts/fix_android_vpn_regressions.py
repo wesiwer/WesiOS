@@ -119,14 +119,20 @@ def main() -> None:
 
     service_check = SERVICE.read_text(encoding="utf-8")
     activity_check = MAIN.read_text(encoding="utf-8")
+    # HEV owns the Android TUN FD and forwards packets to Xray's local SOCKS
+    # listener. Therefore the current Xray core must be started with fd=0. The
+    # previous direct-TUN architecture used established.fd; requiring that old
+    # signature made healthy HEV builds fail CI.
     required = [
-        'controller.startLoop(runtimeConfig, established.fd)',
+        'controller.startLoop(runtimeConfig, 0)',
         '.put("outboundTag", "proxy")',
         'measureDelay("https://cp.cloudflare.com/generate_204")',
     ]
     missing = [marker for marker in required if marker not in service_check]
     if missing:
         raise SystemExit(f"Xray datapath markers missing after regression fix: {missing}")
+    if 'controller.startLoop(runtimeConfig, established.fd)' in service_check:
+        raise SystemExit("Xray unexpectedly reclaimed Android TUN from the HEV packet path")
     if 'val coreDelayMs = controller.measureDelay(' in service_check:
         raise SystemExit("Cloudflare startup probe unexpectedly remained executable")
 
@@ -142,7 +148,7 @@ def main() -> None:
 
     mode = "centralized fail-closed stop/wait" if centralized_handoff else "legacy Xray/WireGuard barrier"
     print(
-        "Verified Android VPN regressions: non-fatal Xray startup + "
+        "Verified Android VPN regressions: HEV-owned TUN + non-fatal Xray startup + "
         f"serialized VPN TUN handoff ({mode})"
     )
 
