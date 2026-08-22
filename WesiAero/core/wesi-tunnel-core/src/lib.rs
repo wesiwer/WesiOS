@@ -163,7 +163,9 @@ impl TunnelSupervisor {
         if epoch != self.epoch || self.state != TunnelState::Starting {
             return Vec::new();
         }
-        let Some(route) = self.route else { return Vec::new() };
+        let Some(route) = self.route else {
+            return Vec::new();
+        };
         self.state = TunnelState::Verifying;
         vec![Action::Verify { epoch, route }]
     }
@@ -175,7 +177,9 @@ impl TunnelSupervisor {
         if !healthy {
             return self.fail(epoch, FailureReason::VerificationFailed);
         }
-        let Some(route) = self.route else { return Vec::new() };
+        let Some(route) = self.route else {
+            return Vec::new();
+        };
         self.state = TunnelState::Connected;
         self.kill_switch_required = false;
         vec![Action::Connected { epoch, route }]
@@ -245,10 +249,25 @@ mod tests {
 
     fn connect_to_verification(core: &mut TunnelSupervisor) -> u64 {
         let primary = Route::new(Protocol::VlessReality, Backend::Xray);
-        assert!(matches!(core.connect(primary, Vec::new()).as_slice(), [Action::StopAll { .. }]));
+        assert!(matches!(
+            core.connect(primary, Vec::new()).as_slice(),
+            [Action::StopAll { .. }]
+        ));
         let epoch = core.snapshot().epoch;
-        assert_eq!(core.backends_stopped(epoch), vec![Action::Start { epoch, route: primary }]);
-        assert_eq!(core.backend_started(epoch), vec![Action::Verify { epoch, route: primary }]);
+        assert_eq!(
+            core.backends_stopped(epoch),
+            vec![Action::Start {
+                epoch,
+                route: primary
+            }]
+        );
+        assert_eq!(
+            core.backend_started(epoch),
+            vec![Action::Verify {
+                epoch,
+                route: primary
+            }]
+        );
         epoch
     }
 
@@ -291,7 +310,12 @@ mod tests {
         core.backend_started(epoch);
         let actions = core.verified(epoch, false);
         let fallback_epoch = core.snapshot().epoch;
-        assert_eq!(actions, vec![Action::StopAll { epoch: fallback_epoch }]);
+        assert_eq!(
+            actions,
+            vec![Action::StopAll {
+                epoch: fallback_epoch
+            }]
+        );
         assert_eq!(core.snapshot().route, Some(fallback));
         assert_eq!(core.snapshot().state, TunnelState::Stopping);
         assert!(core.snapshot().kill_switch_required);
@@ -304,7 +328,13 @@ mod tests {
         let actions = core.verified(epoch, false);
         assert!(matches!(
             actions.as_slice(),
-            [Action::StopAll { .. }, Action::BlockTraffic { reason: FailureReason::VerificationFailed, .. }]
+            [
+                Action::StopAll { .. },
+                Action::BlockTraffic {
+                    reason: FailureReason::VerificationFailed,
+                    ..
+                }
+            ]
         ));
         assert_eq!(core.snapshot().state, TunnelState::Faulted);
         assert!(core.snapshot().kill_switch_required);
@@ -318,7 +348,12 @@ mod tests {
         core.disconnect();
         let disconnect_epoch = core.snapshot().epoch;
         assert!(core.verified(epoch, true).is_empty());
-        assert_eq!(core.backends_stopped(disconnect_epoch), vec![Action::Idle { epoch: disconnect_epoch }]);
+        assert_eq!(
+            core.backends_stopped(disconnect_epoch),
+            vec![Action::Idle {
+                epoch: disconnect_epoch
+            }]
+        );
         assert_eq!(core.snapshot().state, TunnelState::Idle);
         assert!(!core.snapshot().kill_switch_required);
     }
