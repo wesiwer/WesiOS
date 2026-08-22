@@ -7,6 +7,7 @@ import { selectAutomaticRoute } from './auto-route.mjs';
 import {
   applyProbeResult,
   createRecord,
+  isAtHardCapacity,
   loadPersistentState,
   randomizedDelay,
   restoreSticky,
@@ -30,6 +31,7 @@ let sticky = restoreSticky(persisted.sticky);
 let internetHealthy = true;
 let stopped = false;
 const timers = new Map();
+const clientHealth = new Map();
 
 for (const pool of config.pools) {
   for (const node of pool.nodes) {
@@ -56,14 +58,8 @@ function loadConfig(pathLike) {
   parsed.health.expectedStatuses ??= [200, 204];
   parsed.auto ??= {};
   parsed.auto.protocolPriority ??= [
-    'vless-reality',
-    'hysteria2',
-    'tuic',
-    'vmess',
-    'trojan',
-    'shadowsocks',
-    'amneziawg',
-    'wireguard',
+    'vless-reality', 'hysteria2', 'tuic', 'vmess',
+    'trojan', 'shadowsocks', 'amneziawg', 'wireguard',
   ];
   parsed.auto.poolPriority ??= parsed.pools.map((pool) => pool.id);
   parsed.auto.poolPenalty ??= 400;
@@ -83,7 +79,7 @@ async function timedHead(url, timeoutMs) {
       redirect: 'manual',
       cache: 'no-store',
       signal: controller.signal,
-      headers: { 'user-agent': 'WesiAero-RouteServer/0.3' },
+      headers: { 'user-agent': 'WesiAero-RouteServer/0.4' },
     });
     const expected = Array.isArray(config.health.expectedStatuses)
       ? config.health.expectedStatuses.map(Number)
@@ -101,12 +97,7 @@ async function checkInternet() {
   const urls = normalizeUrls(config.health.connectivityUrls ?? config.health.connectivityUrl);
   if (!urls.length) return true;
   for (const url of urls) {
-    try {
-      await timedHead(url, config.health.timeoutMs);
-      return true;
-    } catch {
-      // Try next independent target.
-    }
+    try { await timedHead(url, config.health.timeoutMs); return true; } catch {}
   }
   return false;
 }
@@ -118,7 +109,6 @@ async function probeNode(record) {
     persist();
     return;
   }
-
   const targets = normalizeUrls(
     record.node.healthUrls ?? record.node.healthUrl ?? config.health.destinationUrls ?? config.health.destinationUrl,
   );
@@ -127,18 +117,13 @@ async function probeNode(record) {
     persist();
     return;
   }
-
   const attempts = [];
   for (const target of targets) {
     for (let index = 0; index < Number(config.health.sampling); index += 1) {
-      try {
-        attempts.push({ ok: true, rttMs: await timedHead(target, config.health.timeoutMs) });
-      } catch (error) {
-        attempts.push({ ok: false, error: error instanceof Error ? error.message : String(error) });
-      }
+      try { attempts.push({ ok: true, rttMs: await timedHead(target, config.health.timeoutMs) }); }
+      catch (error) { attempts.push({ ok: false, error: error instanceof Error ? error.message : String(error) }); }
     }
   }
-
   const successful = attempts.filter((item) => item.ok);
   const quorum = Math.max(1, Number(record.node.healthQuorum ?? config.health.multiTargetQuorum ?? 1));
   const successfulTargets = countSuccessfulTargets(attempts, targets.length, Number(config.health.sampling));
@@ -147,7 +132,6 @@ async function probeNode(record) {
     ? Math.round(successful.reduce((sum, item) => sum + item.rttMs, 0) / successful.length)
     : null;
   const failure = attempts.findLast?.((item) => !item.ok) ?? attempts.find((item) => !item.ok);
-
   applyProbeResult(record, {
     success,
     rttMs,
@@ -183,12 +167,10 @@ function scheduleProbe(record, immediate = false) {
   if (stopped) return;
   const existing = timers.get(record.node.id);
   if (existing) clearTimeout(existing);
-  const delay = immediate
-    ? 0
-    : randomizedDelay({
-        intervalMs: Number(config.health.intervalMs),
-        jitterRatio: Number(config.health.jitterRatio),
-      });
+  const delay = immediate ? 0 : randomizedDelay({
+    intervalMs: Number(config.health.intervalMs),
+    jitterRatio: Number(config.health.jitterRatio),
+  });
   const timer = setTimeout(() => {
     void probeCycle(record).catch((error) => {
       console.error(`[route-server] probe ${record.node.id} failed`, error);
@@ -199,15 +181,8 @@ function scheduleProbe(record, immediate = false) {
   timers.set(record.node.id, timer);
 }
 
-function persist() {
-  savePersistentState(statePath, state, sticky);
-}
-
-function authorize(req) {
-  if (!apiToken) return true;
-  return req.headers.authorization === `Bearer ${apiToken}`;
-}
-
+function persist() { savePersistentState(statePath, state, sticky); }
+function authorize(req) { return !apiToken || req.headers.authorization === `Bearer ${apiToken}`; }
 function send(res, status, payload) {
   const body = JSON.stringify(payload);
   res.writeHead(status, {
@@ -229,10 +204,45 @@ async function readJson(req) {
   return chunks.length ? JSON.parse(Buffer.concat(chunks).toString('utf8')) : {};
 }
 
+function classifyClientFailure(result) {
+  if (result?.ok === true) return 'HEALTHY';
+  const raw = String(result?.reason || '').toUpperCase();
+  const allowed = new Set([
+    'DEVICE_CONNECTIVITY_DOWN', 'NODE_DOWN', 'PROTOCOL_BLOCKED_OR_BROKEN',
+    'TUNNEL_EGRESS_FAILED', 'DNS_FAILED', 'CONTROL_PLANE_FAILED',
+  ]);
+  if (allowed.has(raw)) return raw;
+  if (result?.dnsOk === false) return 'DNS_FAILED';
+  if (result?.deviceConnectivityOk === false) return 'DEVICE_CONNECTIVITY_DOWN';
+  if (result?.tunnelStarted === true && result?.egressOk === false) return 'TUNNEL_EGRESS_FAILED';
+  return 'PROTOCOL_BLOCKED_OR_BROKEN';
+}
+
+function applyNodeTelemetry(record, body) {
+  const cpu = Math.max(0, Math.min(1, Number(body.cpuLoadRatio) || 0));
+  const memory = Math.max(0, Math.min(1, Number(body.memory?.usedRatio) || 0));
+  const load = Math.max(cpu, memory);
+  record.telemetry = {
+    observedAt: body.observedAt || new Date().toISOString(),
+    uptimeSeconds: Math.max(0, Number(body.uptimeSeconds) || 0),
+    loadAverage: Array.isArray(body.loadAverage) ? body.loadAverage.slice(0, 3).map(Number) : [],
+    cpuLoadRatio: cpu,
+    memory: body.memory ?? null,
+    network: body.network ?? null,
+    services: body.services ?? {},
+  };
+  record.node.load = load;
+  const required = Array.isArray(record.node.requiredServices) ? record.node.requiredServices : [];
+  if (required.some((service) => body.services?.[service] !== true)) {
+    record.healthy = false;
+    record.lastError = 'BACKEND_SERVICE_DOWN';
+  }
+  persist();
+}
+
 const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url || '/', 'http://route.local');
-
     if (req.method === 'GET' && url.pathname === '/healthz') {
       return send(res, 200, {
         ok: true,
@@ -241,7 +251,6 @@ const server = http.createServer(async (req, res) => {
         totalNodes: state.size,
       });
     }
-
     if (!authorize(req)) return send(res, 401, { error: 'UNAUTHORIZED' });
 
     if (req.method === 'GET' && url.pathname === '/v1/nodes') {
@@ -259,10 +268,48 @@ const server = http.createServer(async (req, res) => {
           failureRate: record.failureRate,
           score: Math.round(scoreRecord(record, config.health)),
           load: Number(record.node.load ?? 0),
+          atHardCapacity: isAtHardCapacity(record),
+          telemetry: record.telemetry,
           lastCheckedAt: record.lastCheckedAt,
           lastError: record.lastError,
         })),
       });
+    }
+
+    if (req.method === 'POST' && url.pathname === '/v1/node-telemetry') {
+      const body = await readJson(req);
+      const nodeId = String(body.nodeId || '').trim();
+      const record = state.get(nodeId);
+      if (!record) return send(res, 404, { error: 'NODE_NOT_FOUND' });
+      applyNodeTelemetry(record, body);
+      return send(res, 200, {
+        accepted: true,
+        nodeId,
+        load: record.node.load,
+        healthy: record.healthy,
+        atHardCapacity: isAtHardCapacity(record),
+      });
+    }
+
+    if (req.method === 'POST' && url.pathname === '/v1/client-health') {
+      const body = await readJson(req);
+      const clientId = String(body.clientId || '').trim();
+      const nodeId = String(body.nodeId || '').trim();
+      const protocol = String(body.protocol || '').trim();
+      if (!clientId || !nodeId || !protocol) {
+        return send(res, 400, { error: 'clientId, nodeId and protocol are required' });
+      }
+      const classification = classifyClientFailure(body.result ?? {});
+      const key = `${clientId}:${nodeId}:${protocol}`;
+      clientHealth.set(key, {
+        classification,
+        rttMs: Number.isFinite(Number(body.result?.rttMs)) ? Number(body.result.rttMs) : null,
+        jitterMs: Number.isFinite(Number(body.result?.jitterMs)) ? Number(body.result.jitterMs) : null,
+        lossRate: Number.isFinite(Number(body.result?.lossRate)) ? Number(body.result.lossRate) : null,
+        observedAt: new Date().toISOString(),
+      });
+      if (clientHealth.size > 5000) clientHealth.delete(clientHealth.keys().next().value);
+      return send(res, 200, { accepted: true, classification });
     }
 
     if (req.method === 'POST' && url.pathname === '/v1/select-auto') {
@@ -293,9 +340,7 @@ const server = http.createServer(async (req, res) => {
       const clientId = String(body.clientId || '').trim();
       const poolId = String(body.poolId || '').trim();
       const protocol = body.protocol == null ? null : String(body.protocol).trim();
-      if (!clientId || !poolId) {
-        return send(res, 400, { error: 'clientId and poolId are required' });
-      }
+      if (!clientId || !poolId) return send(res, 400, { error: 'clientId and poolId are required' });
       const result = selectRoute({ config, state, sticky, clientId, poolId, protocol });
       if (result.error) {
         if (!internetHealthy && result.error === 'NO_HEALTHY_NODE') {
@@ -328,11 +373,8 @@ const server = http.createServer(async (req, res) => {
       const record = state.get(maintenance[1]);
       if (!record) return send(res, 404, { error: 'NODE_NOT_FOUND' });
       const body = await readJson(req);
-      try {
-        setMaintenance(record, String(body.mode || ''));
-      } catch {
-        return send(res, 400, { error: 'mode must be online, draining or offline' });
-      }
+      try { setMaintenance(record, String(body.mode || '')); }
+      catch { return send(res, 400, { error: 'mode must be online, draining or offline' }); }
       persist();
       if (record.maintenance === 'online') scheduleProbe(record, true);
       return send(res, 200, {
@@ -351,7 +393,6 @@ const server = http.createServer(async (req, res) => {
 });
 
 for (const record of state.values()) scheduleProbe(record, true);
-
 server.listen(config.listenPort, config.listenHost, () => {
   console.log(`[route-server] listening on http://${config.listenHost}:${config.listenPort}`);
 });
