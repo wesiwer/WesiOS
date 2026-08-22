@@ -15,6 +15,7 @@ export function selectAutomaticRoute({
   config,
   state,
   sticky,
+  clientHealth = null,
   clientId,
   preferredPoolIds = null,
   protocolPriority = null,
@@ -33,7 +34,9 @@ export function selectAutomaticRoute({
   if (existing && Number(existing.expiresAt) > now) {
     const record = state.get(existing.nodeId);
     const poolAllowed = orderedPools.some((pool) => pool.id === existing.poolId);
-    if (poolAllowed && record && isUsable(record, existing.protocol, true)) {
+    const health = clientHealth?.get?.(`${clientId}:${existing.nodeId}:${existing.protocol}`);
+    if (poolAllowed && record && isUsable(record, existing.protocol, true) &&
+        !isHardClientFailure(health)) {
       existing.expiresAt = now + Number(config.health?.stickyTtlMs ?? 1_800_000);
       return payload(record, existing.poolId, existing.protocol, true);
     }
@@ -48,13 +51,16 @@ export function selectAutomaticRoute({
         const record = state.get(node.id);
         if (!record || !isUsable(record, protocol, false)) continue;
         if (Number.isFinite(record.rttMs) && record.rttMs > Number(pool.maxRttMs ?? 5000)) continue;
+        const health = clientHealth?.get?.(`${clientId}:${node.id}:${protocol}`);
+        if (isHardClientFailure(health)) continue;
         candidates.push({
           pool,
           record,
           protocol,
           score: scoreRecord(record, config.health ?? {}) +
             poolIndex * Number(config.auto?.poolPenalty ?? 400) +
-            protocolIndex * Number(config.auto?.protocolPenalty ?? 120),
+            protocolIndex * Number(config.auto?.protocolPenalty ?? 120) +
+            clientHealthPenalty(health, config),
         });
       }
     }
@@ -93,6 +99,20 @@ function orderPools(config, preferredPoolIds) {
     if (ar !== br) return ar - br;
     return Number(a.cost ?? 1) - Number(b.cost ?? 1);
   });
+}
+
+function clientHealthPenalty(health, config) {
+  if (!health || health.classification === 'HEALTHY') return 0;
+  const base = Number(config.auto?.clientFailurePenalty ?? 2400);
+  if (health.classification === 'DNS_FAILED') return base * 0.5;
+  if (health.classification === 'CONTROL_PLANE_FAILED') return 0;
+  return base;
+}
+
+function isHardClientFailure(health) {
+  if (!health) return false;
+  return ['NODE_DOWN', 'PROTOCOL_BLOCKED_OR_BROKEN', 'TUNNEL_EGRESS_FAILED']
+    .includes(health.classification);
 }
 
 function isUsable(record, protocol, allowDrainingSticky) {
