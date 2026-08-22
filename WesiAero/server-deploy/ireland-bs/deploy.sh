@@ -2,8 +2,9 @@
 set -euo pipefail
 
 PORT="${WESI_AERO_REALITY_PORT:-8443}"
-SERVER_NAME="${WESI_AERO_REALITY_SERVER_NAME:-www.cloudflare.com}"
-TARGET="${WESI_AERO_REALITY_TARGET:-${SERVER_NAME}:443}"
+EXPLICIT_SERVER_NAME="${WESI_AERO_REALITY_SERVER_NAME:-}"
+EXPLICIT_TARGET="${WESI_AERO_REALITY_TARGET:-}"
+REALITY_CANDIDATES="${WESI_AERO_REALITY_CANDIDATES:-vk.com,mail.ru,api-maps.yandex.ru,maps.apple.com,www.bing.com,www.microsoft.com,www.cloudflare.com,www.amazon.com,www.python.org}"
 INSTALL_DIR=/opt/wesi-aero-xray
 CONFIG_DIR=/etc/wesi-aero/ireland-bs
 CONFIG_FILE="$CONFIG_DIR/xray.json"
@@ -15,7 +16,6 @@ if [ "$(id -u)" -eq 0 ]; then SUDO=(); else SUDO=(sudo -n); fi
 
 case "$PORT" in ''|*[!0-9]*) echo 'invalid port' >&2; exit 2;; esac
 [ "$PORT" -ge 1 ] && [ "$PORT" -le 65535 ] || { echo 'invalid port' >&2; exit 2; }
-[[ "$SERVER_NAME" =~ ^[A-Za-z0-9.-]+$ ]] || { echo 'invalid REALITY server name' >&2; exit 2; }
 
 # Do not collide with the live Wesi AI services on this VPS.
 for reserved in 443 8787 8792; do
@@ -29,14 +29,6 @@ if "${SUDO[@]}" ss -ltnH | awk '{print $4}' | grep -Eq "(^|:)$PORT$"; then
     exit 4
   fi
 fi
-
-# Validate that the camouflage target is actually reachable from the VPS.
-TARGET_HOST="${TARGET%:*}"
-TARGET_PORT="${TARGET##*:}"
-timeout 8 openssl s_client -connect "$TARGET_HOST:$TARGET_PORT" -servername "$SERVER_NAME" </dev/null 2>/dev/null | grep -q 'BEGIN CERTIFICATE' || {
-  echo "REALITY target $TARGET with SNI $SERVER_NAME is not TLS-reachable" >&2
-  exit 5
-}
 
 ARCH="$(uname -m)"
 case "$ARCH" in
@@ -56,6 +48,66 @@ if [ ! -x "$INSTALL_DIR/xray" ]; then
   unzip -q "$TMP/xray.zip" xray -d "$TMP"
   "${SUDO[@]}" install -m 0755 "$TMP/xray" "$INSTALL_DIR/xray"
 fi
+
+validate_reality_target() {
+  local server_name="$1"
+  local target="$2"
+  local target_host="${target%:*}"
+  local target_port="${target##*:}"
+
+  [[ "$server_name" =~ ^[A-Za-z0-9.-]+$ ]] || return 1
+  [[ "$target_host" =~ ^[A-Za-z0-9.-]+$ ]] || return 1
+  [[ "$target_port" =~ ^[0-9]+$ ]] || return 1
+
+  # Require a real certificate matching the requested SNI and a successful
+  # TLS 1.3 handshake from this exact VPS. This avoids selecting a domain merely
+  # because some certificate was returned by a CDN/default vhost.
+  local output
+  output="$(timeout 10 openssl s_client \
+    -connect "$target_host:$target_port" \
+    -servername "$server_name" \
+    -verify_hostname "$server_name" \
+    -tls1_3 \
+    -alpn 'h2,http/1.1' \
+    </dev/null 2>&1 || true)"
+  grep -q 'Verify return code: 0 (ok)' <<<"$output" || return 1
+  grep -q 'Protocol  : TLSv1.3\|New, TLSv1.3' <<<"$output" || return 1
+  return 0
+}
+
+SERVER_NAME=''
+TARGET=''
+TARGET_SOURCE='auto'
+
+if [ -n "$EXPLICIT_SERVER_NAME" ] || [ -n "$EXPLICIT_TARGET" ]; then
+  [ -n "$EXPLICIT_SERVER_NAME" ] || { echo 'WESI_AERO_REALITY_SERVER_NAME is required with explicit target' >&2; exit 5; }
+  SERVER_NAME="$EXPLICIT_SERVER_NAME"
+  TARGET="${EXPLICIT_TARGET:-${SERVER_NAME}:443}"
+  validate_reality_target "$SERVER_NAME" "$TARGET" || {
+    echo "explicit REALITY target $TARGET with SNI $SERVER_NAME failed TLS validation" >&2
+    exit 5
+  }
+  TARGET_SOURCE='explicit'
+else
+  IFS=',' read -r -a CANDIDATES <<< "$REALITY_CANDIDATES"
+  for candidate_raw in "${CANDIDATES[@]}"; do
+    candidate="$(printf '%s' "$candidate_raw" | xargs)"
+    [ -n "$candidate" ] || continue
+    candidate_target="${candidate}:443"
+    echo "Checking REALITY camouflage candidate: $candidate"
+    if validate_reality_target "$candidate" "$candidate_target"; then
+      SERVER_NAME="$candidate"
+      TARGET="$candidate_target"
+      break
+    fi
+  done
+  [ -n "$SERVER_NAME" ] || {
+    echo 'no REALITY camouflage candidate passed TLS 1.3 + hostname validation from this VPS' >&2
+    exit 5
+  }
+fi
+
+echo "Selected REALITY camouflage: SNI=$SERVER_NAME target=$TARGET source=$TARGET_SOURCE"
 
 if [ -f "$ENV_FILE" ]; then
   # shellcheck disable=SC1090
@@ -79,6 +131,7 @@ PUBLIC_KEY=$PUBLIC_KEY
 SHORT_ID=$SHORT_ID
 SERVER_NAME=$SERVER_NAME
 TARGET=$TARGET
+TARGET_SOURCE=$TARGET_SOURCE
 PORT=$PORT
 EOF
 "${SUDO[@]}" install -m 0600 "$TMP/credentials.env" "$ENV_FILE"
@@ -99,7 +152,7 @@ cat > "$TMP/xray.json" <<EOF
       "security": "reality",
       "realitySettings": {
         "show": false,
-        "dest": "$TARGET",
+        "target": "$TARGET",
         "xver": 0,
         "serverNames": ["$SERVER_NAME"],
         "privateKey": "$PRIVATE_KEY",
@@ -165,7 +218,7 @@ Wesi Aero node installed:
   name: Ирландия БС
   endpoint: ${PUBLIC_HOST}:${PORT}
   protocol: VLESS + REALITY
-  serverName: ${SERVER_NAME}
+  camouflage: ${SERVER_NAME} -> ${TARGET} (${TARGET_SOURCE})
   publicKey: ${PUBLIC_KEY}
   shortId: ${SHORT_ID}
   client profile: ${CLIENT_FILE} (root-only)
