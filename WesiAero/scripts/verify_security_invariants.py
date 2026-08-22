@@ -48,9 +48,6 @@ def verify_dependency_sources() -> None:
         ROOT / "scripts/enable_android_amneziawg_backend.py",
         f'AMNEZIAWG_VERSION = "{awg["mavenVersion"]}"',
     )
-    # The Flutter compatibility finalizer regenerates MainActivity. It must
-    # re-apply the AWG-compatible backend afterwards or it silently restores the
-    # standard WireGuard imports and breaks the single-libwg-go invariant.
     require(
         ROOT / "scripts/fix_flutter_perf_compat.py",
         'ENABLE_AMNEZIAWG = ROOT / "scripts/enable_android_amneziawg_backend.py"',
@@ -161,6 +158,20 @@ def verify_restrictive_network_layer() -> None:
     if "proxy_add_x_forwarded_for" in transport:
         raise SystemExit("Restrictive transport forwards source-IP metadata")
 
+    probe = require(
+        ROOT / "server-node/scripts/verify-restrictive-transports.sh",
+        "probe websocket ws /aero/transport/ws 19080",
+        "probe grpc grpc wesi.aero.Transport 19081",
+        "probe http2 http /aero/transport/h2 19082",
+        "https://example.com/",
+        "Required WebSocket/TLS/443 transport failed end-to-end verification.",
+        "{websocket:$websocket,grpc:$grpc,http2:$http2}",
+    )
+    if "curl -k" in probe or "insecure:true" in probe:
+        raise SystemExit("Restrictive transport probe disables TLS verification")
+    if "cat \"$UUID_FILE\"" in probe:
+        raise SystemExit("Restrictive verifier may print the private VMess identity")
+
     sync = require(
         ROOT / "server-node/scripts/sync-live-protocols.sh",
         'publicPort:443',
@@ -179,10 +190,12 @@ def verify_restrictive_network_layer() -> None:
     deploy = require(
         REPO / ".github/workflows/wesi-aero-expand-protocols.yml",
         "setup-restrictive-transports.sh",
+        "verify-restrictive-transports.sh",
         "wesi-aero-restrictive-transports.service",
         "socks5h://127.0.0.1:19080",
         "https://example.com/",
         "127\\.0\\.0\\.1:/",
+        ".websocket == true",
         'domainFronting == false',
         '(.transportConfig == null)',
         '/v1/admin/snapshot',
