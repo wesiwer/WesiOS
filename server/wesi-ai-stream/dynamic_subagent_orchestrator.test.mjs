@@ -182,3 +182,25 @@ test('manual named subagent bypasses planner and runs requested role', async () 
   assert.equal(result.results[0].spec.role, 'Security Reviewer');
   assert.ok(events.some((event) => event.phase === 'planned' && event.name === 'Security Reviewer'));
 });
+
+test('subagent ids stay compatible with the signed relay request-id contract', async () => {
+  const parentRequestId = 'wai_stream_subagent_test_1234567890';
+  const p = prepared({requestId: parentRequestId});
+  p.subagents.maxToolTurns = 0;
+  const result = await runDynamicSubagents({
+    prepared: p,
+    invokeModel: async ({phase}) => {
+      if (phase === 'subagent-plan') {
+        return JSON.stringify({subagents: [{role: 'QA Agent', task: 'Проверь сборку'}]});
+      }
+      return JSON.stringify({summary: 'checked', findings: [], risks: [], recommendation: 'ok'});
+    },
+    invokeTool: async () => ({ok: true}),
+  });
+
+  const agentId = result.results[0].spec.agentId;
+  const relayRequestId = `${parentRequestId}_subagent_${agentId}_final`;
+  assert.equal(agentId, 'subagent-1');
+  assert.doesNotMatch(agentId, /:/);
+  assert.match(relayRequestId, /^wai_[A-Za-z0-9_-]{8,120}$/);
+});
