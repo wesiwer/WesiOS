@@ -1,0 +1,25 @@
+{
+  "id": "ireland-bs",
+  "displayName": "Ирландия БС",
+  "city": "Ireland",
+  "country": "Ireland",
+  "countryCode": "IE",
+  "endpoint": "178.236.247.194:8443",
+  "protocols": ["vless-reality"],
+  "online": true,
+  "recommended": true,
+  "load": 0,
+  "capacity": 0,
+  "tags": ["ireland", "bs", "reality", "sticky"],
+  "transportConfig": {
+    "engine": "xray",
+    "network": "tcp",
+    "security": "reality",
+    "flow": "xtls-rprx-vision",
+    "port": 8443,
+    "serverName": "www.cloudflare.com",
+    "fingerprint": "chrome",
+    "credentialsSource": "vps:/etc/wesi-aero/ireland-bs/credentials.env"
+  },
+  "notes": "Wesi Aero VLESS + REALITY node on the foreign Wesi relay VPS. Wesi AI remains isolated on 443/8787/8792."
+}
