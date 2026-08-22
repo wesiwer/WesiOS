@@ -1,0 +1,73 @@
+name: Verify Wesi Aero AmneziaWG UDP Path
+
+on:
+  push:
+    branches: [codex/wesi-aero-build-20260821]
+    paths: [.github/workflows/wesi-aero-awg-udp-path.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  statuses: write
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      RELAY_SSH_HOST: ${{ secrets.WESI_RELAY_SSH_HOST }}
+      RELAY_SSH_USER: ${{ secrets.WESI_RELAY_SSH_USER }}
+      RELAY_SSH_KEY: ${{ secrets.WESI_RELAY_SSH_KEY }}
+      RELAY_SSH_KNOWN_HOSTS: ${{ secrets.WESI_RELAY_SSH_KNOWN_HOSTS }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Publish pending status
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.sha }}
+          TARGET_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          payload=$(jq -nc --arg target_url "$TARGET_URL" '{state:"pending",target_url:$target_url,description:"Checking AWG UDP 51821 ingress",context:"wesi-aero/awg-udp"}')
+          curl -fsS -X POST -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/statuses/$SHA" -d "$payload" >/dev/null
+
+      - name: Probe provider and host firewall path
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.ssh"
+          printf '%s\n' "$RELAY_SSH_KEY" > "$HOME/.ssh/key"
+          chmod 600 "$HOME/.ssh/key"
+          if [ -n "${RELAY_SSH_KNOWN_HOSTS:-}" ]; then
+            printf '%s\n' "$RELAY_SSH_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          else
+            ssh-keyscan -H "$RELAY_SSH_HOST" > "$HOME/.ssh/known_hosts" 2>/dev/null
+          fi
+          chmod 600 "$HOME/.ssh/known_hosts"
+          SSH=(ssh -i "$HOME/.ssh/key" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts")
+          remote="$RELAY_SSH_USER@$RELAY_SSH_HOST"
+          counter() {
+            "${SSH[@]}" "$remote" 'if [ "$(id -u)" -eq 0 ]; then SUDO=""; else SUDO="sudo -n"; fi; $SUDO iptables -nvx -L INPUT' |
+              awk '$1 ~ /^[0-9]+$/ && $4=="udp" && $0 ~ /dpt:51821/ {print $1; exit}'
+          }
+          before="$(counter)"; before="${before:-0}"
+          printf 'wesi-aero-awg-ingress-probe-%s' "$GITHUB_RUN_ID" | nc -u -w1 "$RELAY_SSH_HOST" 51821 || true
+          sleep 1
+          after="$(counter)"; after="${after:-0}"
+          echo "AWG UDP INPUT packets: before=$before after=$after"
+          if [ "$after" -le "$before" ]; then
+            echo 'AWG_UDP_RESULT=BLOCKED_BEFORE_HOST' | tee "$RUNNER_TEMP/result"
+            exit 3
+          fi
+          echo 'AWG_UDP_RESULT=REACHES_HOST' | tee "$RUNNER_TEMP/result"
+
+      - name: Publish final status
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.sha }}
+          TARGET_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          if [ "$JOB_STATUS" = success ]; then state=success; description='AWG UDP 51821 reaches relay host'; else state=failure; description='AWG UDP 51821 blocked before relay host'; fi
+          payload=$(jq -nc --arg state "$state" --arg target_url "$TARGET_URL" --arg description "$description" '{state:$state,target_url:$target_url,description:$description,context:"wesi-aero/awg-udp"}')
+          curl -fsS -X POST -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/statuses/$SHA" -d "$payload" >/dev/null
