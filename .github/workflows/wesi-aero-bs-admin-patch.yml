@@ -1,0 +1,200 @@
+name: Wesi Aero BS Admin patch
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/wesi-aero-build-20260821]
+    paths:
+      - '.github/workflows/wesi-aero-bs-admin-patch.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: codex/wesi-aero-build-20260821
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Patch control plane and Admin
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace(path, old, new):
+              p=Path(path); s=p.read_text();
+              if old not in s:
+                  raise SystemExit(f'pattern not found: {path}: {old[:80]!r}')
+              p.write_text(s.replace(old,new,1))
+
+          # RouteServerClient: GET + PUT management methods and generic request.
+          p=Path('WesiAero/server-node/src/route-server-client.mjs'); s=p.read_text()
+          insert="""
+  async nodes() {
+    if (!this.enabled) return { nodes: [] };
+    return this.#request('GET', '/v1/nodes');
+  }
+
+  async setMaintenance({ nodeId, mode }) {
+    if (!this.enabled) throw new RouteServerError('ROUTE_SERVER_DISABLED', 'Route Server is not configured');
+    return this.#request('PUT', `/v1/nodes/${encodeURIComponent(nodeId)}/maintenance`, { mode });
+  }
+
+"""
+          marker='  async select({ clientId, poolId, protocol }) {'
+          if 'async nodes()' not in s:
+              s=s.replace(marker,insert+marker,1)
+          s=s.replace("return this.#request('/v1/select', {", "return this.#request('POST', '/v1/select', {", 1)
+          s=s.replace("return this.#request('/v1/release', {", "return this.#request('POST', '/v1/release', {", 1)
+          s=s.replace("return this.#request('/v1/client-health', {", "return this.#request('POST', '/v1/client-health', {", 1)
+          s=s.replace('  async #request(path, payload) {', '  async #request(method, path, payload = null) {', 1)
+          s=s.replace("        method: 'POST',", '        method,', 1)
+          s=s.replace("          'content-type': 'application/json',\n          ...(this.token ? { authorization: `Bearer ${this.token}` } : {}),\n        },\n        body: JSON.stringify(payload),", "          ...(payload ? { 'content-type': 'application/json' } : {}),\n          ...(this.token ? { authorization: `Bearer ${this.token}` } : {}),\n        },\n        ...(payload ? { body: JSON.stringify(payload) } : {}),", 1)
+          p.write_text(s)
+
+          # Control-plane protected admin proxy.
+          p=Path('WesiAero/server-node/src/api.mjs'); s=p.read_text()
+          s=s.replace('    config,\n  } = context;\n\n  if (request.method === \'GET\' && pathname === \'/v1/admin/snapshot\') {', '    config,\n    routeServer,\n  } = context;\n\n  if (request.method === \'GET\' && pathname === \'/v1/admin/route/nodes\') {\n    if (!routeServer?.enabled) throw new HttpError(503, \'ROUTE_SERVER_UNAVAILABLE\', \'Route Server is unavailable\');\n    sendJson(response, 200, await routeServer.nodes());\n    return 200;\n  }\n\n  const routeMaintenance = pathname.match(/^\\/v1\\/admin\\/route\\/nodes\\/([a-zA-Z0-9._:-]{2,128})\\/maintenance$/);\n  if (request.method === \'PUT\' && routeMaintenance) {\n    if (!routeServer?.enabled) throw new HttpError(503, \'ROUTE_SERVER_UNAVAILABLE\', \'Route Server is unavailable\');\n    const body = await readJson(request, config.bodyLimitBytes);\n    sendJson(response, 200, await routeServer.setMaintenance({ nodeId: routeMaintenance[1], mode: body.mode }));\n    return 200;\n  }\n\n  if (request.method === \'GET\' && pathname === \'/v1/admin/snapshot\') {',1)
+          p.write_text(s)
+
+          # AdminApi interface + remote methods.
+          p=Path('WesiAeroAdmin/lib/src/services/admin_api.dart'); s=p.read_text()
+          marker='  Future<void> deleteServer(String id);\n'
+          addition="""
+
+  Future<List<Map<String, dynamic>>> fetchRouteNodes();
+
+  Future<void> setRouteMaintenance(String nodeId, String mode);
+"""
+          if 'fetchRouteNodes' not in s:
+              s=s.replace(marker, marker+addition,1)
+          remote_marker="  @override\n  Future<void> deleteServer(String id) =>\n      _request('DELETE', '/v1/admin/servers/$id');\n"
+          remote_add=remote_marker+"""
+
+  @override
+  Future<List<Map<String, dynamic>>> fetchRouteNodes() async {
+    final json = await _request('GET', '/v1/admin/route/nodes');
+    return (json['nodes'] as List<dynamic>? ?? const [])
+        .whereType<Map<String, dynamic>>()
+        .toList(growable: false);
+  }
+
+  @override
+  Future<void> setRouteMaintenance(String nodeId, String mode) async {
+    await _request('PUT', '/v1/admin/route/nodes/$nodeId/maintenance', body: {'mode': mode});
+  }
+"""
+          if s.count('fetchRouteNodes') == 1:
+              s=s.replace(remote_marker,remote_add,1)
+          # Demo methods before first Demo upsertServer occurrence.
+          demo_anchor='class DemoAdminApi implements AdminApi {'
+          idx=s.index(demo_anchor)
+          tail=s[idx:]
+          if 'Future<List<Map<String, dynamic>>> fetchRouteNodes()' not in tail:
+              pos=tail.index('\n  @override\n  bool get isDemo')
+              demo_methods="""
+
+  @override
+  Future<List<Map<String, dynamic>>> fetchRouteNodes() async => const [];
+
+  @override
+  Future<void> setRouteMaintenance(String nodeId, String mode) async {}
+"""
+              tail=tail[:pos]+demo_methods+tail[pos:]
+              s=s[:idx]+tail
+          p.write_text(s)
+
+          # Admin controller route runtime state.
+          p=Path('WesiAeroAdmin/lib/src/state/admin_controller.dart'); s=p.read_text()
+          s=s.replace('  Map<String, dynamic> paymentSecrets = const {};', '  Map<String, dynamic> paymentSecrets = const {};\n  Map<String, Map<String, dynamic>> routeNodes = const {};',1)
+          s=s.replace('      paymentSecrets = await _api.paymentSecretStatus();\n      error = null;', "      paymentSecrets = await _api.paymentSecretStatus();\n      final runtime = await _api.fetchRouteNodes();\n      routeNodes = {for (final node in runtime) if (node['id'] is String) node['id'] as String: node};\n      error = null;",1)
+          method_anchor='  Future<void> deleteServer(String id) =>\n      _mutate(() => _api.deleteServer(id));\n'
+          methods=method_anchor+"""
+
+  Map<String, dynamic>? routeNode(String id) => routeNodes[id];
+
+  Future<void> setRouteMaintenance(String nodeId, String mode) =>
+      _mutate(() => _api.setRouteMaintenance(nodeId, mode));
+"""
+          if 'setRouteMaintenance(String nodeId' not in s:
+              s=s.replace(method_anchor,methods,1)
+          s=s.replace('      snapshot = await _api.fetchSnapshot();\n      return result;', "      snapshot = await _api.fetchSnapshot();\n      final runtime = await _api.fetchRouteNodes();\n      routeNodes = {for (final node in runtime) if (node['id'] is String) node['id'] as String: node};\n      return result;",1)
+          p.write_text(s)
+
+          # Servers screen: pass runtime + controls.
+          p=Path('WesiAeroAdmin/lib/src/screens/servers_screen.dart'); s=p.read_text()
+          s=s.replace('                      server: server,\n                      onEdit:', "                      server: server,\n                      runtime: controller.routeNode(server.id),\n                      onMaintenance: (mode) => controller.setRouteMaintenance(server.id, mode),\n                      onEdit:",1)
+          s=s.replace('    required this.server,\n    required this.onEdit,', '    required this.server,\n    required this.runtime,\n    required this.onMaintenance,\n    required this.onEdit,',1)
+          s=s.replace('  final AdminServer server;\n  final VoidCallback onEdit;', '  final AdminServer server;\n  final Map<String, dynamic>? runtime;\n  final Future<void> Function(String mode) onMaintenance;\n  final VoidCallback onEdit;',1)
+          old="""                Text(
+                  '${server.endpoint} · ${(server.load * 100).round()}% · '
+                  '${server.protocols.join(' / ')}',
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+"""
+          new="""                Text(
+                  '${server.endpoint} · ${(server.load * 100).round()}% · ${server.protocols.join(' / ')}',
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+                if (runtime != null) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    _runtimeSummary(runtime!),
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    children: [
+                      for (final mode in const ['online', 'draining', 'offline'])
+                        ActionChip(
+                          label: Text(_modeTitle(mode)),
+                          onPressed: runtime?['maintenance'] == mode ? null : () => onMaintenance(mode),
+                        ),
+                    ],
+                  ),
+                ],
+"""
+          if '_runtimeSummary' not in s:
+              s=s.replace(old,new,1)
+              s += """
+
+String _runtimeSummary(Map<String, dynamic> runtime) {
+  final telemetry = runtime['telemetry'] as Map<String, dynamic>? ?? const {};
+  final memory = telemetry['memory'] as Map<String, dynamic>? ?? const {};
+  final network = telemetry['network'] as Map<String, dynamic>? ?? const {};
+  final versions = telemetry['versions'] as Map<String, dynamic>? ?? const {};
+  String pct(Object? value) => value is num ? '${(value.toDouble() * 100).round()}%' : '—';
+  return 'Состояние: ${_modeTitle(runtime['maintenance'] as String? ?? 'offline')} · '
+      'RTT ${runtime['rttMs'] ?? '—'} мс · jitter ${runtime['jitterMs'] ?? '—'} мс · '
+      'ошибки ${pct(runtime['failureRate'])} · CPU ${pct(telemetry['cpuLoadRatio'])} · '
+      'RAM ${pct(memory['usedRatio'])} · сеть ${pct(network['utilizationRatio'])} · '
+      'сессии ${telemetry['activeSessions'] ?? '—'} · Xray ${versions['xray'] ?? '—'}';
+}
+
+String _modeTitle(String mode) => switch (mode) {
+  'online' => 'Онлайн',
+  'draining' => 'Вывод из нагрузки',
+  _ => 'Офлайн',
+};
+"""
+          p.write_text(s)
+          PY
+
+      - name: Validate Node and Dart syntax surface
+        run: |
+          node --check WesiAero/server-node/src/route-server-client.mjs
+          node --check WesiAero/server-node/src/api.mjs
+          git diff --check
+      - name: Commit
+        run: |
+          if git diff --quiet; then exit 0; fi
+          git config user.name 'Wesi Aero Automation'
+          git config user.email 'actions@users.noreply.github.com'
+          git add WesiAero/server-node/src WesiAeroAdmin/lib/src
+          git commit -m 'Wesi Aero: add BS Admin monitoring controls'
+          git push origin HEAD:codex/wesi-aero-build-20260821
