@@ -299,12 +299,21 @@ class MainActivity : FlutterActivity(), EventChannel.StreamHandler {
         try { wireGuardBackend.setState(wireGuardTunnel, Tunnel.State.DOWN, null) } catch (_: Throwable) {}
         AeroXrayVpnService.stop(this)
         AeroSingBoxVpnService.stop(this)
-        repeat(60) {
+
+        var vpnServicesReleased = false
+        for (attempt in 0 until 60) {
             val xrayDown = AeroXrayState.current().status == "disconnected"
             val singDown = AeroSingBoxState.current().status == "disconnected"
-            if (xrayDown && singDown) return@repeat
+            if (xrayDown && singDown) {
+                vpnServicesReleased = true
+                break
+            }
             Thread.sleep(50L)
         }
+        if (!vpnServicesReleased) {
+            throw IllegalStateException("Previous VPN backend did not release Android TUN")
+        }
+
         connectedAtMs = null
         lastRx = 0
         lastTx = 0
@@ -448,11 +457,14 @@ def main() -> None:
         'wireGuardBackend.setState',
         '"vless-reality", "vmess" -> setOf("sing-box", "xray")',
         '"amneziawg" -> emptySet()',
+        'Previous VPN backend did not release Android TUN',
     ]
     missing = [item for item in required if item not in text]
     if missing:
         raise SystemExit(f"multi-engine dispatcher verification failed: {missing}")
-    print("Configured Android multi-engine dispatcher: sing-box + Xray + native WireGuard")
+    if 'return@repeat' in text:
+        raise SystemExit("multi-engine dispatcher contains non-breaking TUN wait")
+    print("Configured Android multi-engine dispatcher: sing-box + Xray + native WireGuard + fail-closed TUN handoff")
 
 
 if __name__ == "__main__":
