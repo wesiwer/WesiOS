@@ -18,11 +18,27 @@ export class RouteServerClient {
     return Boolean(this.baseUrl);
   }
 
+  async nodes() {
+    if (!this.enabled) return { nodes: [] };
+    return this.#request('GET', '/v1/nodes');
+  }
+
+  async setMaintenance({ nodeId, mode }) {
+    if (!this.enabled) {
+      throw new RouteServerError('ROUTE_SERVER_DISABLED', 'Route Server is not configured');
+    }
+    return this.#request(
+      'PUT',
+      `/v1/nodes/${encodeURIComponent(nodeId)}/maintenance`,
+      { mode },
+    );
+  }
+
   async select({ clientId, poolId, protocol }) {
     if (!this.enabled) {
       throw new RouteServerError('ROUTE_SERVER_DISABLED', 'Route Server is not configured');
     }
-    return this.#request('/v1/select', {
+    return this.#request('POST', '/v1/select', {
       clientId,
       poolId,
       protocol,
@@ -31,7 +47,7 @@ export class RouteServerClient {
 
   async release({ clientId, poolId, protocol }) {
     if (!this.enabled) return { released: false };
-    return this.#request('/v1/release', {
+    return this.#request('POST', '/v1/release', {
       clientId,
       poolId,
       protocol,
@@ -40,7 +56,7 @@ export class RouteServerClient {
 
   async reportClientHealth({ clientId, poolId, nodeId, protocol, result }) {
     if (!this.enabled) return { accepted: false };
-    return this.#request('/v1/client-health', {
+    return this.#request('POST', '/v1/client-health', {
       clientId,
       poolId,
       nodeId,
@@ -49,18 +65,18 @@ export class RouteServerClient {
     });
   }
 
-  async #request(path, payload) {
+  async #request(method, path, payload = null) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
     try {
       const response = await fetch(`${this.baseUrl}${path}`, {
-        method: 'POST',
+        method,
         signal: controller.signal,
         headers: {
-          'content-type': 'application/json',
+          ...(payload ? { 'content-type': 'application/json' } : {}),
           ...(this.token ? { authorization: `Bearer ${this.token}` } : {}),
         },
-        body: JSON.stringify(payload),
+        ...(payload ? { body: JSON.stringify(payload) } : {}),
       });
       let body = null;
       try { body = await response.json(); } catch { body = null; }
