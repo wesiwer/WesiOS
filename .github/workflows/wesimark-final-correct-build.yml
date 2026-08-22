@@ -162,16 +162,19 @@ jobs:
           grep -q "versionName='2.4.0'" "$RUNNER_TEMP/wesimark-badging.txt"
           grep -q "application-label:'WesiMark'" "$RUNNER_TEMP/wesimark-badging.txt"
 
-          mapfile -t ICONS < <(unzip -Z1 "$APK" | grep -E '^res/mipmap-(mdpi|hdpi|xhdpi|xxhdpi|xxxhdpi)-v4/ic_launcher\.png$' | sort)
-          test "${#ICONS[@]}" -ge 5
-          if unzip -Z1 "$APK" | grep -q 'ic_launcher_foreground'; then
-            echo 'Generated Flutter foreground icon is still present' >&2
-            exit 30
-          fi
-          for apk_icon in "${ICONS[@]}"; do
-            density="$(echo "$apk_icon" | sed -E 's#res/mipmap-([^-]+)-v4/ic_launcher\.png#\1#')"
+          # aapt2 renames packaged resources (for example res/9w.png), so use
+          # the paths reported by aapt and compare their decoded pixels with
+          # the original WesiMark launcher generated for each Android density.
+          for pair in "160 mdpi" "240 hdpi" "320 xhdpi" "480 xxhdpi" "640 xxxhdpi"; do
+            set -- $pair
+            dpi="$1"
+            density="$2"
+            apk_icon="$(sed -n "s/^application-icon-${dpi}:'\\([^']*\\)'$/\\1/p" "$RUNNER_TEMP/wesimark-badging.txt" | head -n1)"
+            test -n "$apk_icon"
             unzip -p "$APK" "$apk_icon" > "$RUNNER_TEMP/apk-icon-$density.png"
-            cmp "$RUNNER_TEMP/apk-icon-$density.png" "android/app/src/main/res/mipmap-$density/ic_launcher.png"
+            identify "$RUNNER_TEMP/apk-icon-$density.png"
+            pixel_diff="$(compare -metric AE "$RUNNER_TEMP/apk-icon-$density.png" "android/app/src/main/res/mipmap-$density/ic_launcher.png" null: 2>&1 || true)"
+            test "$pixel_diff" = "0"
           done
 
           cp "$APK" "$RUNNER_TEMP/WesiMark-2.4.0+14-WP9520.apk"
