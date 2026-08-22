@@ -78,8 +78,8 @@ payload="$(jq -n \
     tags:["relay","xray","sing-box","wireguard","amneziawg","https443","prototype"],
     notes:"Multi-engine Wesi Relay with Wesi-owned TLS/443 restrictive-network transports.",
     transportConfig:{
-      defaultProtocol:"vless-reality",
-      fallbackProtocol:"wireguard",
+      defaultProtocol:"vmess",
+      fallbackProtocol:"vless-reality",
       realityPort:8443,
       vmessPort:8444,
       trojanPort:8445,
@@ -110,16 +110,32 @@ curl -fsS \
   --data "$payload" \
   http://127.0.0.1:8790/v1/admin/servers/wesi-relay >/dev/null
 
+# Public catalog intentionally omits detailed transportConfig. Clients only need
+# the public capability tag and protocol list; the exact internal policy stays
+# in the authenticated admin snapshot. This prevents accidental publication of
+# future transport fields if an administrator adds sensitive backend metadata.
 catalog="$(curl -fsS http://127.0.0.1:8790/v1/catalog)"
 for protocol in "${protocols[@]}"; do
   jq -e --arg p "$protocol" '.servers[] | select(.id=="wesi-relay") | (.protocols | index($p)) != null' <<<"$catalog" >/dev/null
 done
+jq -e '
+  .servers[] | select(.id=="wesi-relay") |
+  (.tags | index("https443")) != null and
+  (.transportConfig == null)
+' <<<"$catalog" >/dev/null
+
+admin_snapshot="$(curl -fsS \
+  -H "x-admin-token: $WESI_AERO_ADMIN_TOKEN" \
+  http://127.0.0.1:8790/v1/admin/snapshot)"
 jq -e --arg host "$PUBLIC_HOST" '
   .servers[] | select(.id=="wesi-relay") |
+  .transportConfig.defaultProtocol == "vmess" and
   .transportConfig.restrictiveNetwork.enabled == true and
   .transportConfig.restrictiveNetwork.publicPort == 443 and
   .transportConfig.restrictiveNetwork.hostname == $host and
-  .transportConfig.restrictiveNetwork.domainFronting == false
-' <<<"$catalog" >/dev/null
+  .transportConfig.restrictiveNetwork.primary.transport == "websocket" and
+  .transportConfig.restrictiveNetwork.domainFronting == false and
+  .transportConfig.restrictiveNetwork.thirdPartyCdn == false
+' <<<"$admin_snapshot" >/dev/null
 
 echo "Wesi Relay catalog synchronized: ${protocols[*]}"
