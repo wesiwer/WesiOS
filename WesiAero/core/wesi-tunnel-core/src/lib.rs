@@ -19,15 +19,69 @@ pub enum Backend {
     Native,
 }
 
+/// Wire shape used between the device and the first Wesi-controlled hop.
+///
+/// `MasqueH3On443` is a reserved capability marker. It must not be advertised
+/// as live until a pinned MASQUE/HTTP3 implementation and its independent
+/// end-to-end verification exist in the platform adapter and relay CI.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Transport {
+    Direct,
+    TlsWebSocket443,
+    TlsGrpc443,
+    TlsHttp2On443,
+    Quic,
+    MasqueH3On443,
+}
+
+impl Transport {
+    pub const fn is_live_tcp_443(self) -> bool {
+        matches!(
+            self,
+            Self::TlsWebSocket443 | Self::TlsGrpc443 | Self::TlsHttp2On443
+        )
+    }
+}
+
+/// Network topology after the client-facing transport is established.
+///
+/// `TrustedEdgeExit` is intentionally generic: the runtime may only instantiate
+/// it with Wesi-owned or explicitly authorized nodes whose edge-to-exit link is
+/// authenticated. The core never treats an arbitrary CDN or third-party host as
+/// an implicit hop.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Topology {
+    SingleHop,
+    TrustedEdgeExit,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Route {
     pub protocol: Protocol,
     pub backend: Backend,
+    pub transport: Transport,
+    pub topology: Topology,
 }
 
 impl Route {
     pub const fn new(protocol: Protocol, backend: Backend) -> Self {
-        Self { protocol, backend }
+        Self {
+            protocol,
+            backend,
+            transport: Transport::Direct,
+            topology: Topology::SingleHop,
+        }
+    }
+
+    pub const fn with_transport(self, transport: Transport) -> Self {
+        Self { transport, ..self }
+    }
+
+    pub const fn via_trusted_edge(self) -> Self {
+        Self {
+            topology: Topology::TrustedEdgeExit,
+            ..self
+        }
     }
 }
 
@@ -231,8 +285,8 @@ impl TunnelSupervisor {
     }
 }
 
-/// Conservative default path: stealth-capable VLESS first, VMess transport as
-/// a TCP-family compatibility fallback, then native WireGuard when UDP works.
+/// Conservative normal-network path: VLESS/REALITY first, raw VMess as a TCP
+/// compatibility fallback, then native WireGuard when UDP works.
 pub fn default_routes() -> (Route, Vec<Route>) {
     (
         Route::new(Protocol::VlessReality, Backend::Xray),
@@ -240,6 +294,39 @@ pub fn default_routes() -> (Route, Vec<Route>) {
             Route::new(Protocol::Vmess, Backend::Xray),
             Route::new(Protocol::WireGuard, Backend::Native),
         ],
+    )
+}
+
+/// Strict-filtering path that is already supported by the pinned Android
+/// sing-box adapter and the Wesi-owned TLS/443 facade. HTTP/2 is intentionally
+/// exposed separately until the Android profile parser is promoted to the same
+/// independently verified status.
+pub fn restrictive_tcp_443_routes() -> (Route, Vec<Route>) {
+    (
+        Route::new(Protocol::Vmess, Backend::SingBox)
+            .with_transport(Transport::TlsWebSocket443),
+        vec![
+            Route::new(Protocol::Vmess, Backend::SingBox)
+                .with_transport(Transport::TlsGrpc443),
+        ],
+    )
+}
+
+pub const fn restrictive_http2_candidate() -> Route {
+    Route::new(Protocol::Vmess, Backend::SingBox).with_transport(Transport::TlsHttp2On443)
+}
+
+/// Same client-facing TLS/443 policy for a future two-hop deployment. Runtime
+/// code must only select these routes after both Wesi Edge and Wesi Exit have
+/// authenticated configuration and independent health checks.
+pub fn trusted_edge_tcp_443_routes() -> (Route, Vec<Route>) {
+    let (primary, fallback) = restrictive_tcp_443_routes();
+    (
+        primary.via_trusted_edge(),
+        fallback
+            .into_iter()
+            .map(Route::via_trusted_edge)
+            .collect(),
     )
 }
 
@@ -356,5 +443,41 @@ mod tests {
         );
         assert_eq!(core.snapshot().state, TunnelState::Idle);
         assert!(!core.snapshot().kill_switch_required);
+    }
+
+    #[test]
+    fn restrictive_policy_falls_back_between_verified_tls_443_transports() {
+        let (primary, fallback) = restrictive_tcp_443_routes();
+        assert_eq!(primary.protocol, Protocol::Vmess);
+        assert_eq!(primary.backend, Backend::SingBox);
+        assert_eq!(primary.transport, Transport::TlsWebSocket443);
+        assert!(primary.transport.is_live_tcp_443());
+        assert_eq!(fallback.len(), 1);
+        assert_eq!(fallback[0].transport, Transport::TlsGrpc443);
+        assert!(fallback[0].transport.is_live_tcp_443());
+        assert_eq!(primary.topology, Topology::SingleHop);
+    }
+
+    #[test]
+    fn http2_candidate_is_not_silently_promoted_into_live_fallback() {
+        let (_, fallback) = restrictive_tcp_443_routes();
+        assert!(!fallback.contains(&restrictive_http2_candidate()));
+        assert_eq!(
+            restrictive_http2_candidate().transport,
+            Transport::TlsHttp2On443
+        );
+    }
+
+    #[test]
+    fn trusted_edge_policy_preserves_transports_and_marks_two_hop_topology() {
+        let (primary, fallback) = trusted_edge_tcp_443_routes();
+        assert_eq!(primary.topology, Topology::TrustedEdgeExit);
+        assert_eq!(primary.transport, Transport::TlsWebSocket443);
+        assert!(fallback
+            .iter()
+            .all(|route| route.topology == Topology::TrustedEdgeExit));
+        assert!(fallback
+            .iter()
+            .all(|route| route.transport.is_live_tcp_443()));
     }
 }
