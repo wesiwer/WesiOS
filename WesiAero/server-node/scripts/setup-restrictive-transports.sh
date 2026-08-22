@@ -106,13 +106,21 @@ WantedBy=multi-user.target
 EOF
 
 systemctl daemon-reload
-systemctl enable --now wesi-aero-restrictive-transports.service >/dev/null
-systemctl restart wesi-aero-restrictive-transports.service
+systemctl enable wesi-aero-restrictive-transports.service >/dev/null
+if ! systemctl restart wesi-aero-restrictive-transports.service; then
+  systemctl status wesi-aero-restrictive-transports.service --no-pager >&2 || true
+  journalctl -u wesi-aero-restrictive-transports.service -n 40 --no-pager >&2 || true
+  exit 1
+fi
 for _ in $(seq 1 40); do
   systemctl is-active --quiet wesi-aero-restrictive-transports.service && break
   sleep 0.25
 done
-systemctl is-active --quiet wesi-aero-restrictive-transports.service
+if ! systemctl is-active --quiet wesi-aero-restrictive-transports.service; then
+  systemctl status wesi-aero-restrictive-transports.service --no-pager >&2 || true
+  journalctl -u wesi-aero-restrictive-transports.service -n 40 --no-pager >&2 || true
+  exit 1
+fi
 
 # These listeners are deliberately loopback-only. Nginx is the sole public
 # TLS/443 entry point; no firewall hole is created for 18080-18082.
