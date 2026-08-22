@@ -32,7 +32,8 @@ export function selectAutomaticRoute({
 
   if (existing && Number(existing.expiresAt) > now) {
     const record = state.get(existing.nodeId);
-    if (record && isUsable(record, existing.protocol)) {
+    const poolAllowed = orderedPools.some((pool) => pool.id === existing.poolId);
+    if (poolAllowed && record && isUsable(record, existing.protocol, true)) {
       existing.expiresAt = now + Number(config.health?.stickyTtlMs ?? 1_800_000);
       return payload(record, existing.poolId, existing.protocol, true);
     }
@@ -45,7 +46,7 @@ export function selectAutomaticRoute({
       const protocol = priorities[protocolIndex];
       for (const node of pool.nodes ?? []) {
         const record = state.get(node.id);
-        if (!record || !isUsable(record, protocol)) continue;
+        if (!record || !isUsable(record, protocol, false)) continue;
         if (Number.isFinite(record.rttMs) && record.rttMs > Number(pool.maxRttMs ?? 5000)) continue;
         candidates.push({
           pool,
@@ -80,9 +81,13 @@ function orderPools(config, preferredPoolIds) {
   const preferred = Array.isArray(preferredPoolIds)
     ? preferredPoolIds.map(String)
     : [];
-  const priority = [...preferred, ...configured];
-  const rank = new Map(priority.map((id, index) => [id, index]));
-  return pools.sort((a, b) => {
+  const explicit = [...new Set([...preferred, ...configured])];
+  const includeUnlisted = config.auto?.includeUnlistedPools === true;
+  const allowed = explicit.length && !includeUnlisted
+    ? pools.filter((pool) => explicit.includes(pool.id))
+    : pools;
+  const rank = new Map(explicit.map((id, index) => [id, index]));
+  return allowed.sort((a, b) => {
     const ar = rank.has(a.id) ? rank.get(a.id) : 10_000;
     const br = rank.has(b.id) ? rank.get(b.id) : 10_000;
     if (ar !== br) return ar - br;
@@ -90,10 +95,10 @@ function orderPools(config, preferredPoolIds) {
   });
 }
 
-function isUsable(record, protocol) {
+function isUsable(record, protocol, allowDrainingSticky) {
   return record.node.enabled !== false &&
     record.maintenance !== 'offline' &&
-    record.maintenance !== 'draining' &&
+    (allowDrainingSticky || record.maintenance !== 'draining') &&
     record.healthy === true &&
     Array.isArray(record.node.protocols) &&
     record.node.protocols.includes(protocol);
