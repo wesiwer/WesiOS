@@ -174,16 +174,25 @@ def verify_restrictive_network_layer() -> None:
 
     sync = require(
         ROOT / "server-node/scripts/sync-live-protocols.sh",
-        'publicPort:443',
         'defaultProtocol:"vmess"',
         'primary:{protocol:"vmess",transport:"websocket"}',
-        'candidates:["websocket","grpc","http2"]',
+        'automatic_transports=\'["websocket"]\'',
+        'automatic_transports=\'["websocket","grpc"]\'',
+        'provisionedTransports:["websocket","grpc","http2"]',
+        'serverVerifiedTransports:$serverVerifiedTransports',
+        'failedTransports:$failedTransports',
+        'type:"urltest",tag:"proxy"',
+        'outbounds:["vmess-ws443","vmess-grpc443"]',
+        'interrupt_exist_connections:true',
+        'sing-box check -c "$sing_config"',
         'domainFronting:false',
         'thirdPartyCdn:false',
         'edgePolicy:"wesi-owned-or-explicitly-authorized"',
         '(.transportConfig == null)',
         '/v1/admin/snapshot',
     )
+    if 'automatic_transports=\'["websocket","grpc","http2"]\'' in sync:
+        raise SystemExit("Failed HTTP/2 transport was promoted into automatic routing")
     if "domainFronting:true" in sync or "thirdPartyCdn:true" in sync:
         raise SystemExit("Restrictive-network catalog enables unauthorized fronting/CDN routing")
 
@@ -226,8 +235,8 @@ def verify_rust_core() -> None:
     live_policy = core.split("pub fn restrictive_tcp_443_routes", 1)[1].split(
         "pub const fn restrictive_http2_candidate", 1
     )[0]
-    if "MasqueH3On443" in live_policy:
-        raise SystemExit("MASQUE/HTTP3 is advertised in the live restrictive fallback before verification")
+    if "MasqueH3On443" in live_policy or "TlsHttp2On443" in live_policy:
+        raise SystemExit("Unverified HTTP/2 or MASQUE transport is advertised in live restrictive fallback")
 
 
 def main() -> None:
