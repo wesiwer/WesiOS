@@ -1,0 +1,93 @@
+name: Deploy Wesi Aero Ireland BS
+
+on:
+  workflow_dispatch:
+    inputs:
+      reality_server_name:
+        description: 'REALITY camouflage SNI/target hostname'
+        required: true
+        default: 'www.cloudflare.com'
+        type: string
+  push:
+    branches: [codex/wesi-aero-build-20260821]
+    paths:
+      - 'WesiAero/server-deploy/ireland-bs/**'
+      - '.github/workflows/deploy-wesi-aero-ireland-bs.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: wesi-aero-ireland-bs-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      RELAY_SSH_HOST: ${{ secrets.WESI_RELAY_SSH_HOST || '178.236.247.194' }}
+      RELAY_SSH_USER: ${{ secrets.WESI_RELAY_SSH_USER }}
+      PUBLIC_HOST: '178.236.247.194'
+      REALITY_SERVER_NAME: ${{ inputs.reality_server_name || 'www.cloudflare.com' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate deployment bundle
+        run: |
+          set -euo pipefail
+          bash -n WesiAero/server-deploy/ireland-bs/deploy.sh
+          [ -n "${RELAY_SSH_USER:-}" ] || { echo '::error::WESI_RELAY_SSH_USER is missing'; exit 1; }
+
+      - name: Prepare SSH
+        env:
+          KEY: ${{ secrets.WESI_RELAY_SSH_KEY }}
+          KNOWN: ${{ secrets.WESI_RELAY_SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          [ -n "${KEY:-}" ] || { echo '::error::WESI_RELAY_SSH_KEY is missing'; exit 1; }
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/relay_key
+          chmod 600 ~/.ssh/relay_key
+          if [ -n "${KNOWN:-}" ]; then
+            printf '%s\n' "$KNOWN" > ~/.ssh/relay_known_hosts
+          else
+            ssh-keyscan -H "$RELAY_SSH_HOST" > ~/.ssh/relay_known_hosts 2>/dev/null
+          fi
+          chmod 600 ~/.ssh/relay_known_hosts
+
+      - name: Verify Wesi AI ports before Aero deployment
+        run: |
+          set -euo pipefail
+          SSH=(-i "$HOME/.ssh/relay_key" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/relay_known_hosts")
+          ssh "${SSH[@]}" "$RELAY_SSH_USER@$RELAY_SSH_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          ss -ltn | grep -q ':443 ' || { echo 'Wesi AI HTTPS 443 is unexpectedly not listening' >&2; exit 1; }
+          ss -ltn | grep -q ':8787 ' || { echo 'Wesi AI relay 8787 is unexpectedly not listening' >&2; exit 1; }
+          echo 'Existing Wesi AI listeners verified; Aero will use TCP/8443 only.'
+          REMOTE
+
+      - name: Upload and install Ireland BS
+        run: |
+          set -euo pipefail
+          SSH=(-i "$HOME/.ssh/relay_key" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/relay_known_hosts")
+          REMOTE="/tmp/wesi-aero-ireland-bs-$GITHUB_RUN_ID"
+          ssh "${SSH[@]}" "$RELAY_SSH_USER@$RELAY_SSH_HOST" "rm -rf '$REMOTE' && mkdir -p '$REMOTE'"
+          scp "${SSH[@]}" WesiAero/server-deploy/ireland-bs/deploy.sh "$RELAY_SSH_USER@$RELAY_SSH_HOST:$REMOTE/deploy.sh"
+          ssh "${SSH[@]}" "$RELAY_SSH_USER@$RELAY_SSH_HOST" \
+            "WESI_AERO_REALITY_PORT=8443 WESI_AERO_REALITY_SERVER_NAME='$REALITY_SERVER_NAME' WESI_AERO_PUBLIC_HOST='$PUBLIC_HOST' bash '$REMOTE/deploy.sh'"
+          ssh "${SSH[@]}" "$RELAY_SSH_USER@$RELAY_SSH_HOST" "rm -rf '$REMOTE'"
+
+      - name: Verify Ireland BS listener and service
+        run: |
+          set -euo pipefail
+          SSH=(-i "$HOME/.ssh/relay_key" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/relay_known_hosts")
+          ssh "${SSH[@]}" "$RELAY_SSH_USER@$RELAY_SSH_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          if [ "$(id -u)" -eq 0 ]; then SUDO=(); else SUDO=(sudo -n); fi
+          "${SUDO[@]}" systemctl is-active --quiet wesi-aero-ireland-bs
+          "${SUDO[@]}" ss -ltnp | grep -E ':8443\b'
+          "${SUDO[@]}" test -s /etc/wesi-aero/ireland-bs/client-uri.txt
+          echo 'Ireland BS is active; client URI remains root-only on the VPS.'
+          REMOTE
