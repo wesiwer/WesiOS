@@ -65,7 +65,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: WesiAero/android/app/libs/libbox.aar
-          key: wesi-aero-libbox-v1.13.18-go1.24-ndk28-arm64-v2
+          key: wesi-aero-libbox-v1.13.18-go1.24-ndk28-arm64-v3
 
       - name: Build and configure all Android VPN engines
         env:
@@ -109,14 +109,17 @@ jobs:
           echo "::add-mask::$prototype_license"
           printf 'WESI_AERO_PROTOTYPE_LICENSE=%s\n' "$prototype_license" >> "$GITHUB_ENV"
 
-      - name: Validate Flutter and live control plane
+      - name: Validate Flutter and eight-protocol control plane
         run: |
           set -euo pipefail
           flutter pub get
           flutter analyze
           flutter test
           curl -fsS --max-time 15 "$AERO_CONTROL_URL/healthz" | grep -q '"status":"ok"'
-          curl -fsS --max-time 15 "$AERO_CONTROL_URL/v1/catalog" | grep -q 'wesi-relay'
+          curl -fsS --max-time 15 "$AERO_CONTROL_URL/v1/catalog" | jq -e '
+            .servers[] | select(.id=="wesi-relay") |
+            (["vless-reality","vmess","trojan","shadowsocks","hysteria2","tuic","wireguard","amneziawg"] - .protocols | length) == 0
+          ' >/dev/null
 
       - name: Configure permanent Android release signature
         shell: bash
