@@ -1,6 +1,6 @@
 {
   "name": "wesi-aero-route-server",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "engines": {
@@ -8,6 +8,7 @@
   },
   "scripts": {
     "start": "node src/index.mjs",
-    "check": "node --check src/index.mjs"
+    "check": "node --check src/index.mjs && node --check src/route-core.mjs",
+    "test": "node --test test/*.test.mjs"
   }
 }
