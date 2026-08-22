@@ -10,6 +10,7 @@ HOSTNAME="${1:-${WESI_AERO_PUBLIC_HOST:-wesi-aero-178-236-247-194.nip.io}}"
 SITE="/etc/nginx/sites-available/wesi-aero-control"
 ENABLED="/etc/nginx/sites-enabled/wesi-aero-control"
 ACME_ROOT="/var/www/wesi-aero-acme"
+TRANSPORT_SNIPPET="/etc/nginx/snippets/wesi-aero-transports.conf"
 
 [[ "$HOSTNAME" =~ ^([A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,63}$ ]] || {
   echo "A public DNS hostname is required." >&2
@@ -24,7 +25,13 @@ if ! command -v nginx >/dev/null 2>&1 || ! command -v certbot >/dev/null 2>&1; t
   apt-get install -y nginx certbot
 fi
 
-install -d -m 755 "$ACME_ROOT/.well-known/acme-challenge"
+install -d -m 755 "$ACME_ROOT/.well-known/acme-challenge" /etc/nginx/snippets
+# The HTTPS facade remains deployable before the optional restrictive transport
+# service. setup-restrictive-transports.sh replaces this empty file atomically.
+if [[ ! -e "$TRANSPORT_SNIPPET" ]]; then
+  install -m 644 /dev/null "$TRANSPORT_SNIPPET"
+fi
+
 cat > "$SITE" <<NGINX
 server {
     listen 80;
@@ -102,6 +109,11 @@ server {
     add_header Referrer-Policy "no-referrer" always;
 
     client_max_body_size 256k;
+
+    # Optional long-lived VPN transports share the same standards-compliant
+    # TLS/443 Wesi Aero endpoint. They are loopback-only behind this vhost and
+    # never use third-party SNI/domain-fronting.
+    include $TRANSPORT_SNIPPET;
 
     location / {
         proxy_pass http://127.0.0.1:8790;
