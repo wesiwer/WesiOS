@@ -16,7 +16,7 @@ def replace_once(text: str, old: str, new: str, label: str) -> str:
 
 
 def has_centralized_handoff(activity: str) -> bool:
-    """Return true when the current multi-engine dispatcher already serializes VPN ownership."""
+    """Return true when the current multi-engine dispatcher serializes VPN ownership."""
     required = (
         "private fun stopEveryBackend()",
         "stopEveryBackend()",
@@ -24,6 +24,37 @@ def has_centralized_handoff(activity: str) -> bool:
         'AeroSingBoxState.current().status == "disconnected"',
     )
     return all(marker in activity for marker in required)
+
+
+def patch_centralized_handoff(activity: str) -> str:
+    # return@repeat only continues to the next iteration; it does not leave the
+    # repeat loop. Besides adding a fixed ~3 s delay to every backend handoff,
+    # the old implementation continued even if another VpnService still owned
+    # Android's TUN. Replace it with an actual break plus a fail-closed check.
+    old_wait = '''        repeat(60) {
+            val xrayDown = AeroXrayState.current().status == "disconnected"
+            val singDown = AeroSingBoxState.current().status == "disconnected"
+            if (xrayDown && singDown) return@repeat
+            Thread.sleep(50L)
+        }
+'''
+    new_wait = '''        var vpnServicesReleased = false
+        for (attempt in 0 until 60) {
+            val xrayDown = AeroXrayState.current().status == "disconnected"
+            val singDown = AeroSingBoxState.current().status == "disconnected"
+            if (xrayDown && singDown) {
+                vpnServicesReleased = true
+                break
+            }
+            Thread.sleep(50L)
+        }
+        if (!vpnServicesReleased) {
+            throw IllegalStateException("Previous VPN backend did not release Android TUN")
+        }
+'''
+    if old_wait in activity:
+        activity = activity.replace(old_wait, new_wait, 1)
+    return activity
 
 
 def main() -> None:
@@ -47,6 +78,7 @@ def main() -> None:
     SERVICE.write_text(service, encoding="utf-8")
 
     activity = MAIN.read_text(encoding="utf-8")
+    activity = patch_centralized_handoff(activity)
     centralized = has_centralized_handoff(activity)
 
     old_handoff = '''        executor.execute {
@@ -102,8 +134,13 @@ def main() -> None:
     centralized_handoff = has_centralized_handoff(activity_check)
     if not (legacy_handoff or centralized_handoff):
         raise SystemExit("Serialized VPN backend handoff is missing")
+    if centralized_handoff:
+        if 'Previous VPN backend did not release Android TUN' not in activity_check:
+            raise SystemExit("Centralized VPN handoff does not fail closed when TUN release times out")
+        if 'return@repeat' in activity_check:
+            raise SystemExit("Centralized VPN handoff still uses non-breaking return@repeat")
 
-    mode = "centralized multi-engine stop/wait" if centralized_handoff else "legacy Xray/WireGuard barrier"
+    mode = "centralized fail-closed stop/wait" if centralized_handoff else "legacy Xray/WireGuard barrier"
     print(
         "Verified Android VPN regressions: non-fatal Xray startup + "
         f"serialized VPN TUN handoff ({mode})"
