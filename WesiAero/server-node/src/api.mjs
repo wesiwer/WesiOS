@@ -18,6 +18,7 @@ export function createApiServer({
   commerce = null,
   payments = null,
   provisioner,
+  routeServer = null,
   config,
 }) {
   const replayGuard = new ReplayGuard();
@@ -37,6 +38,7 @@ export function createApiServer({
         commerce,
         payments,
         provisioner,
+        routeServer,
         config,
         replayGuard,
       });
@@ -62,6 +64,7 @@ async function route(context) {
     commerce,
     payments,
     provisioner,
+    routeServer,
     config,
     replayGuard,
   } = context;
@@ -217,6 +220,7 @@ async function route(context) {
           repository,
           commerce,
           provisioner,
+          routeServer,
         }),
       };
     } catch (error) {
@@ -263,11 +267,18 @@ async function route(context) {
   if (request.method === 'POST' && pathname === '/v1/leases') {
     const body = await readJson(request, config.bodyLimitBytes);
     if (access.license) commerce.assertDeviceBound(access.license.id, body.deviceId);
+    const resolved = await resolveLeaseRoute({
+      commerce,
+      routeServer,
+      deviceId: body.deviceId,
+      requestedNodeId: body.nodeId,
+      requestedProtocol: body.protocol,
+    });
     const lease = repository.reserveLease({
       user: access.user,
       deviceId: body.deviceId,
-      nodeId: body.nodeId,
-      protocol: body.protocol,
+      nodeId: resolved.nodeId,
+      protocol: resolved.protocol,
     });
     try {
       const profile = await provisioner.profileFor({ user: access.user, lease });
@@ -468,6 +479,7 @@ async function dispatchSecureAction({
   repository,
   commerce,
   provisioner,
+  routeServer,
 }) {
   if (payload.action === 'license.status') {
     return { license: commerce.getLicense(access.license.id) };
@@ -477,11 +489,18 @@ async function dispatchSecureAction({
   }
   if (payload.action === 'lease.create') {
     commerce.assertDeviceBound(access.license.id, payload.deviceId);
+    const resolved = await resolveLeaseRoute({
+      commerce,
+      routeServer,
+      deviceId: payload.deviceId,
+      requestedNodeId: payload.nodeId,
+      requestedProtocol: payload.protocol,
+    });
     const lease = repository.reserveLease({
       user: access.user,
       deviceId: payload.deviceId,
-      nodeId: payload.nodeId,
-      protocol: payload.protocol,
+      nodeId: resolved.nodeId,
+      protocol: resolved.protocol,
     });
     try {
       const profile = await provisioner.profileFor({ user: access.user, lease });
@@ -501,6 +520,40 @@ async function dispatchSecureAction({
     };
   }
   throw new HttpError(404, 'UNKNOWN_SECURE_ACTION', 'Unknown secure action');
+}
+
+async function resolveLeaseRoute({
+  commerce,
+  routeServer,
+  deviceId,
+  requestedNodeId,
+  requestedProtocol,
+}) {
+  const server = commerce?.getServer?.(requestedNodeId);
+  const poolId = server?.transportConfig?.routePoolId;
+  if (!poolId) {
+    return { nodeId: requestedNodeId, protocol: requestedProtocol };
+  }
+  if (!routeServer?.enabled) {
+    throw new HttpError(503, 'ROUTE_SERVER_UNAVAILABLE', 'Automatic routing is unavailable');
+  }
+  try {
+    const selected = await routeServer.select({
+      clientId: deviceId,
+      poolId,
+      protocol: requestedProtocol,
+    });
+    return {
+      nodeId: selected.nodeId || requestedNodeId,
+      protocol: selected.protocol || requestedProtocol,
+    };
+  } catch (error) {
+    throw new HttpError(
+      Number(error?.statusCode) || 503,
+      error?.code || 'ROUTE_SERVER_UNAVAILABLE',
+      error?.message || 'Automatic routing is unavailable',
+    );
+  }
 }
 
 function requireAccess(request, repository, commerce) {
