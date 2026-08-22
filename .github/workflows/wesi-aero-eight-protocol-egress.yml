@@ -1,0 +1,367 @@
+name: Verify Wesi Aero Eight-Protocol Egress
+
+on:
+  push:
+    branches:
+      - codex/wesi-aero-build-20260821
+    paths:
+      - .github/workflows/wesi-aero-eight-protocol-egress.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  statuses: write
+
+concurrency:
+  group: wesi-aero-eight-protocol-egress
+  cancel-in-progress: true
+
+env:
+  RELAY_SSH_HOST: ${{ secrets.WESI_RELAY_SSH_HOST }}
+  RELAY_SSH_USER: ${{ secrets.WESI_RELAY_SSH_USER }}
+  RELAY_SSH_KEY: ${{ secrets.WESI_RELAY_SSH_KEY }}
+  RELAY_SSH_KNOWN_HOSTS: ${{ secrets.WESI_RELAY_SSH_KNOWN_HOSTS }}
+  SING_BOX_VERSION: 1.13.18
+  AWG_GO_COMMIT: 1b86b2ae0e493e7ea93f8c1a0f0cb6735b1551f1
+  AWG_TOOLS_COMMIT: ee0f0a9aa34ff0a0da4b3433b9512781cfe02843
+
+jobs:
+  egress:
+    name: Eight real tunnel egress probes
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24.x'
+          cache: false
+
+      - name: Publish pending status
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.sha }}
+          TARGET_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          payload=$(jq -nc --arg target_url "$TARGET_URL" '{state:"pending",target_url:$target_url,description:"Probing eight VPN protocols",context:"wesi-aero/egress-8"}')
+          curl -fsS -X POST -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
+            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/statuses/$SHA" -d "$payload" >/dev/null
+
+      - name: Configure Relay SSH and fetch client profiles
+        run: |
+          set -euo pipefail
+          for name in RELAY_SSH_HOST RELAY_SSH_USER RELAY_SSH_KEY; do
+            if [ -z "${!name:-}" ]; then echo "Missing $name" >&2; exit 1; fi
+          done
+          mkdir -p "$HOME/.ssh" "$RUNNER_TEMP/aero-probes"
+          printf '%s\n' "$RELAY_SSH_KEY" > "$HOME/.ssh/wesi_aero_relay"
+          chmod 600 "$HOME/.ssh/wesi_aero_relay"
+          if [ -n "${RELAY_SSH_KNOWN_HOSTS:-}" ]; then
+            printf '%s\n' "$RELAY_SSH_KNOWN_HOSTS" > "$HOME/.ssh/wesi_aero_known_hosts"
+          else
+            ssh-keyscan -H "$RELAY_SSH_HOST" > "$HOME/.ssh/wesi_aero_known_hosts" 2>/dev/null
+          fi
+          chmod 600 "$HOME/.ssh/wesi_aero_known_hosts"
+          SSH=(ssh -i "$HOME/.ssh/wesi_aero_relay" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/wesi_aero_known_hosts")
+          remote_cat() {
+            "${SSH[@]}" "$RELAY_SSH_USER@$RELAY_SSH_HOST" "if [ \"\$(id -u)\" -eq 0 ]; then cat '$1'; else sudo -n cat '$1'; fi"
+          }
+          remote_cat /var/lib/wesi-aero/xray/clients/vless.txt > "$RUNNER_TEMP/aero-probes/vless.txt"
+          remote_cat /var/lib/wesi-aero/xray/clients/vmess.txt > "$RUNNER_TEMP/aero-probes/vmess.txt"
+          remote_cat /var/lib/wesi-aero/singbox/clients/trojan.txt > "$RUNNER_TEMP/aero-probes/trojan.txt"
+          remote_cat /var/lib/wesi-aero/singbox/clients/shadowsocks.txt > "$RUNNER_TEMP/aero-probes/shadowsocks.txt"
+          remote_cat /var/lib/wesi-aero/singbox/clients/hysteria2.txt > "$RUNNER_TEMP/aero-probes/hysteria2.txt"
+          remote_cat /var/lib/wesi-aero/singbox/clients/tuic.txt > "$RUNNER_TEMP/aero-probes/tuic.txt"
+          remote_cat /root/wesi-aero-client.conf > "$RUNNER_TEMP/aero-probes/wireguard.conf"
+          remote_cat /var/lib/wesi-aero/amneziawg/client.conf > "$RUNNER_TEMP/aero-probes/amneziawg.conf"
+          RELAY_EGRESS_IP="$("${SSH[@]}" "$RELAY_SSH_USER@$RELAY_SSH_HOST" 'curl -4fsS --max-time 10 https://v4.ident.me | tr -d "[:space:]"')"
+          [[ "$RELAY_EGRESS_IP" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]
+          echo "RELAY_EGRESS_IP=$RELAY_EGRESS_IP" >> "$GITHUB_ENV"
+          echo "Relay IPv4 egress: $RELAY_EGRESS_IP"
+          chmod 600 "$RUNNER_TEMP/aero-probes"/*
+
+      - name: Install sing-box client core
+        run: |
+          set -euo pipefail
+          case "$(uname -m)" in
+            x86_64|amd64) arch=amd64 ;;
+            aarch64|arm64) arch=arm64 ;;
+            *) echo "Unsupported runner architecture" >&2; exit 1 ;;
+          esac
+          base="sing-box-${SING_BOX_VERSION}-linux-${arch}"
+          curl -fsSL --retry 3 \
+            "https://github.com/SagerNet/sing-box/releases/download/v${SING_BOX_VERSION}/${base}.tar.gz" \
+            -o "$RUNNER_TEMP/sing-box.tgz"
+          tar -xzf "$RUNNER_TEMP/sing-box.tgz" -C "$RUNNER_TEMP"
+          sudo install -m 755 "$RUNNER_TEMP/$base/sing-box" /usr/local/bin/sing-box
+          sing-box version | grep -q "sing-box version $SING_BOX_VERSION"
+
+      - name: Build sing-box client configs for six proxy protocols
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import base64, json, socket, urllib.parse
+          from pathlib import Path
+          import os
+
+          root = Path(os.environ['RUNNER_TEMP']) / 'aero-probes'
+
+          def uri(name):
+              return root.joinpath(name + '.txt').read_text().strip()
+
+          def host_ip(host):
+              return socket.gethostbyname(host)
+
+          def base_config(proxy, port):
+              return {
+                  'log': {'level': 'warn', 'timestamp': True},
+                  'inbounds': [{
+                      'type': 'mixed', 'tag': 'probe-in', 'listen': '127.0.0.1',
+                      'listen_port': port,
+                  }],
+                  'outbounds': [{**proxy, 'tag': 'proxy'}],
+                  'route': {'final': 'proxy', 'auto_detect_interface': True},
+              }
+
+          def parse_vless(raw):
+              u = urllib.parse.urlsplit(raw)
+              q = dict(urllib.parse.parse_qsl(u.query))
+              return {
+                  'type': 'vless', 'server': host_ip(u.hostname), 'server_port': u.port,
+                  'uuid': urllib.parse.unquote(u.username),
+                  'flow': q.get('flow', 'xtls-rprx-vision'),
+                  'tls': {
+                      'enabled': True,
+                      'server_name': q['sni'],
+                      'utls': {'enabled': True, 'fingerprint': q.get('fp', 'chrome')},
+                      'reality': {
+                          'enabled': True,
+                          'public_key': q['pbk'],
+                          'short_id': q.get('sid', ''),
+                      },
+                  },
+              }
+
+          def decode_b64(s):
+              s = s.replace('-', '+').replace('_', '/')
+              s += '=' * ((4 - len(s) % 4) % 4)
+              return base64.b64decode(s)
+
+          def parse_vmess(raw):
+              data = json.loads(decode_b64(raw[len('vmess://'):]).decode())
+              proxy = {
+                  'type': 'vmess', 'server': host_ip(data['add']),
+                  'server_port': int(data['port']), 'uuid': data['id'],
+                  'security': data.get('scy') or data.get('security') or 'auto',
+                  'alter_id': int(data.get('aid') or 0),
+              }
+              net = str(data.get('net') or 'tcp').lower()
+              if net == 'ws':
+                  t = {'type': 'ws', 'path': data.get('path') or '/'}
+                  if data.get('host'): t['headers'] = {'Host': data['host']}
+                  proxy['transport'] = t
+              elif net == 'grpc':
+                  proxy['transport'] = {'type': 'grpc', 'service_name': data.get('path') or data.get('host') or ''}
+              if str(data.get('tls') or '').lower() == 'tls':
+                  proxy['tls'] = {
+                      'enabled': True,
+                      'server_name': data.get('sni') or data.get('host') or data['add'],
+                      'insecure': str(data.get('allowInsecure') or '') == '1',
+                      'utls': {'enabled': True, 'fingerprint': data.get('fp') or 'chrome'},
+                  }
+              return proxy
+
+          def parse_trojan(raw):
+              u = urllib.parse.urlsplit(raw)
+              q = dict(urllib.parse.parse_qsl(u.query))
+              return {
+                  'type': 'trojan', 'server': host_ip(u.hostname), 'server_port': u.port,
+                  'password': urllib.parse.unquote(u.username),
+                  'tls': {'enabled': True, 'server_name': q.get('sni') or u.hostname,
+                          'utls': {'enabled': True, 'fingerprint': q.get('fp', 'chrome')}},
+              }
+
+          def parse_ss(raw):
+              u = urllib.parse.urlsplit(raw)
+              auth = urllib.parse.unquote(u.username or '')
+              if ':' not in auth:
+                  auth = decode_b64(auth).decode()
+              method, password = auth.split(':', 1)
+              return {'type': 'shadowsocks', 'server': host_ip(u.hostname), 'server_port': u.port,
+                      'method': method, 'password': password}
+
+          def parse_hy2(raw):
+              raw = raw.replace('hy2://', 'hysteria2://', 1)
+              u = urllib.parse.urlsplit(raw)
+              q = dict(urllib.parse.parse_qsl(u.query))
+              return {'type': 'hysteria2', 'server': host_ip(u.hostname), 'server_port': u.port,
+                      'password': urllib.parse.unquote(u.username),
+                      'tls': {'enabled': True, 'server_name': q.get('sni') or u.hostname}}
+
+          def parse_tuic(raw):
+              u = urllib.parse.urlsplit(raw)
+              q = dict(urllib.parse.parse_qsl(u.query))
+              tls = {'enabled': True, 'server_name': q.get('sni') or u.hostname}
+              alpn = [x for x in (q.get('alpn') or '').split(',') if x]
+              if alpn: tls['alpn'] = alpn
+              return {'type': 'tuic', 'server': host_ip(u.hostname), 'server_port': u.port,
+                      'uuid': urllib.parse.unquote(u.username), 'password': urllib.parse.unquote(u.password or ''),
+                      'congestion_control': q.get('congestion_control') or 'bbr', 'tls': tls}
+
+          parsers = {
+              'vless': parse_vless,
+              'vmess': parse_vmess,
+              'trojan': parse_trojan,
+              'shadowsocks': parse_ss,
+              'hysteria2': parse_hy2,
+              'tuic': parse_tuic,
+          }
+          for index, (name, parser) in enumerate(parsers.items()):
+              port = 10820 + index
+              config = base_config(parser(uri(name)), port)
+              root.joinpath(name + '.json').write_text(json.dumps(config, separators=(',', ':')))
+              print(name, port)
+          PY
+          for config in "$RUNNER_TEMP/aero-probes"/*.json; do sing-box check -c "$config"; done
+
+      - name: Probe VLESS VMess Trojan Shadowsocks Hysteria2 and TUIC egress
+        run: |
+          set -euo pipefail
+          probe() {
+            local name="$1" port="$2" config="$RUNNER_TEMP/aero-probes/$name.json"
+            local log="$RUNNER_TEMP/aero-probes/$name.log" trace="$RUNNER_TEMP/aero-probes/$name.trace"
+            sing-box run -c "$config" >"$log" 2>&1 &
+            local pid=$!
+            cleanup_one() { kill "$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true; }
+            for _ in $(seq 1 30); do
+              if curl -fsS --max-time 5 --socks5 "127.0.0.1:$port" \
+                --connect-to one.one.one.one:443:1.1.1.1:443 \
+                https://one.one.one.one/cdn-cgi/trace >"$trace" 2>/dev/null; then
+                break
+              fi
+              sleep 0.5
+            done
+            local ip
+            ip="$(awk -F= '$1=="ip" {print $2}' "$trace" 2>/dev/null | tr -d '[:space:]')"
+            cleanup_one
+            if [ "$ip" != "$RELAY_EGRESS_IP" ]; then
+              echo "$name egress mismatch: '$ip' != '$RELAY_EGRESS_IP'" >&2
+              tail -n 100 "$log" >&2 || true
+              return 1
+            fi
+            echo "$name egress verified: $ip"
+          }
+          probe vless 10820
+          probe vmess 10821
+          probe trojan 10822
+          probe shadowsocks 10823
+          probe hysteria2 10824
+          probe tuic 10825
+
+      - name: Probe standard WireGuard handshake and egress
+        run: |
+          set -euo pipefail
+          sudo apt-get update -y >/dev/null
+          sudo apt-get install -y wireguard-tools >/dev/null
+          CONF="$RUNNER_TEMP/aero-probes/wesi-wg.conf"
+          awk '
+            /^DNS[[:space:]]*=/ {next}
+            /^AllowedIPs[[:space:]]*=/ {print "AllowedIPs = 10.77.0.1/32, 1.1.1.1/32"; next}
+            {print}
+          ' "$RUNNER_TEMP/aero-probes/wireguard.conf" > "$CONF"
+          chmod 600 "$CONF"
+          cleanup() { sudo wg-quick down "$CONF" >/dev/null 2>&1 || true; }
+          trap cleanup EXIT
+          cleanup
+          sudo wg-quick up "$CONF" >/dev/null
+          iface=wesi-wg
+          ping -c 1 -W 1 10.77.0.1 >/dev/null 2>&1 || true
+          handshake=0
+          for _ in $(seq 1 15); do
+            handshake="$(sudo wg show "$iface" latest-handshakes | awk '{print $2; exit}')"
+            [ "${handshake:-0}" -gt 0 ] && break
+            ping -c 1 -W 1 10.77.0.1 >/dev/null 2>&1 || true
+            sleep 1
+          done
+          [ "${handshake:-0}" -gt 0 ] || { sudo wg show "$iface" >&2; exit 1; }
+          curl -fsS --max-time 20 --connect-to one.one.one.one:443:1.1.1.1:443 \
+            https://one.one.one.one/cdn-cgi/trace > "$RUNNER_TEMP/aero-probes/wg.trace"
+          ip="$(awk -F= '$1=="ip" {print $2}' "$RUNNER_TEMP/aero-probes/wg.trace" | tr -d '[:space:]')"
+          [ "$ip" = "$RELAY_EGRESS_IP" ] || { echo "WireGuard egress mismatch: $ip" >&2; exit 1; }
+          echo "WireGuard handshake and egress verified: $ip"
+          cleanup
+          trap - EXIT
+
+      - name: Build official AmneziaWG userspace client
+        run: |
+          set -euo pipefail
+          sudo apt-get update -y >/dev/null
+          sudo apt-get install -y git make gcc iproute2 iptables >/dev/null
+          work="$RUNNER_TEMP/awg-src"
+          rm -rf "$work" && mkdir -p "$work"
+          git clone -q https://github.com/amnezia-vpn/amneziawg-go.git "$work/go"
+          git -C "$work/go" checkout -q "$AWG_GO_COMMIT"
+          make -C "$work/go" >/dev/null
+          sudo make -C "$work/go" install PREFIX=/usr/local >/dev/null
+          git clone -q https://github.com/amnezia-vpn/amneziawg-tools.git "$work/tools"
+          git -C "$work/tools" checkout -q "$AWG_TOOLS_COMMIT"
+          make -C "$work/tools/src" >/dev/null
+          sudo make -C "$work/tools/src" install PREFIX=/usr/local >/dev/null
+          command -v amneziawg-go
+          command -v awg
+          command -v awg-quick
+
+      - name: Probe AmneziaWG handshake and egress
+        run: |
+          set -euo pipefail
+          CONF="$RUNNER_TEMP/aero-probes/wesi-awg.conf"
+          awk '
+            /^DNS[[:space:]]*=/ {next}
+            /^AllowedIPs[[:space:]]*=/ {print "AllowedIPs = 10.78.0.1/32, 1.1.1.1/32"; next}
+            {print}
+          ' "$RUNNER_TEMP/aero-probes/amneziawg.conf" > "$CONF"
+          chmod 600 "$CONF"
+          cleanup() {
+            sudo env WG_QUICK_USERSPACE_IMPLEMENTATION=/usr/local/bin/amneziawg-go \
+              awg-quick down "$CONF" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+          cleanup
+          sudo env WG_QUICK_USERSPACE_IMPLEMENTATION=/usr/local/bin/amneziawg-go \
+            awg-quick up "$CONF" >/dev/null
+          iface=wesi-awg
+          ping -c 1 -W 1 10.78.0.1 >/dev/null 2>&1 || true
+          handshake=0
+          for _ in $(seq 1 20); do
+            handshake="$(sudo awg show "$iface" latest-handshakes | awk '{print $2; exit}')"
+            [ "${handshake:-0}" -gt 0 ] && break
+            ping -c 1 -W 1 10.78.0.1 >/dev/null 2>&1 || true
+            sleep 1
+          done
+          if [ "${handshake:-0}" -le 0 ]; then
+            sudo awg show "$iface" >&2 || true
+            ip address show dev "$iface" >&2 || true
+            exit 1
+          fi
+          curl -fsS --max-time 20 --connect-to one.one.one.one:443:1.1.1.1:443 \
+            https://one.one.one.one/cdn-cgi/trace > "$RUNNER_TEMP/aero-probes/awg.trace"
+          ip="$(awk -F= '$1=="ip" {print $2}' "$RUNNER_TEMP/aero-probes/awg.trace" | tr -d '[:space:]')"
+          [ "$ip" = "$RELAY_EGRESS_IP" ] || { echo "AmneziaWG egress mismatch: $ip" >&2; exit 1; }
+          echo "AmneziaWG handshake and egress verified: $ip"
+          cleanup
+          trap - EXIT
+
+      - name: Publish final status
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.sha }}
+          TARGET_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          if [ "$JOB_STATUS" = success ]; then state=success; description='All eight protocols passed real egress'; else state=failure; description='Eight-protocol egress probe failed'; fi
+          payload=$(jq -nc --arg state "$state" --arg target_url "$TARGET_URL" --arg description "$description" '{state:$state,target_url:$target_url,description:$description,context:"wesi-aero/egress-8"}')
+          curl -fsS -X POST -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
+            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/statuses/$SHA" -d "$payload" >/dev/null
