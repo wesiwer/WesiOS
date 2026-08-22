@@ -93,10 +93,20 @@ WESI_AERO_ALLOW_MOCK_PAYMENTS=false
 WESI_AERO_CRYPTO_PAY_TESTNET=true
 WESI_AERO_SEED_DEMO=true
 WESI_AERO_RELAY_PUBLIC_HOST=$RELAY_HOST
-WESI_AERO_TECHNICAL_LOGS=true
+WESI_AERO_TECHNICAL_LOGS=false
 EOF
   chmod 600 "$ENV_FILE"
 fi
+
+# Existing prototype installations may have been created while technical API
+# request logging defaulted to on. Migrate them to privacy-by-default without
+# touching any secret values in the environment file.
+if grep -q '^WESI_AERO_TECHNICAL_LOGS=' "$ENV_FILE"; then
+  sed -i 's/^WESI_AERO_TECHNICAL_LOGS=.*/WESI_AERO_TECHNICAL_LOGS=false/' "$ENV_FILE"
+else
+  printf 'WESI_AERO_TECHNICAL_LOGS=false\n' >> "$ENV_FILE"
+fi
+chmod 600 "$ENV_FILE"
 
 write_profile() {
   local protocol="$1" source="$2" target="$3"
@@ -118,10 +128,20 @@ write_profile \
   "vmess-xray" \
   "/var/lib/wesi-aero/xray/clients/vmess.txt" \
   "$PROFILE_DIR/_default.wesi-relay.vmess-xray.json"
+
+# Standard WireGuard and AmneziaWG are different wire protocols once AWG
+# obfuscation is enabled. Never publish a WireGuard config under an AmneziaWG
+# filename or silently substitute one for the other.
 write_profile \
-  "amneziawg" \
+  "wireguard" \
   "/root/wesi-aero-client.conf" \
-  "$PROFILE_DIR/_default.wesi-relay.amneziawg.json"
+  "$PROFILE_DIR/_default.wesi-relay.wireguard.json"
+if [[ -s "$STATE_DIR/amneziawg/client.conf" ]]; then
+  write_profile \
+    "amneziawg" \
+    "$STATE_DIR/amneziawg/client.conf" \
+    "$PROFILE_DIR/_default.wesi-relay.amneziawg.json"
+fi
 
 NODE_BIN="$(command -v node)"
 cat > "/etc/systemd/system/$SERVICE_NAME" <<EOF
@@ -205,7 +225,7 @@ if [[ ! -s "$PROTOTYPE_LICENSE_FILE" ]]; then
 fi
 
 curl -fsS --max-time 5 http://127.0.0.1:8790/v1/catalog \
-  | jq -e '(.paymentMethods | length) == 0 and (.servers[] | select(.id == "wesi-relay") | (.protocols | index("vless-reality")) != null and (.protocols | index("vmess-xray")) != null and (.protocols | index("amneziawg")) != null)' \
+  | jq -e '(.paymentMethods | length) == 0 and (.servers[] | select(.id == "wesi-relay") | (.protocols | index("vless-reality")) != null and (((.protocols | index("vmess")) != null) or ((.protocols | index("vmess-xray")) != null)) and (.protocols | index("wireguard")) != null)' \
   >/dev/null
 
 echo "Wesi Aero control plane is active on 127.0.0.1:8790."
