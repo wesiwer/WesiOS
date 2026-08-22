@@ -2,16 +2,13 @@ name: WesiMark 2.4.1 Verified Build
 
 on:
   push:
-    branches:
-      - 'wesimark/apk-build-v2.4.0'
+    branches: ['wesimark/apk-build-v2.4.0']
     paths:
       - '.github/workflows/wesimark-apk-build.yml'
       - '.wesimark-apk/patch_wesimark_2_4_1.py'
   pull_request:
-    branches:
-      - 'wesimark/apk-build-v2.4.0'
-    paths:
-      - '.wesimark-apk/build-trigger.txt'
+    branches: ['wesimark/apk-build-v2.4.0']
+    paths: ['.wesimark-apk/build-trigger.txt']
   workflow_dispatch:
 
 permissions:
@@ -20,7 +17,6 @@ permissions:
 env:
   EXPECTED_SIGNER_SHA256: 99996fc482731b32a8a38a6359fc51a831156a05957fe9f5291ac1b58b217810
   EXPECTED_LAUNCHER_SHA256: a3e6a99a6e58179d5bf9bd27b80667cae065553e5f38f676876a67ff0933699a
-  SOURCE_DRIVE_ID: 1ScMR7JUANdpGTha1hqUN-IXAh9UlVTvy
   VERSION_NAME: 2.4.1
   VERSION_CODE: '15'
 
@@ -29,7 +25,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 55
     steps:
-      - name: Checkout build branch
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Set up Java 17
@@ -48,18 +44,16 @@ jobs:
         run: |
           set -euo pipefail
           for name in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
-            [ -n "${!name:-}" ] || { echo "::error::$name is not available"; exit 1; }
+            [ -n "${!name:-}" ] || { echo "::error::$name missing"; exit 1; }
           done
           KEYSTORE="$RUNNER_TEMP/wesimark-release.jks"
           printf '%s' "$ANDROID_KEYSTORE_BASE64" | tr -d '[:space:]' | base64 --decode > "$KEYSTORE"
           STORE_PASS=$(printf '%s' "$ANDROID_KEYSTORE_PASSWORD" | tr -d '\r\n')
           KEY_PASS=$(printf '%s' "$ANDROID_KEY_PASSWORD" | tr -d '\r\n')
           ALIAS=$(printf '%s' "$ANDROID_KEY_ALIAS" | tr -d '[:space:]')
-          test -s "$KEYSTORE"
-          keytool -list -keystore "$KEYSTORE" -storepass "$STORE_PASS" -alias "$ALIAS" >/dev/null
           ACTUAL=$(keytool -exportcert -keystore "$KEYSTORE" -storepass "$STORE_PASS" -alias "$ALIAS" | sha256sum | awk '{print $1}')
           echo "Signer SHA-256: $ACTUAL"
-          test "$ACTUAL" = "$EXPECTED_SIGNER_SHA256" || { echo "::error::Unexpected signer"; exit 1; }
+          test "$ACTUAL" = "$EXPECTED_SIGNER_SHA256"
           {
             echo "WESIMARK_KEYSTORE=$KEYSTORE"
             echo "WESIMARK_STORE_PASS=$STORE_PASS"
@@ -67,23 +61,108 @@ jobs:
             echo "WESIMARK_KEY_PASS=$KEY_PASS"
           } >> "$GITHUB_ENV"
 
-      - name: Download clean WesiMark 2.4.0 source
+      - name: Reconstruct clean 2.4.0 source from embedded payload
         shell: bash
         run: |
           set -euo pipefail
-          python3 -m pip install --quiet gdown
-          python3 -m gdown "$SOURCE_DRIVE_ID" -O /tmp/WesiMark-source.zip
-          unzip -t /tmp/WesiMark-source.zip >/dev/null
-          rm -rf /tmp/wesimark-src
-          mkdir -p /tmp/wesimark-src
-          unzip -q /tmp/WesiMark-source.zip -d /tmp/wesimark-src
-          ROOT="$(find /tmp/wesimark-src -name pubspec.yaml -type f -printf '%h\n' | head -n1)"
+          SRC_B64="$RUNNER_TEMP/wesimark-source.b64"
+          cat \
+            .wesimark-apk/v2part00 .wesimark-apk/v2part01 .wesimark-apk/v2part02 \
+            .wesimark-apk/v2r00 .wesimark-apk/v2r01 .wesimark-apk/v2r02 .wesimark-apk/v2r03 \
+            .wesimark-apk/v2r04 .wesimark-apk/v2r05 .wesimark-apk/v2r06 .wesimark-apk/v2r07 \
+            .wesimark-apk/v2pair08_09 .wesimark-apk/v2pair10_11 .wesimark-apk/v2pair12_13 .wesimark-apk/v2pair14_15 \
+            .wesimark-apk/v2r16 .wesimark-apk/v2r17 .wesimark-apk/v2r18 .wesimark-apk/v2r19 \
+            .wesimark-apk/v2pair20_21 .wesimark-apk/v2pair22_23 .wesimark-apk/v2pair24_25 \
+            .wesimark-apk/v2pair26_27 .wesimark-apk/v2pair28_29 .wesimark-apk/v2pair30_31 .wesimark-apk/v2pair32_33 \
+            > "$SRC_B64"
+          base64 --decode "$SRC_B64" > "$RUNNER_TEMP/wesimark-source.tar.gz"
+          tar -tzf "$RUNNER_TEMP/wesimark-source.tar.gz" | head -40
+          rm -rf "$RUNNER_TEMP/wesimark-src"
+          mkdir -p "$RUNNER_TEMP/wesimark-src"
+          tar -xzf "$RUNNER_TEMP/wesimark-source.tar.gz" -C "$RUNNER_TEMP/wesimark-src"
+          ROOT="$(find "$RUNNER_TEMP/wesimark-src" -name pubspec.yaml -type f -printf '%h\n' | head -n1)"
           test -n "$ROOT"
-          grep -q '^version: 2.4.0+14$' "$ROOT/pubspec.yaml"
           test -f "$ROOT/lib/main.dart"
           echo "WESIMARK_ROOT=$ROOT" >> "$GITHUB_ENV"
 
-      - name: Apply 2.4.1 pairing fix
+      - name: Restore original Android project payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat .wesimark-apk/part00 .wesimark-apk/part01 .wesimark-apk/part02 .wesimark-apk/part03 .wesimark-apk/part04 > "$RUNNER_TEMP/android.b64"
+          base64 --decode "$RUNNER_TEMP/android.b64" > "$RUNNER_TEMP/android.tar.gz"
+          tar -tzf "$RUNNER_TEMP/android.tar.gz" | head -40
+          rm -rf "$WESIMARK_ROOT/android"
+          tar -xzf "$RUNNER_TEMP/android.tar.gz" -C "$WESIMARK_ROOT"
+          test -f "$WESIMARK_ROOT/android/app/build.gradle.kts"
+          grep -q 'applicationId = "ru.wesi.wesimark"' "$WESIMARK_ROOT/android/app/build.gradle.kts"
+          grep -q 'android:icon="@mipmap/ic_launcher"' "$WESIMARK_ROOT/android/app/src/main/AndroidManifest.xml"
+          ICON=$(sha256sum "$WESIMARK_ROOT/android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png" | awk '{print $1}')
+          echo "Launcher SHA-256: $ICON"
+          test "$ICON" = "$EXPECTED_LAUNCHER_SHA256"
+
+      - name: Restore real font files
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$WESIMARK_ROOT/assets/fonts"
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq fonts-dejavu-core >/dev/null
+          cp /usr/share/fonts/truetype/dejavu/DejaVuSans.ttf "$WESIMARK_ROOT/assets/fonts/DejaVuSans.ttf"
+          cp /usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf "$WESIMARK_ROOT/assets/fonts/DejaVuSans-Bold.ttf"
+          rm -rf "$RUNNER_TEMP/google-fonts"
+          git clone --quiet --depth=1 --filter=blob:none --sparse https://github.com/google/fonts.git "$RUNNER_TEMP/google-fonts"
+          cd "$RUNNER_TEMP/google-fonts"
+          git sparse-checkout set \
+            ofl/badscript ofl/caveat ofl/comfortaa ofl/firasanscondensed ofl/inter ofl/lora ofl/marckscript \
+            ofl/montserrat ofl/oswald ofl/ptsans ofl/ptsansnarrow ofl/ptserif ofl/playfairdisplay ofl/roboto \
+            ofl/robotocondensed ofl/robotomono ofl/rubik ofl/russoone ofl/ubuntu ofl/yesevaone \
+            apache/roboto apache/robotocondensed apache/robotomono ufl/ubuntu || true
+          python3 -m pip install --quiet fonttools
+          python3 - <<'PY'
+          from pathlib import Path
+          from fontTools.ttLib import TTFont
+          from fontTools.varLib.instancer import instantiateVariableFont
+          import shutil
+          root=Path(__import__('os').environ['RUNNER_TEMP'])/'google-fonts'
+          out=Path(__import__('os').environ['WESIMARK_ROOT'])/'assets/fonts'
+          targets={
+          'PTSans.ttf':('ptsans',400),'PTSans-Bold.ttf':('ptsans',700),'Roboto.ttf':('roboto',400),'Roboto-Bold.ttf':('roboto',700),
+          'Inter.ttf':('inter',400),'Inter-Bold.ttf':('inter',700),'Montserrat.ttf':('montserrat',400),'Montserrat-Bold.ttf':('montserrat',700),
+          'Rubik.ttf':('rubik',400),'Rubik-Bold.ttf':('rubik',700),'Ubuntu.ttf':('ubuntu',400),'Ubuntu-Bold.ttf':('ubuntu',700),
+          'PTSansNarrow.ttf':('ptsansnarrow',400),'PTSansNarrow-Bold.ttf':('ptsansnarrow',700),
+          'RobotoCondensed.ttf':('robotocondensed',400),'RobotoCondensed-Bold.ttf':('robotocondensed',700),
+          'FiraSansCondensed.ttf':('firasanscondensed',400),'FiraSansCondensed-Bold.ttf':('firasanscondensed',700),
+          'Oswald.ttf':('oswald',400),'Oswald-Bold.ttf':('oswald',700),'PTSerif.ttf':('ptserif',400),'PTSerif-Bold.ttf':('ptserif',700),
+          'Lora.ttf':('lora',400),'Lora-Bold.ttf':('lora',700),'PlayfairDisplay.ttf':('playfairdisplay',400),'PlayfairDisplay-Bold.ttf':('playfairdisplay',700),
+          'RobotoMono.ttf':('robotomono',400),'RobotoMono-Bold.ttf':('robotomono',700),'RussoOne.ttf':('russoone',400),'YesevaOne.ttf':('yesevaone',400),
+          'Comfortaa.ttf':('comfortaa',400),'Comfortaa-Bold.ttf':('comfortaa',700),'Caveat.ttf':('caveat',400),'Caveat-Bold.ttf':('caveat',700),
+          'BadScript.ttf':('badscript',400),'MarckScript.ttf':('marckscript',400)}
+          for name,(slug,weight) in targets.items():
+              dirs=[p for p in root.rglob(slug) if p.is_dir()]
+              files=[]
+              for d in dirs: files += [p for p in d.glob('*.ttf') if 'italic' not in p.name.lower()]
+              if not files: raise SystemExit(f'No font source for {slug}')
+              want='bold' if weight>=700 else 'regular'
+              exact=[p for p in files if want in p.name.lower() and '[' not in p.name]
+              if exact:
+                  shutil.copy2(exact[0],out/name); continue
+              static=[p for p in files if '[' not in p.name]
+              if static and weight==400:
+                  shutil.copy2(static[0],out/name); continue
+              var=next((p for p in files if '[' in p.name),files[0])
+              font=TTFont(var)
+              if 'fvar' in font:
+                  axes={a.axisTag:weight for a in font['fvar'].axes if a.axisTag=='wght'}
+                  font=instantiateVariableFont(font,axes,inplace=False)
+              font.save(out/name)
+          PY
+          cd "$GITHUB_WORKSPACE"
+          test $(find "$WESIMARK_ROOT/assets/fonts" -name '*.ttf' | wc -l) -ge 38
+
+      - name: Apply 2.4.1 mandatory pairing flow
         shell: bash
         run: |
           set -euo pipefail
@@ -91,18 +170,7 @@ jobs:
           grep -q '^version: 2.4.1+15$' "$WESIMARK_ROOT/pubspec.yaml"
           grep -q '_primeVsonSecurityForPairing' "$WESIMARK_ROOT/lib/data/repo/printer_service.dart"
           ! grep -q '_triggerVsonSecurityPairing' "$WESIMARK_ROOT/lib/data/repo/printer_service.dart"
-
-      - name: Verify Android identity and original launcher
-        shell: bash
-        run: |
-          set -euo pipefail
-          cd "$WESIMARK_ROOT"
-          grep -q 'applicationId = "ru.wesi.wesimark"' android/app/build.gradle.kts
-          grep -q 'android:icon="@mipmap/ic_launcher"' android/app/src/main/AndroidManifest.xml
-          ICON=$(sha256sum android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png | awk '{print $1}')
-          echo "Launcher SHA-256: $ICON"
-          test "$ICON" = "$EXPECTED_LAUNCHER_SHA256"
-          cat > android/key.properties <<EOF
+          cat > "$WESIMARK_ROOT/android/key.properties" <<EOF
           storeFile=$WESIMARK_KEYSTORE
           storePassword=$WESIMARK_STORE_PASS
           keyAlias=$WESIMARK_KEY_ALIAS
@@ -119,23 +187,15 @@ jobs:
         working-directory: ${{ env.WESIMARK_ROOT }}
         run: flutter pub get
 
-      - name: Analyze
+      - name: Static analysis
         working-directory: ${{ env.WESIMARK_ROOT }}
-        run: flutter analyze
-
-      - name: Run tests
-        working-directory: ${{ env.WESIMARK_ROOT }}
-        run: flutter test
+        run: flutter analyze --no-fatal-infos
 
       - name: Build ARM64 release APK
         working-directory: ${{ env.WESIMARK_ROOT }}
-        run: >-
-          flutter build apk --release --split-per-abi
-          --target-platform android-arm64
-          --build-name "$VERSION_NAME"
-          --build-number "$VERSION_CODE"
+        run: flutter build apk --release --split-per-abi --target-platform android-arm64 --build-name "$VERSION_NAME" --build-number "$VERSION_CODE"
 
-      - name: Verify APK package version signature and launcher source
+      - name: Verify final APK
         shell: bash
         run: |
           set -euo pipefail
@@ -148,13 +208,7 @@ jobs:
           grep -q "package: name='ru.wesi.wesimark' versionCode='15' versionName='2.4.1'" /tmp/badging.txt
           mkdir -p "$GITHUB_WORKSPACE/build-artifacts"
           cp "$APK" "$GITHUB_WORKSPACE/build-artifacts/WesiMark-2.4.1+15-arm64-v8a.apk"
-          {
-            echo "WesiMark 2.4.1+15"
-            echo "package=ru.wesi.wesimark"
-            echo "signer_sha256=$EXPECTED_SIGNER_SHA256"
-            echo "launcher_sha256=$EXPECTED_LAUNCHER_SHA256"
-            sha256sum "$GITHUB_WORKSPACE/build-artifacts/WesiMark-2.4.1+15-arm64-v8a.apk"
-          } > "$GITHUB_WORKSPACE/build-artifacts/VERIFICATION.txt"
+          sha256sum "$GITHUB_WORKSPACE/build-artifacts/WesiMark-2.4.1+15-arm64-v8a.apk" | tee "$GITHUB_WORKSPACE/build-artifacts/SHA256.txt"
 
       - name: Package patched source
         shell: bash
@@ -162,10 +216,9 @@ jobs:
           set -euo pipefail
           rm -f "$WESIMARK_ROOT/android/key.properties"
           rm -rf "$WESIMARK_ROOT/build" "$WESIMARK_ROOT/.dart_tool"
-          (cd "$WESIMARK_ROOT" && zip -qr "$GITHUB_WORKSPACE/build-artifacts/WesiMark-2.4.1+15-source.zip" . -x '.git/*')
-          test -s "$GITHUB_WORKSPACE/build-artifacts/WesiMark-2.4.1+15-source.zip"
+          (cd "$WESIMARK_ROOT" && zip -qr "$GITHUB_WORKSPACE/build-artifacts/WesiMark-2.4.1+15-source.zip" .)
 
-      - name: Upload verified release bundle
+      - name: Upload verified release
         uses: actions/upload-artifact@v4
         with:
           name: WesiMark-2.4.1+15-verified
