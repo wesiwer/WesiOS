@@ -1,0 +1,43 @@
+{
+  "listenHost": "127.0.0.1",
+  "listenPort": 8792,
+  "health": {
+    "intervalMs": 20000,
+    "timeoutMs": 2000,
+    "sampling": 2,
+    "connectivityUrl": "https://cp.cloudflare.com/generate_204",
+    "destinationUrl": "https://www.gstatic.com/generate_204",
+    "failureThreshold": 2,
+    "recoveryThreshold": 2,
+    "stickyTtlMs": 1800000,
+    "switchHysteresisMs": 35
+  },
+  "pools": [
+    {
+      "id": "kg-auto",
+      "name": "Киргизия · авто",
+      "expected": 1,
+      "maxRttMs": 5000,
+      "nodes": [
+        {
+          "id": "kg-01",
+          "countryCode": "KG",
+          "protocols": ["vless-reality"],
+          "endpoint": "vpn-kg-01.example.com:443",
+          "healthUrl": "https://vpn-kg-01.example.com/healthz",
+          "cost": 1,
+          "enabled": true
+        },
+        {
+          "id": "kg-02",
+          "countryCode": "KG",
+          "protocols": ["vless-reality"],
+          "endpoint": "vpn-kg-02.example.com:443",
+          "healthUrl": "https://vpn-kg-02.example.com/healthz",
+          "cost": 1,
+          "enabled": true
+        }
+      ]
+    }
+  ]
+}
