@@ -8,12 +8,7 @@ on:
         required: true
         default: 'auto'
         type: choice
-        options:
-          - auto
-          - wikipedia
-          - microsoft
-          - yahoo
-          - custom
+        options: [auto, wikipedia, microsoft, yahoo, custom]
       reality_server_name:
         description: 'Custom REALITY SNI (only for custom profile)'
         required: false
@@ -30,6 +25,8 @@ on:
       - 'WesiAero/server-deploy/ireland-bs/**'
       - 'WesiAero/server-deploy/reality-targets.json'
       - 'WesiAero/server-deploy/select-reality-target.sh'
+      - 'WesiAero/route-server/**'
+      - 'WesiAero/node-agent/**'
       - '.github/workflows/deploy-wesi-aero-ireland-bs.yml'
 
 permissions:
@@ -42,7 +39,7 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     env:
       RELAY_SSH_HOST: ${{ secrets.WESI_RELAY_SSH_HOST || '178.236.247.194' }}
       RELAY_SSH_USER: ${{ secrets.WESI_RELAY_SSH_USER }}
@@ -50,16 +47,28 @@ jobs:
       REALITY_PROFILE: ${{ inputs.reality_profile || 'auto' }}
       CUSTOM_SERVER_NAME: ${{ inputs.reality_server_name || '' }}
       CUSTOM_TARGET: ${{ inputs.reality_target || '' }}
+      ROUTE_TOKEN: ${{ secrets.WESI_AERO_ROUTE_TOKEN }}
 
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
 
       - name: Validate deployment bundle
         run: |
           set -euo pipefail
           bash -n WesiAero/server-deploy/ireland-bs/deploy.sh
           bash -n WesiAero/server-deploy/select-reality-target.sh
+          bash -n WesiAero/route-server/deploy.sh
+          bash -n WesiAero/node-agent/deploy.sh
+          node --check WesiAero/route-server/src/index.mjs
+          node --check WesiAero/route-server/src/route-core.mjs
+          node --check WesiAero/route-server/src/auto-route.mjs
+          node --check WesiAero/node-agent/src/index.mjs
+          node --test WesiAero/route-server/test/*.test.mjs
           python3 -m json.tool WesiAero/server-deploy/reality-targets.json >/dev/null
+          python3 -m json.tool WesiAero/route-server/config.example.json >/dev/null
           [ -n "${RELAY_SSH_USER:-}" ] || { echo '::error::WESI_RELAY_SSH_USER is missing'; exit 1; }
           case "$REALITY_PROFILE" in auto|wikipedia|microsoft|yahoo|custom) ;; *) echo '::error::invalid reality profile'; exit 1;; esac
           if [ "$REALITY_PROFILE" = custom ]; then
@@ -93,32 +102,33 @@ jobs:
           set -euo pipefail
           ss -ltn | grep -q ':443 ' || { echo 'Wesi AI HTTPS 443 is unexpectedly not listening' >&2; exit 1; }
           ss -ltn | grep -q ':8787 ' || { echo 'Wesi AI relay 8787 is unexpectedly not listening' >&2; exit 1; }
-          echo 'Existing Wesi AI listeners verified; Aero will use TCP/8443 only.'
+          echo 'Existing Wesi AI listeners verified; Aero uses TCP/8443 and loopback/8793.'
           REMOTE
 
-      - name: Upload Ireland BS deployment bundle
+      - name: Upload Ireland BS routing stack
         run: |
           set -euo pipefail
           SSH=(-i "$HOME/.ssh/relay_key" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/relay_known_hosts")
           REMOTE="/tmp/wesi-aero-ireland-bs-$GITHUB_RUN_ID"
           echo "REMOTE=$REMOTE" >> "$GITHUB_ENV"
-          ssh "${SSH[@]}" "$RELAY_SSH_USER@$RELAY_SSH_HOST" "rm -rf '$REMOTE' && mkdir -p '$REMOTE'"
-          scp "${SSH[@]}" \
-            WesiAero/server-deploy/ireland-bs/deploy.sh \
-            WesiAero/server-deploy/select-reality-target.sh \
-            WesiAero/server-deploy/reality-targets.json \
-            "$RELAY_SSH_USER@$RELAY_SSH_HOST:$REMOTE/"
+          ssh "${SSH[@]}" "$RELAY_SSH_USER@$RELAY_SSH_HOST" "rm -rf '$REMOTE' && mkdir -p '$REMOTE/ireland' '$REMOTE/route-server/src' '$REMOTE/route-server/test' '$REMOTE/node-agent/src'"
+          scp "${SSH[@]}" WesiAero/server-deploy/ireland-bs/deploy.sh WesiAero/server-deploy/select-reality-target.sh WesiAero/server-deploy/reality-targets.json "$RELAY_SSH_USER@$RELAY_SSH_HOST:$REMOTE/ireland/"
+          scp "${SSH[@]}" WesiAero/route-server/deploy.sh WesiAero/route-server/package.json WesiAero/route-server/config.example.json "$RELAY_SSH_USER@$RELAY_SSH_HOST:$REMOTE/route-server/"
+          scp "${SSH[@]}" WesiAero/route-server/src/*.mjs "$RELAY_SSH_USER@$RELAY_SSH_HOST:$REMOTE/route-server/src/"
+          scp "${SSH[@]}" WesiAero/route-server/test/*.mjs "$RELAY_SSH_USER@$RELAY_SSH_HOST:$REMOTE/route-server/test/"
+          scp "${SSH[@]}" WesiAero/node-agent/deploy.sh WesiAero/node-agent/package.json "$RELAY_SSH_USER@$RELAY_SSH_HOST:$REMOTE/node-agent/"
+          scp "${SSH[@]}" WesiAero/node-agent/src/*.mjs "$RELAY_SSH_USER@$RELAY_SSH_HOST:$REMOTE/node-agent/src/"
 
       - name: Select REALITY target on the actual VPS
         run: |
           set -euo pipefail
           SSH=(-i "$HOME/.ssh/relay_key" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/relay_known_hosts")
+          SELECTOR="$REMOTE/ireland/select-reality-target.sh"
+          TARGETS="$REMOTE/ireland/reality-targets.json"
           if [ "$REALITY_PROFILE" = custom ]; then
-            RESULT="$(ssh "${SSH[@]}" "$RELAY_SSH_USER@$RELAY_SSH_HOST" \
-              "WESI_AERO_REALITY_SERVER_NAME='$CUSTOM_SERVER_NAME' WESI_AERO_REALITY_TARGET='$CUSTOM_TARGET' bash '$REMOTE/select-reality-target.sh' custom '$REMOTE/reality-targets.json'")"
+            RESULT="$(ssh "${SSH[@]}" "$RELAY_SSH_USER@$RELAY_SSH_HOST" "WESI_AERO_REALITY_SERVER_NAME='$CUSTOM_SERVER_NAME' WESI_AERO_REALITY_TARGET='$CUSTOM_TARGET' bash '$SELECTOR' custom '$TARGETS'")"
           else
-            RESULT="$(ssh "${SSH[@]}" "$RELAY_SSH_USER@$RELAY_SSH_HOST" \
-              "bash '$REMOTE/select-reality-target.sh' '$REALITY_PROFILE' '$REMOTE/reality-targets.json'")"
+            RESULT="$(ssh "${SSH[@]}" "$RELAY_SSH_USER@$RELAY_SSH_HOST" "bash '$SELECTOR' '$REALITY_PROFILE' '$TARGETS'")"
           fi
           SERVER_NAME="$(printf '%s\n' "$RESULT" | sed -n 's/^SERVER_NAME=//p' | tail -n1)"
           TARGET="$(printf '%s\n' "$RESULT" | sed -n 's/^TARGET=//p' | tail -n1)"
@@ -127,23 +137,37 @@ jobs:
           echo "REALITY_SERVER_NAME=$SERVER_NAME" >> "$GITHUB_ENV"
           echo "REALITY_TARGET=$TARGET" >> "$GITHUB_ENV"
 
+      - name: Install Route Server
+        run: |
+          set -euo pipefail
+          SSH=(-i "$HOME/.ssh/relay_key" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/relay_known_hosts")
+          ssh "${SSH[@]}" "$RELAY_SSH_USER@$RELAY_SSH_HOST" "cd '$REMOTE/route-server' && WESI_AERO_ROUTE_SERVER_TOKEN='$ROUTE_TOKEN' WESI_AERO_ROUTE_REPLACE_CONFIG=true bash deploy.sh"
+
       - name: Install Ireland BS
         run: |
           set -euo pipefail
           SSH=(-i "$HOME/.ssh/relay_key" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/relay_known_hosts")
-          ssh "${SSH[@]}" "$RELAY_SSH_USER@$RELAY_SSH_HOST" \
-            "WESI_AERO_REALITY_PORT=8443 WESI_AERO_REALITY_SERVER_NAME='$REALITY_SERVER_NAME' WESI_AERO_REALITY_TARGET='$REALITY_TARGET' WESI_AERO_PUBLIC_HOST='$PUBLIC_HOST' bash '$REMOTE/deploy.sh'"
-          ssh "${SSH[@]}" "$RELAY_SSH_USER@$RELAY_SSH_HOST" "rm -rf '$REMOTE'"
+          ssh "${SSH[@]}" "$RELAY_SSH_USER@$RELAY_SSH_HOST" "WESI_AERO_REALITY_PORT=8443 WESI_AERO_REALITY_SERVER_NAME='$REALITY_SERVER_NAME' WESI_AERO_REALITY_TARGET='$REALITY_TARGET' WESI_AERO_PUBLIC_HOST='$PUBLIC_HOST' bash '$REMOTE/ireland/deploy.sh'"
 
-      - name: Verify Ireland BS listener and service
+      - name: Install Ireland Node Agent
+        run: |
+          set -euo pipefail
+          SSH=(-i "$HOME/.ssh/relay_key" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/relay_known_hosts")
+          ssh "${SSH[@]}" "$RELAY_SSH_USER@$RELAY_SSH_HOST" "cd '$REMOTE/node-agent' && WESI_AERO_ROUTE_SERVER_URL='http://127.0.0.1:8793' WESI_AERO_ROUTE_SERVER_TOKEN='$ROUTE_TOKEN' bash deploy.sh"
+
+      - name: Verify complete Ireland routing stack
         run: |
           set -euo pipefail
           SSH=(-i "$HOME/.ssh/relay_key" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/relay_known_hosts")
           ssh "${SSH[@]}" "$RELAY_SSH_USER@$RELAY_SSH_HOST" 'bash -s' <<'REMOTE'
           set -euo pipefail
           if [ "$(id -u)" -eq 0 ]; then SUDO=(); else SUDO=(sudo -n); fi
+          "${SUDO[@]}" systemctl is-active --quiet wesi-aero-route-server
           "${SUDO[@]}" systemctl is-active --quiet wesi-aero-ireland-bs
+          "${SUDO[@]}" systemctl is-active --quiet wesi-aero-node-agent-ireland-bs
+          curl -fsS http://127.0.0.1:8793/healthz
           "${SUDO[@]}" ss -ltnp | grep -E ':8443\b'
           "${SUDO[@]}" test -s /etc/wesi-aero/ireland-bs/client-uri.txt
-          echo 'Ireland BS is active; client URI remains root-only on the VPS.'
+          echo 'Ireland BS + Route Server + Node Agent are active; Wesi AI ports were not changed.'
           REMOTE
+          ssh "${SSH[@]}" "$RELAY_SSH_USER@$RELAY_SSH_HOST" "rm -rf '$REMOTE'"
