@@ -17,13 +17,15 @@
     "security": "reality",
     "flow": "xtls-rprx-vision",
     "port": 8443,
+    "routePoolId": "ireland-bs",
     "serverNamePolicy": "auto-validated-candidate-pool",
     "fingerprint": "chrome",
     "oneTapAutomatic": true,
     "protocolPolicy": "auto",
     "enginePolicy": "auto",
     "profilePolicy": "server-provisioned",
+    "requiredServices": ["wesi-aero-ireland-bs"],
     "credentialsSource": "vps:/etc/wesi-aero/ireland-bs/credentials.env"
   },
-  "notes": "One-tap automatic Wesi Aero VLESS + REALITY node. For ireland-bs only, protocol/engine/profile selection is automatic; the second server is not affected. Wesi AI remains isolated on 443/8787/8792."
+  "notes": "One-tap automatic Wesi Aero VLESS + REALITY node. Only ireland-bs is attached to routePoolId=ireland-bs; the second server is not affected. Wesi AI remains isolated on 443/8787/8792."
 }
