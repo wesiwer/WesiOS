@@ -9,11 +9,11 @@ fi
 PUBLIC_HOST="${WESI_AERO_PUBLIC_HOST:-wesi-aero-178-236-247-194.nip.io}"
 STATE_DIR="${WESI_AERO_STATE_DIR:-/var/lib/wesi-aero/singbox}"
 CLIENT_DIR="$STATE_DIR/clients"
-SECRETS_FILE="$STATE_DIR/secrets.env"
 CONFIG_DIR="/etc/sing-box"
 CONFIG_FILE="$CONFIG_DIR/restrictive-transports.json"
 SERVICE_FILE="/etc/systemd/system/wesi-aero-restrictive-transports.service"
 NGINX_SNIPPET="/etc/nginx/snippets/wesi-aero-transports.conf"
+UUID_FILE="$STATE_DIR/restrictive-vmess.uuid"
 WS_PORT="${WESI_AERO_RESTRICTIVE_WS_PORT:-18080}"
 GRPC_PORT="${WESI_AERO_RESTRICTIVE_GRPC_PORT:-18081}"
 HTTP2_PORT="${WESI_AERO_RESTRICTIVE_HTTP2_PORT:-18082}"
@@ -26,18 +26,22 @@ GRPC_SERVICE="wesi.aero.Transport"
   exit 1
 }
 command -v sing-box >/dev/null 2>&1 || { echo "sing-box must be installed first." >&2; exit 1; }
-[[ -s "$SECRETS_FILE" ]] || { echo "sing-box secrets are missing." >&2; exit 1; }
-# shellcheck disable=SC1090
-source "$SECRETS_FILE"
-: "${TROJAN_PASSWORD:?TROJAN_PASSWORD is missing}"
+command -v jq >/dev/null 2>&1 || { echo "jq must be installed first." >&2; exit 1; }
 
 install -d -m 700 "$STATE_DIR" "$CLIENT_DIR"
 install -d -m 755 "$CONFIG_DIR" /etc/nginx/snippets
+umask 077
+if [[ ! -s "$UUID_FILE" ]]; then
+  cat /proc/sys/kernel/random/uuid > "$UUID_FILE"
+fi
+chmod 600 "$UUID_FILE"
+RESTRICTIVE_UUID="$(tr -d '[:space:]' < "$UUID_FILE")"
+[[ "$RESTRICTIVE_UUID" =~ ^[0-9a-fA-F-]{36}$ ]] || { echo "Invalid restrictive VMess UUID." >&2; exit 1; }
 
 tmp_config="$(mktemp)"
 trap 'rm -f "$tmp_config"' EXIT
 jq -n \
-  --arg password "$TROJAN_PASSWORD" \
+  --arg uuid "$RESTRICTIVE_UUID" \
   --arg host "$PUBLIC_HOST" \
   --arg wsPath "$WS_PATH" \
   --arg h2Path "$HTTP2_PATH" \
@@ -49,18 +53,18 @@ jq -n \
     log:{level:"warn",timestamp:false},
     inbounds:[
       {
-        type:"trojan",tag:"trojan-ws-443",listen:"127.0.0.1",listen_port:$wsPort,
-        users:[{name:"wesi-restrictive-ws",password:$password}],
+        type:"vmess",tag:"vmess-ws-443",listen:"127.0.0.1",listen_port:$wsPort,
+        users:[{name:"wesi-restrictive-ws",uuid:$uuid,alterId:0}],
         transport:{type:"ws",path:$wsPath,headers:{Host:$host}}
       },
       {
-        type:"trojan",tag:"trojan-grpc-443",listen:"127.0.0.1",listen_port:$grpcPort,
-        users:[{name:"wesi-restrictive-grpc",password:$password}],
+        type:"vmess",tag:"vmess-grpc-443",listen:"127.0.0.1",listen_port:$grpcPort,
+        users:[{name:"wesi-restrictive-grpc",uuid:$uuid,alterId:0}],
         transport:{type:"grpc",service_name:$grpcService,idle_timeout:"30s",ping_timeout:"15s"}
       },
       {
-        type:"trojan",tag:"trojan-http2-443",listen:"127.0.0.1",listen_port:$h2Port,
-        users:[{name:"wesi-restrictive-http2",password:$password}],
+        type:"vmess",tag:"vmess-http2-443",listen:"127.0.0.1",listen_port:$h2Port,
+        users:[{name:"wesi-restrictive-http2",uuid:$uuid,alterId:0}],
         transport:{type:"http",host:[$host],path:$h2Path,idle_timeout:"30s",ping_timeout:"15s"}
       }
     ],
@@ -68,6 +72,8 @@ jq -n \
     route:{final:"direct"}
   }' > "$tmp_config"
 
+# Validate before replacing the active configuration. A bad transport config
+# cannot take the existing relay down.
 sing-box check -c "$tmp_config"
 install -m 600 "$tmp_config" "$CONFIG_FILE"
 
@@ -94,7 +100,6 @@ ProtectKernelModules=true
 ProtectControlGroups=true
 RestrictNamespaces=true
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
-ReadOnlyPaths=/etc/letsencrypt
 
 [Install]
 WantedBy=multi-user.target
@@ -112,9 +117,9 @@ systemctl is-active --quiet wesi-aero-restrictive-transports.service
 # These listeners are deliberately loopback-only. Nginx is the sole public
 # TLS/443 entry point; no firewall hole is created for 18080-18082.
 for port in "$WS_PORT" "$GRPC_PORT" "$HTTP2_PORT"; do
-  ss -ltn | grep -Eq "127\\.0\\.0\\.1:${port}[[:space:]]"
-  if ss -ltn | grep -Eq "(0\\.0\\.0\\.0|\\[::\\]|:::):?${port}[[:space:]]"; then
-    echo "Restrictive transport port $port is exposed publicly." >&2
+  ss -ltnH | awk -v suffix=":$port" '$4 ~ suffix"$" && $4 ~ /^127\.0\.0\.1:/ { print $4 }' | grep -q .
+  if ss -ltnH | awk -v suffix=":$port" '$4 ~ suffix"$" && $4 !~ /^127\.0\.0\.1:/ { print $4 }' | grep -q .; then
+    echo "Restrictive transport port $port is exposed outside loopback." >&2
     exit 1
   fi
 done
@@ -159,23 +164,31 @@ location ^~ /aero/transport/h2 {
 NGINX
 chmod 644 "$NGINX_SNIPPET"
 
-urlencode() {
-  jq -nr --arg value "$1" '$value|@uri'
+write_vmess_profile() {
+  local target="$1" name="$2" network="$3" path="$4"
+  local payload
+  payload="$(jq -cn \
+    --arg name "$name" \
+    --arg host "$PUBLIC_HOST" \
+    --arg uuid "$RESTRICTIVE_UUID" \
+    --arg network "$network" \
+    --arg path "$path" \
+    '{v:"2",ps:$name,add:$host,port:"443",id:$uuid,aid:"0",scy:"auto",net:$network,type:"none",host:$host,path:$path,tls:"tls",sni:$host,fp:"chrome"}')"
+  printf 'vmess://%s\n' "$(printf '%s' "$payload" | base64 -w0)" > "$target"
+  chmod 600 "$target"
 }
-ws_path_q="$(urlencode "$WS_PATH")"
-h2_path_q="$(urlencode "$HTTP2_PATH")"
-grpc_q="$(urlencode "$GRPC_SERVICE")"
-printf 'trojan://%s@%s:443?security=tls&sni=%s&type=ws&host=%s&path=%s#Wesi%%20Relay%%20HTTPS%%20WS\n' \
-  "$TROJAN_PASSWORD" "$PUBLIC_HOST" "$PUBLIC_HOST" "$PUBLIC_HOST" "$ws_path_q" > "$CLIENT_DIR/trojan-ws443.txt"
-printf 'trojan://%s@%s:443?security=tls&sni=%s&type=grpc&serviceName=%s#Wesi%%20Relay%%20HTTPS%%20gRPC\n' \
-  "$TROJAN_PASSWORD" "$PUBLIC_HOST" "$PUBLIC_HOST" "$grpc_q" > "$CLIENT_DIR/trojan-grpc443.txt"
-printf 'trojan://%s@%s:443?security=tls&sni=%s&type=http&host=%s&path=%s#Wesi%%20Relay%%20HTTPS%%20HTTP2\n' \
-  "$TROJAN_PASSWORD" "$PUBLIC_HOST" "$PUBLIC_HOST" "$PUBLIC_HOST" "$h2_path_q" > "$CLIENT_DIR/trojan-http2-443.txt"
-chmod 600 "$CLIENT_DIR"/trojan-ws443.txt "$CLIENT_DIR"/trojan-grpc443.txt "$CLIENT_DIR"/trojan-http2-443.txt
 
-for profile in "$CLIENT_DIR"/trojan-ws443.txt "$CLIENT_DIR"/trojan-grpc443.txt "$CLIENT_DIR"/trojan-http2-443.txt; do
-  grep -Fq "@${PUBLIC_HOST}:443?" "$profile"
-  grep -Fq "sni=${PUBLIC_HOST}" "$profile"
+# WS is the first live restrictive profile because the current Android sing-box
+# backend already validates and consumes VMess+WS+TLS. gRPC is also supported by
+# the current client. HTTP/2 is provisioned server-side and kept as a separate
+# candidate until its client parser is promoted to the same tested status.
+write_vmess_profile "$CLIENT_DIR/vmess-ws443.txt" "Wesi Relay HTTPS WS" "ws" "$WS_PATH"
+write_vmess_profile "$CLIENT_DIR/vmess-grpc443.txt" "Wesi Relay HTTPS gRPC" "grpc" "$GRPC_SERVICE"
+write_vmess_profile "$CLIENT_DIR/vmess-http2-443.txt" "Wesi Relay HTTPS HTTP2" "http" "$HTTP2_PATH"
+
+for profile in "$CLIENT_DIR"/vmess-ws443.txt "$CLIENT_DIR"/vmess-grpc443.txt "$CLIENT_DIR"/vmess-http2-443.txt; do
+  decoded="$(sed 's#^vmess://##' "$profile" | base64 -d)"
+  jq -e --arg host "$PUBLIC_HOST" '.add==$host and .port=="443" and .sni==$host and .tls=="tls"' <<<"$decoded" >/dev/null
 done
 
 echo "Wesi Aero restrictive transports ready on the Wesi-owned TLS/443 facade: WebSocket, gRPC and HTTP/2."
