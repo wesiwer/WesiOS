@@ -42,8 +42,7 @@
           "protocols": ["vless-reality"],
           "endpoint": "178.236.247.194:8443",
           "healthUrls": [
-            "https://cp.cloudflare.com/generate_204",
-            "https://www.gstatic.com/generate_204"
+            "https://wesi-ai-178-236-247-194.nip.io/health"
           ],
           "healthQuorum": 1,
           "cost": 1,
