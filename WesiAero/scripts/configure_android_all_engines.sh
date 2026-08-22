@@ -26,6 +26,7 @@ python3 scripts/fix_android_singbox_iterators.py
 python3 scripts/patch_android_singbox_profiles.py
 
 # One dispatcher selects sing-box / Xray / native WireGuard at runtime.
+python3 scripts/normalize_protocol_engine_matrix.py
 python3 scripts/configure_android_multi_engine.py
 python3 scripts/apply_multi_engine_profiles.py
 
