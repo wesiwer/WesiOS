@@ -1,54 +1,60 @@
 import fs from 'node:fs';
 import http from 'node:http';
 import crypto from 'node:crypto';
+import path from 'node:path';
+
+import {
+  applyProbeResult,
+  createRecord,
+  loadPersistentState,
+  randomizedDelay,
+  restoreSticky,
+  savePersistentState,
+  scoreRecord,
+  selectRoute,
+  setMaintenance,
+} from './route-core.mjs';
 
 const configPath = process.env.WESI_AERO_ROUTE_CONFIG || new URL('../config.json', import.meta.url);
 const config = loadConfig(configPath);
 const apiToken = process.env.WESI_AERO_ROUTE_TOKEN || '';
+const statePath = path.resolve(
+  process.cwd(),
+  process.env.WESI_AERO_ROUTE_STATE || config.stateFile || 'data/route-state.json',
+);
 
+const persisted = loadPersistentState(statePath);
 const state = new Map();
-const sticky = new Map();
+let sticky = restoreSticky(persisted.sticky);
 let internetHealthy = true;
-let probeTimer = null;
+let stopped = false;
+const timers = new Map();
 
 for (const pool of config.pools) {
   for (const node of pool.nodes) {
-    state.set(node.id, {
-      node,
-      poolId: pool.id,
-      healthy: false,
-      rttMs: null,
-      consecutiveFailures: 0,
-      consecutiveSuccesses: 0,
-      lastCheckedAt: null,
-      lastError: null,
-      samples: [],
-    });
+    state.set(node.id, createRecord(node, pool.id, persisted.nodes[node.id]));
   }
 }
 
 function loadConfig(pathLike) {
-  const path = pathLike instanceof URL ? pathLike : String(pathLike);
-  let parsed;
-  try {
-    parsed = JSON.parse(fs.readFileSync(path, 'utf8'));
-  } catch (error) {
-    console.error(`[route-server] cannot read config: ${error.message}`);
-    process.exit(1);
-  }
+  const file = pathLike instanceof URL ? pathLike : String(pathLike);
+  const parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
   if (!Array.isArray(parsed.pools) || parsed.pools.length === 0) {
     throw new Error('config.pools must contain at least one pool');
   }
   parsed.health ??= {};
   parsed.health.intervalMs ??= 20_000;
+  parsed.health.jitterRatio ??= 0.3;
   parsed.health.timeoutMs ??= 2_000;
   parsed.health.sampling ??= 2;
   parsed.health.failureThreshold ??= 2;
   parsed.health.recoveryThreshold ??= 2;
+  parsed.health.historySize ??= 12;
   parsed.health.stickyTtlMs ??= 30 * 60_000;
-  parsed.health.switchHysteresisMs ??= 35;
+  parsed.health.multiTargetQuorum ??= 1;
+  parsed.health.expectedStatuses ??= [200, 204];
   parsed.listenHost ??= '127.0.0.1';
-  parsed.listenPort ??= 8792;
+  parsed.listenPort ??= 8793;
   return parsed;
 }
 
@@ -62,152 +68,124 @@ async function timedHead(url, timeoutMs) {
       redirect: 'manual',
       cache: 'no-store',
       signal: controller.signal,
-      headers: { 'user-agent': 'WesiAero-RouteServer/0.1' },
+      headers: { 'user-agent': 'WesiAero-RouteServer/0.2' },
     });
-    const rttMs = Math.max(1, Math.round(performance.now() - started));
-    if (response.status < 200 || response.status >= 500) {
+    const expected = Array.isArray(config.health.expectedStatuses)
+      ? config.health.expectedStatuses.map(Number)
+      : [200, 204];
+    if (!expected.includes(response.status) && (response.status < 200 || response.status >= 400)) {
       throw new Error(`HTTP_${response.status}`);
     }
-    return rttMs;
+    return Math.max(1, Math.round(performance.now() - started));
   } finally {
     clearTimeout(timeout);
   }
 }
 
 async function checkInternet() {
-  const url = config.health.connectivityUrl;
-  if (!url) return true;
-  try {
-    await timedHead(url, config.health.timeoutMs);
-    return true;
-  } catch {
-    return false;
+  const urls = normalizeUrls(config.health.connectivityUrls ?? config.health.connectivityUrl);
+  if (!urls.length) return true;
+  for (const url of urls) {
+    try {
+      await timedHead(url, config.health.timeoutMs);
+      return true;
+    } catch {
+      // Try next independent target.
+    }
   }
+  return false;
 }
 
 async function probeNode(record) {
-  const { node } = record;
-  if (node.enabled === false) {
+  if (record.node.enabled === false || record.maintenance === 'offline') {
     record.healthy = false;
-    record.lastError = 'DISABLED';
-    return;
-  }
-  const url = node.healthUrl || config.health.destinationUrl;
-  if (!url) {
-    record.healthy = false;
-    record.lastError = 'NO_HEALTH_URL';
+    record.lastError = record.maintenance === 'offline' ? 'MAINTENANCE_OFFLINE' : 'DISABLED';
+    persist();
     return;
   }
 
-  const round = [];
-  let error = null;
-  for (let i = 0; i < config.health.sampling; i += 1) {
-    try {
-      round.push(await timedHead(url, config.health.timeoutMs));
-    } catch (cause) {
-      error = cause instanceof Error ? cause.message : String(cause);
-    }
+  const targets = normalizeUrls(
+    record.node.healthUrls ?? record.node.healthUrl ?? config.health.destinationUrls ?? config.health.destinationUrl,
+  );
+  if (!targets.length) {
+    applyProbeResult(record, { success: false, error: 'NO_HEALTH_URL' }, config.health);
+    persist();
+    return;
   }
 
-  record.lastCheckedAt = new Date().toISOString();
-  if (round.length > 0) {
-    const avg = Math.round(round.reduce((a, b) => a + b, 0) / round.length);
-    record.samples.push(avg);
-    record.samples = record.samples.slice(-config.health.sampling);
-    record.rttMs = Math.round(record.samples.reduce((a, b) => a + b, 0) / record.samples.length);
-    record.consecutiveSuccesses += 1;
-    record.consecutiveFailures = 0;
-    record.lastError = null;
-    if (record.consecutiveSuccesses >= config.health.recoveryThreshold) {
-      record.healthy = true;
-    }
-  } else {
-    record.consecutiveFailures += 1;
-    record.consecutiveSuccesses = 0;
-    record.lastError = internetHealthy ? (error || 'PROBE_FAILED') : 'CONNECTIVITY_UNAVAILABLE';
-    if (record.consecutiveFailures >= config.health.failureThreshold) {
-      record.healthy = false;
-    }
-  }
-}
-
-async function probeAll() {
-  internetHealthy = await checkInternet();
-  await Promise.all([...state.values()].map(probeNode));
-  expireSticky();
-}
-
-function expireSticky() {
-  const now = Date.now();
-  for (const [key, value] of sticky) {
-    if (value.expiresAt <= now) sticky.delete(key);
-  }
-}
-
-function score(record) {
-  const rtt = record.rttMs ?? Number.MAX_SAFE_INTEGER / 4;
-  const cost = Number(record.node.cost ?? 1);
-  return rtt + Math.max(0, cost - 1) * 100;
-}
-
-function eligibleRecords(pool, protocol) {
-  const maxRtt = Number(pool.maxRttMs ?? 5000);
-  return pool.nodes
-    .map((node) => state.get(node.id))
-    .filter(Boolean)
-    .filter((record) => record.node.enabled !== false)
-    .filter((record) => !protocol || record.node.protocols?.includes(protocol))
-    .filter((record) => record.healthy)
-    .filter((record) => record.rttMs == null || record.rttMs <= maxRtt)
-    .sort((a, b) => score(a) - score(b));
-}
-
-function selectRoute({ clientId, poolId, protocol }) {
-  const pool = config.pools.find((candidate) => candidate.id === poolId);
-  if (!pool) return { error: 'POOL_NOT_FOUND', status: 404 };
-
-  const candidates = eligibleRecords(pool, protocol);
-  if (candidates.length === 0) {
-    return {
-      error: internetHealthy ? 'NO_HEALTHY_NODE' : 'SERVER_CONNECTIVITY_UNAVAILABLE',
-      status: 503,
-    };
-  }
-
-  const key = `${clientId}:${poolId}:${protocol || '*'}`;
-  const existing = sticky.get(key);
-  if (existing && existing.expiresAt > Date.now()) {
-    const current = state.get(existing.nodeId);
-    if (current && candidates.includes(current)) {
-      const best = candidates[0];
-      const hysteresis = Number(config.health.switchHysteresisMs ?? 35);
-      if (score(current) <= score(best) + hysteresis) {
-        existing.expiresAt = Date.now() + config.health.stickyTtlMs;
-        return selectedPayload(pool, current, true);
+  const attempts = [];
+  for (const target of targets) {
+    for (let index = 0; index < Number(config.health.sampling); index += 1) {
+      try {
+        attempts.push({ ok: true, rttMs: await timedHead(target, config.health.timeoutMs) });
+      } catch (error) {
+        attempts.push({ ok: false, error: error instanceof Error ? error.message : String(error) });
       }
     }
   }
 
-  const chosen = candidates[0];
-  sticky.set(key, {
-    nodeId: chosen.node.id,
-    expiresAt: Date.now() + config.health.stickyTtlMs,
-  });
-  return selectedPayload(pool, chosen, false);
+  const successful = attempts.filter((item) => item.ok);
+  const quorum = Math.max(1, Number(record.node.healthQuorum ?? config.health.multiTargetQuorum ?? 1));
+  const successfulTargets = countSuccessfulTargets(attempts, targets.length, Number(config.health.sampling));
+  const success = successfulTargets >= Math.min(quorum, targets.length);
+  const rttMs = successful.length
+    ? Math.round(successful.reduce((sum, item) => sum + item.rttMs, 0) / successful.length)
+    : null;
+  const failure = attempts.findLast?.((item) => !item.ok) ?? attempts.find((item) => !item.ok);
+
+  applyProbeResult(record, {
+    success,
+    rttMs,
+    error: success ? null : (internetHealthy ? failure?.error ?? 'PROBE_FAILED' : 'CONNECTIVITY_UNAVAILABLE'),
+  }, config.health);
+  persist();
 }
 
-function selectedPayload(pool, record, stickyHit) {
-  return {
-    poolId: pool.id,
-    nodeId: record.node.id,
-    endpoint: record.node.endpoint,
-    protocols: record.node.protocols || [],
-    countryCode: record.node.countryCode || '',
-    rttMs: record.rttMs,
-    healthy: record.healthy,
-    sticky: stickyHit,
-    profileRef: record.node.profileRef || null,
-  };
+function countSuccessfulTargets(attempts, targetCount, sampling) {
+  let successfulTargets = 0;
+  for (let targetIndex = 0; targetIndex < targetCount; targetIndex += 1) {
+    const start = targetIndex * sampling;
+    const sample = attempts.slice(start, start + sampling);
+    if (sample.some((item) => item.ok)) successfulTargets += 1;
+  }
+  return successfulTargets;
+}
+
+function normalizeUrls(value) {
+  if (Array.isArray(value)) return value.map(String).map((item) => item.trim()).filter(Boolean);
+  if (typeof value === 'string' && value.trim()) return [value.trim()];
+  return [];
+}
+
+async function probeCycle(record) {
+  if (stopped) return;
+  internetHealthy = await checkInternet();
+  await probeNode(record);
+  scheduleProbe(record);
+}
+
+function scheduleProbe(record, immediate = false) {
+  if (stopped) return;
+  const existing = timers.get(record.node.id);
+  if (existing) clearTimeout(existing);
+  const delay = immediate
+    ? 0
+    : randomizedDelay({
+        intervalMs: Number(config.health.intervalMs),
+        jitterRatio: Number(config.health.jitterRatio),
+      });
+  const timer = setTimeout(() => {
+    void probeCycle(record).catch((error) => {
+      console.error(`[route-server] probe ${record.node.id} failed`, error);
+      scheduleProbe(record);
+    });
+  }, delay);
+  timer.unref();
+  timers.set(record.node.id, timer);
+}
+
+function persist() {
+  savePersistentState(statePath, state, sticky);
 }
 
 function authorize(req) {
@@ -233,8 +211,7 @@ async function readJson(req) {
     if (size > 64 * 1024) throw new Error('BODY_TOO_LARGE');
     chunks.push(chunk);
   }
-  if (chunks.length === 0) return {};
-  return JSON.parse(Buffer.concat(chunks).toString('utf8'));
+  return chunks.length ? JSON.parse(Buffer.concat(chunks).toString('utf8')) : {};
 }
 
 const server = http.createServer(async (req, res) => {
@@ -245,7 +222,8 @@ const server = http.createServer(async (req, res) => {
       return send(res, 200, {
         ok: true,
         internetHealthy,
-        nodes: [...state.values()].filter((record) => record.healthy).length,
+        healthyNodes: [...state.values()].filter((record) => record.healthy).length,
+        totalNodes: state.size,
       });
     }
 
@@ -259,8 +237,13 @@ const server = http.createServer(async (req, res) => {
           poolId: record.poolId,
           endpoint: record.node.endpoint,
           protocols: record.node.protocols || [],
+          maintenance: record.maintenance,
           healthy: record.healthy,
           rttMs: record.rttMs,
+          jitterMs: record.jitterMs,
+          failureRate: record.failureRate,
+          score: Math.round(scoreRecord(record, config.health)),
+          load: Number(record.node.load ?? 0),
           lastCheckedAt: record.lastCheckedAt,
           lastError: record.lastError,
         })),
@@ -275,8 +258,14 @@ const server = http.createServer(async (req, res) => {
       if (!clientId || !poolId) {
         return send(res, 400, { error: 'clientId and poolId are required' });
       }
-      const result = selectRoute({ clientId, poolId, protocol });
-      if (result.error) return send(res, result.status, { error: result.error });
+      const result = selectRoute({ config, state, sticky, clientId, poolId, protocol });
+      if (result.error) {
+        if (!internetHealthy && result.error === 'NO_HEALTHY_NODE') {
+          return send(res, 503, { error: 'SERVER_CONNECTIVITY_UNAVAILABLE' });
+        }
+        return send(res, result.status, { error: result.error });
+      }
+      persist();
       return send(res, 200, result);
     }
 
@@ -287,7 +276,27 @@ const server = http.createServer(async (req, res) => {
       const protocol = body.protocol == null ? '*' : String(body.protocol).trim();
       if (!clientId || !poolId) return send(res, 400, { error: 'clientId and poolId are required' });
       sticky.delete(`${clientId}:${poolId}:${protocol}`);
+      persist();
       return send(res, 200, { released: true });
+    }
+
+    const maintenance = url.pathname.match(/^\/v1\/nodes\/([a-zA-Z0-9._:-]{2,128})\/maintenance$/);
+    if (req.method === 'PUT' && maintenance) {
+      const record = state.get(maintenance[1]);
+      if (!record) return send(res, 404, { error: 'NODE_NOT_FOUND' });
+      const body = await readJson(req);
+      try {
+        setMaintenance(record, String(body.mode || ''));
+      } catch {
+        return send(res, 400, { error: 'mode must be online, draining or offline' });
+      }
+      persist();
+      if (record.maintenance === 'online') scheduleProbe(record, true);
+      return send(res, 200, {
+        nodeId: record.node.id,
+        maintenance: record.maintenance,
+        healthy: record.healthy,
+      });
     }
 
     return send(res, 404, { error: 'NOT_FOUND' });
@@ -298,18 +307,18 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-await probeAll();
-probeTimer = setInterval(() => {
-  void probeAll().catch((error) => console.error('[route-server] probe failed', error));
-}, config.health.intervalMs);
-probeTimer.unref();
+for (const record of state.values()) scheduleProbe(record, true);
 
 server.listen(config.listenPort, config.listenHost, () => {
   console.log(`[route-server] listening on http://${config.listenHost}:${config.listenPort}`);
 });
 
 function shutdown() {
-  if (probeTimer) clearInterval(probeTimer);
+  if (stopped) return;
+  stopped = true;
+  for (const timer of timers.values()) clearTimeout(timer);
+  timers.clear();
+  persist();
   server.close(() => process.exit(0));
   setTimeout(() => process.exit(1), 5000).unref();
 }
