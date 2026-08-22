@@ -14,7 +14,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 env:
   EXPECTED_WESIMARK_CERT_SHA256: dfd466f3185f21b02ade358f1dc3792e404365ba3cde54b4b20163e8d031846a
@@ -27,36 +27,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Download original WesiMark source
-        shell: bash
-        run: |
-          set -euo pipefail
-          URL='https://drive.usercontent.google.com/download?id=1ScMR7JUANdpGTha1hqUN-IXAh9UlVTvy&export=download&confirm=t'
-          curl -L --fail --retry 3 --retry-delay 2 "$URL" -o /tmp/WesiMark-source.zip
-          unzip -t /tmp/WesiMark-source.zip >/dev/null
-          rm -rf /tmp/wesimark-original
-          mkdir -p /tmp/wesimark-original
-          unzip -q /tmp/WesiMark-source.zip -d /tmp/wesimark-original
-          ROOT="$(find /tmp/wesimark-original -name pubspec.yaml -type f -printf '%h\n' | head -n1)"
-          test -n "$ROOT"
-          echo "WESIMARK_ROOT=$ROOT" >> "$GITHUB_ENV"
-          grep -q '^version: 2.4.0+14$' "$ROOT/pubspec.yaml"
-          test -f "$ROOT/lib/main.dart"
-
-      - name: Verify original WesiMark Android identity
-        shell: bash
-        run: |
-          set -euo pipefail
-          cd "$WESIMARK_ROOT"
-          grep -q 'applicationId = "ru.wesi.wesimark"' android/app/build.gradle.kts
-          grep -q 'android:icon="@mipmap/ic_launcher"' android/app/src/main/AndroidManifest.xml
-          ACTUAL_ICON=$(sha256sum android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png | awk '{print $1}')
-          echo "Launcher SHA-256: $ACTUAL_ICON"
-          test "$ACTUAL_ICON" = "$EXPECTED_LAUNCHER_XXXHDPI_SHA256" || {
-            echo "::error::WesiMark launcher icon does not match original"
-            exit 1
-          }
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
@@ -90,11 +60,44 @@ jobs:
             echo "::error::Available GitHub signing key is NOT the original WesiMark key"
             exit 1
           }
-          cat > "$WESIMARK_ROOT/android/key.properties" <<EOF
-          storeFile=$KEYSTORE
-          storePassword=$STORE_PASS
-          keyAlias=$ALIAS
-          keyPassword=$KEY_PASS
+          {
+            echo "WESIMARK_KEYSTORE=$KEYSTORE"
+            echo "WESIMARK_STORE_PASS=$STORE_PASS"
+            echo "WESIMARK_KEY_ALIAS=$ALIAS"
+            echo "WESIMARK_KEY_PASS=$KEY_PASS"
+          } >> "$GITHUB_ENV"
+
+      - name: Download original WesiMark source
+        shell: bash
+        run: |
+          set -euo pipefail
+          URL='https://drive.usercontent.google.com/download?id=1ScMR7JUANdpGTha1hqUN-IXAh9UlVTvy&export=download&confirm=t'
+          curl -L --fail --retry 3 --retry-delay 2 "$URL" -o /tmp/WesiMark-source.zip
+          unzip -t /tmp/WesiMark-source.zip >/dev/null
+          rm -rf /tmp/wesimark-original
+          mkdir -p /tmp/wesimark-original
+          unzip -q /tmp/WesiMark-source.zip -d /tmp/wesimark-original
+          ROOT="$(find /tmp/wesimark-original -name pubspec.yaml -type f -printf '%h\n' | head -n1)"
+          test -n "$ROOT"
+          echo "WESIMARK_ROOT=$ROOT" >> "$GITHUB_ENV"
+          grep -q '^version: 2.4.0+14$' "$ROOT/pubspec.yaml"
+          test -f "$ROOT/lib/main.dart"
+
+      - name: Verify original WesiMark Android identity and install signing config
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$WESIMARK_ROOT"
+          grep -q 'applicationId = "ru.wesi.wesimark"' android/app/build.gradle.kts
+          grep -q 'android:icon="@mipmap/ic_launcher"' android/app/src/main/AndroidManifest.xml
+          ACTUAL_ICON=$(sha256sum android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png | awk '{print $1}')
+          echo "Launcher SHA-256: $ACTUAL_ICON"
+          test "$ACTUAL_ICON" = "$EXPECTED_LAUNCHER_XXXHDPI_SHA256"
+          cat > android/key.properties <<EOF
+          storeFile=$WESIMARK_KEYSTORE
+          storePassword=$WESIMARK_STORE_PASS
+          keyAlias=$WESIMARK_KEY_ALIAS
+          keyPassword=$WESIMARK_KEY_PASS
           EOF
 
       - name: Set up Flutter
@@ -119,10 +122,7 @@ jobs:
           test -s "$APK"
           BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n1)"
           "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/apksigner.txt
-          grep -qi "certificate SHA-256 digest: $EXPECTED_WESIMARK_CERT_SHA256" /tmp/apksigner.txt || {
-            echo "::error::Built APK does not carry the original WesiMark certificate"
-            exit 1
-          }
+          grep -qi "certificate SHA-256 digest: $EXPECTED_WESIMARK_CERT_SHA256" /tmp/apksigner.txt
           "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/badging.txt
           grep -q "package: name='ru.wesi.wesimark'" /tmp/badging.txt
           mkdir -p "$GITHUB_WORKSPACE/build-artifacts"
