@@ -31,7 +31,8 @@ jobs:
           sha256sum "$RUNNER_TEMP/libv2ray.aar" | tee "$RUNNER_TEMP/libv2ray.sha256"
           hash="$(cut -d' ' -f1 "$RUNNER_TEMP/libv2ray.sha256")"
           echo "XRAY_AAR_SHA256=$hash"
-          payload="$(jq -nc --arg description "sha256=$hash" '{state:"success",description:$description,context:"wesi-aero/xray-baseline"}')"
+          evidence_url="https://github.com/2dust/AndroidLibXrayLite/releases/tag/v26.5.19#sha256-$hash"
+          payload="$(jq -nc --arg description "sha256=$hash" --arg target_url "$evidence_url" '{state:"success",description:$description,target_url:$target_url,context:"wesi-aero/xray-baseline"}')"
           curl -fsS -X POST \
             -H "Authorization: Bearer $GH_TOKEN" \
             -H "Accept: application/vnd.github+json" \
