@@ -56,6 +56,7 @@ def verify_release_workflows() -> None:
         REPO / ".github/workflows/wesi-aero-arm64.yml",
         REPO / ".github/workflows/wesi-aero-android-live.yml",
         REPO / ".github/workflows/wesi-aero-xray-baseline.yml",
+        REPO / ".github/workflows/wesi-aero-expand-protocols.yml",
     ]
     approved = {
         f"actions/checkout@{actions['actions/checkout']}",
@@ -65,9 +66,6 @@ def verify_release_workflows() -> None:
         f"actions/upload-artifact@{actions['actions/upload-artifact']}",
         f"subosito/flutter-action@{actions['subosito/flutter-action']}",
     }
-    # Anchor to actual YAML `uses:` keys. A previous unanchored expression also
-    # matched the trailing `uses:` substring inside `statuses: write` and
-    # produced a false supply-chain failure.
     uses_pattern = re.compile(r"(?m)^\s*(?:-\s*)?uses:\s*([^\s#]+)")
     floating_pattern = re.compile(
         r"(?m)^\s*(?:-\s*)?uses:\s*[^\s#]+@(v\d*|main|master|stable)(?:\s|$)"
@@ -120,9 +118,55 @@ def verify_server_fail_closed() -> None:
     nginx = require(
         ROOT / "server-node/scripts/configure-control-plane-https.sh",
         "access_log off",
+        "include $TRANSPORT_SNIPPET;",
+        'TRANSPORT_SNIPPET="/etc/nginx/snippets/wesi-aero-transports.conf"',
     )
     if "X-Forwarded-For $proxy_add_x_forwarded_for" in nginx or "X-Real-IP $remote_addr" in nginx:
         raise SystemExit("Public control plane still forwards client IP metadata to Node")
+
+
+def verify_restrictive_network_layer() -> None:
+    transport = require(
+        ROOT / "server-node/scripts/setup-restrictive-transports.sh",
+        'listen:"127.0.0.1"',
+        'type:"ws"',
+        'type:"grpc"',
+        'type:"http"',
+        'port:"443"',
+        'sni:$host',
+        "No third-party SNI/domain fronting",
+        'proxy_set_header X-Real-IP "";',
+        'proxy_set_header X-Forwarded-For "";',
+        "sing-box check -c \"$tmp_config\"",
+    )
+    if 'listen:"0.0.0.0"' in transport or 'listen:"::"' in transport:
+        raise SystemExit("Restrictive transport backend is not loopback-only")
+    if "proxy_add_x_forwarded_for" in transport:
+        raise SystemExit("Restrictive transport forwards source-IP metadata")
+
+    sync = require(
+        ROOT / "server-node/scripts/sync-live-protocols.sh",
+        'publicPort:443',
+        'primary:{protocol:"vmess",transport:"websocket"}',
+        'candidates:["websocket","grpc","http2"]',
+        'domainFronting:false',
+        'thirdPartyCdn:false',
+        'edgePolicy:"wesi-owned-or-explicitly-authorized"',
+    )
+    if "domainFronting:true" in sync or "thirdPartyCdn:true" in sync:
+        raise SystemExit("Restrictive-network catalog enables unauthorized fronting/CDN routing")
+
+    deploy = require(
+        REPO / ".github/workflows/wesi-aero-expand-protocols.yml",
+        "setup-restrictive-transports.sh",
+        "wesi-aero-restrictive-transports.service",
+        "socks5h://127.0.0.1:19080",
+        "https://example.com/",
+        "127\\.0\\.0\\.1:/",
+        'domainFronting == false',
+    )
+    if "curl -k" in deploy or "insecure:true" in deploy:
+        raise SystemExit("Restrictive-network E2E verification disables TLS verification")
 
 
 def verify_rust_core() -> None:
@@ -131,19 +175,31 @@ def verify_rust_core() -> None:
         ROOT / "core/wesi-tunnel-core/rust-toolchain.toml",
         f'channel = "{rust}"',
     )
-    require(
+    core = require(
         ROOT / "core/wesi-tunnel-core/src/lib.rs",
         "#![forbid(unsafe_code)]",
         "stale async callbacks",
         "Action::BlockTraffic",
         "TunnelState::Verifying",
+        "Transport::TlsWebSocket443",
+        "Transport::TlsGrpc443",
+        "Transport::TlsHttp2On443",
+        "Topology::TrustedEdgeExit",
+        "MasqueH3On443",
+        "restrictive_tcp_443_routes",
     )
+    live_policy = core.split("pub fn restrictive_tcp_443_routes", 1)[1].split(
+        "pub const fn restrictive_http2_candidate", 1
+    )[0]
+    if "MasqueH3On443" in live_policy:
+        raise SystemExit("MASQUE/HTTP3 is advertised in the live restrictive fallback before verification")
 
 
 def main() -> None:
     verify_dependency_sources()
     verify_release_workflows()
     verify_server_fail_closed()
+    verify_restrictive_network_layer()
     verify_rust_core()
     print("Wesi Aero security/build invariants verified")
 
