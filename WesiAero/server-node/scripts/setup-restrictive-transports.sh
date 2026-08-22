@@ -99,7 +99,10 @@ ProtectKernelTunables=true
 ProtectKernelModules=true
 ProtectControlGroups=true
 RestrictNamespaces=true
-RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+# sing-box listens only on loopback TCP here, but its network manager needs
+# AF_NETLINK to subscribe to route/interface changes. No packet/raw families are
+# granted beyond the minimum required sockets.
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
 
 [Install]
 WantedBy=multi-user.target
@@ -107,6 +110,10 @@ EOF
 
 systemctl daemon-reload
 systemctl enable wesi-aero-restrictive-transports.service >/dev/null
+# Clear the previous failed-start rate limiter before attempting the corrected
+# sandbox. This does not hide subsequent failures: readiness below still checks
+# active state and every expected loopback listener.
+systemctl reset-failed wesi-aero-restrictive-transports.service >/dev/null 2>&1 || true
 if ! systemctl restart wesi-aero-restrictive-transports.service; then
   systemctl status wesi-aero-restrictive-transports.service --no-pager >&2 || true
   journalctl -u wesi-aero-restrictive-transports.service -n 40 --no-pager >&2 || true
