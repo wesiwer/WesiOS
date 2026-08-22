@@ -1,0 +1,39 @@
+name: Wesi Aero Route API Patch
+
+on:
+  push:
+    branches: [codex/wesi-aero-build-20260821]
+    paths:
+      - '.github/wesi-aero-route-api-patch.trigger'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: codex/wesi-aero-build-20260821
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Apply deterministic patch
+        run: node WesiAero/server-node/scripts/patch-route-server-api.mjs
+      - name: Validate syntax
+        run: |
+          node --check WesiAero/server-node/src/api.mjs
+          node --check WesiAero/server-node/src/index.mjs
+          node --check WesiAero/server-node/src/route-server-client.mjs
+      - name: Commit generated integration
+        run: |
+          if git diff --quiet -- WesiAero/server-node/src/api.mjs; then
+            echo 'No API patch changes to commit'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add WesiAero/server-node/src/api.mjs
+          git commit -m 'feat(aero): route Ireland leases through route server'
+          git push origin HEAD:codex/wesi-aero-build-20260821
