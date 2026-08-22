@@ -10,28 +10,20 @@
   "recommended": true,
   "load": 0,
   "capacity": 0,
-  "tags": ["ireland", "bs", "reality", "sticky", "adaptive-sni"],
+  "tags": ["ireland", "bs", "reality", "sticky", "one-tap", "automatic"],
   "transportConfig": {
-    "engine": "xray",
+    "engine": "auto",
     "network": "tcp",
     "security": "reality",
     "flow": "xtls-rprx-vision",
     "port": 8443,
+    "serverNamePolicy": "auto-validated-candidate-pool",
     "fingerprint": "chrome",
-    "serverNameSource": "vps-auto-validated",
-    "targetSelection": "first candidate passing TLS1.3 + hostname verification from VPS",
-    "targetCandidates": [
-      "vk.com",
-      "mail.ru",
-      "api-maps.yandex.ru",
-      "maps.apple.com",
-      "www.bing.com",
-      "www.microsoft.com",
-      "www.cloudflare.com",
-      "www.amazon.com",
-      "www.python.org"
-    ],
+    "oneTapAutomatic": true,
+    "protocolPolicy": "auto",
+    "enginePolicy": "auto",
+    "profilePolicy": "server-provisioned",
     "credentialsSource": "vps:/etc/wesi-aero/ireland-bs/credentials.env"
   },
-  "notes": "Wesi Aero VLESS + REALITY node on the foreign Wesi relay VPS. Camouflage SNI/target is selected and verified during deployment; Wesi AI remains isolated on 443/8787/8792."
+  "notes": "One-tap automatic Wesi Aero VLESS + REALITY node. For ireland-bs only, protocol/engine/profile selection is automatic; the second server is not affected. Wesi AI remains isolated on 443/8787/8792."
 }
