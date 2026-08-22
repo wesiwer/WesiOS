@@ -41,10 +41,11 @@ class TunnelHealthService {
         await response.drain<void>();
         stopwatch.stop();
         if (response.statusCode >= 200 && response.statusCode < 400) {
+          final elapsed = stopwatch.elapsedMilliseconds;
           return TunnelHealthResult(
             ok: true,
             reason: 'HEALTHY',
-            rttMs: stopwatch.elapsedMilliseconds.clamp(1, 60000),
+            rttMs: elapsed < 1 ? 1 : (elapsed > 60000 ? 60000 : elapsed),
           );
         }
         lastError = 'HTTP_${response.statusCode}';
