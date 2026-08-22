@@ -159,13 +159,24 @@ EnvironmentFile=$ENV_FILE
 ExecStart=$NODE_BIN src/index.mjs
 Restart=always
 RestartSec=2
+UMask=0077
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=$STATE_DIR
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
 LockPersonality=true
 RestrictSUIDSGID=true
+RestrictNamespaces=true
+RestrictRealtime=true
+SystemCallArchitectures=native
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ReadWritePaths=$STATE_DIR
 
 [Install]
 WantedBy=multi-user.target
