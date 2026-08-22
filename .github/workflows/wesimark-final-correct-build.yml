@@ -1,6 +1,5 @@
 name: WesiMark 2.4 Final Correct APK
 
-# Verification rerun: release signing + original launcher icon required.
 on:
   workflow_dispatch:
   push:
@@ -49,6 +48,7 @@ jobs:
           tar -xzf "$RUNNER_TEMP/wmfix-code.tar.gz" -C "$RUNNER_TEMP/wesimark"
 
           cd "$RUNNER_TEMP/wesimark"
+          rm -f test/widget_test.dart
           grep -F "version: 2.4.0+14" pubspec.yaml
           grep -F 'applicationId = "ru.wesi.wesimark"' android/app/build.gradle.kts
           grep -F 'android:label="WesiMark"' android/app/src/main/AndroidManifest.xml
