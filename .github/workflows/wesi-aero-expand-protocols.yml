@@ -32,10 +32,10 @@ env:
 
 jobs:
   expand:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 40
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: codex/wesi-aero-build-20260821
 
@@ -45,7 +45,7 @@ jobs:
           SHA: ${{ github.sha }}
           TARGET_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          payload=$(jq -nc --arg target_url "$TARGET_URL" '{state:"pending",target_url:$target_url,description:"Deploying eight-protocol relay",context:"wesi-aero/protocol-expansion"}')
+          payload=$(jq -nc --arg target_url "$TARGET_URL" '{state:"pending",target_url:$target_url,description:"Deploying hardened eight-protocol relay",context:"wesi-aero/protocol-expansion"}')
           curl -fsS -X POST -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
             "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/statuses/$SHA" -d "$payload" >/dev/null
 
@@ -65,7 +65,7 @@ jobs:
           fi
           chmod 600 "$HOME/.ssh/wesi_aero_known_hosts"
 
-      - name: Deploy all relay protocol backends and privacy hardening
+      - name: Deploy relay backends, control-plane sandbox and privacy hardening
         run: |
           set -euo pipefail
           SSH=(ssh -i "$HOME/.ssh/wesi_aero_relay" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/wesi_aero_known_hosts")
@@ -77,23 +77,21 @@ jobs:
           set -euo pipefail
           if [ "$(id -u)" -eq 0 ]; then SUDO=(); else SUDO=(sudo -n); fi
           chmod +x "$REMOTE/server-node/scripts/"*.sh
+
+          # Transport services first so control-plane profile publication cannot
+          # advertise a backend before its real service/config exists.
           "${SUDO[@]}" env WESI_AERO_PUBLIC_HOST="$AERO_HOST" bash "$REMOTE/server-node/scripts/setup-singbox-prototype.sh"
           "${SUDO[@]}" env WESI_AERO_PUBLIC_HOST="$AERO_HOST" AWG_ENDPOINT_HOST="$AERO_HOST" bash "$REMOTE/server-node/scripts/setup-amneziawg-prototype.sh"
-          "${SUDO[@]}" bash "$REMOTE/server-node/scripts/refresh-control-plane-code.sh" "$REMOTE/server-node"
 
-          # Privacy by default: production control plane does not need per-request
-          # path timestamps or source IP metadata. Preserve all existing secrets.
-          ENV_FILE=/etc/wesi-aero/control.env
-          if "${SUDO[@]}" grep -q '^WESI_AERO_TECHNICAL_LOGS=' "$ENV_FILE"; then
-            "${SUDO[@]}" sed -i 's/^WESI_AERO_TECHNICAL_LOGS=.*/WESI_AERO_TECHNICAL_LOGS=false/' "$ENV_FILE"
-          else
-            printf '%s\n' 'WESI_AERO_TECHNICAL_LOGS=false' | "${SUDO[@]}" tee -a "$ENV_FILE" >/dev/null
-          fi
-          "${SUDO[@]}" chmod 600 "$ENV_FILE"
-          "${SUDO[@]}" systemctl restart wesi-aero-control.service
+          # Reinstall only Wesi Aero's loopback control-plane service from the
+          # branch source. This applies the systemd sandbox (UMask, namespace,
+          # kernel/control-group protections, restricted address families) while
+          # preserving existing server secrets in /etc/wesi-aero/control.env.
+          "${SUDO[@]}" env WESI_AERO_PUBLIC_HOST="$AERO_HOST" \
+            bash "$REMOTE/server-node/scripts/setup-control-plane-prototype.sh" "$REMOTE/server-node"
 
-          # Rebuild only the Wesi Aero virtual host. nginx -t is executed by the
-          # script before reload, so an invalid config fails closed.
+          # Rebuild only the Wesi Aero virtual host. The script validates nginx
+          # before reload and disables source-IP/access request logging.
           "${SUDO[@]}" env WESI_AERO_PUBLIC_HOST="$AERO_HOST" \
             bash "$REMOTE/server-node/scripts/configure-control-plane-https.sh" "$AERO_HOST"
 
@@ -110,8 +108,14 @@ jobs:
           ss -lun | grep -q ':51820 '
           ss -lun | grep -q ':51821 '
           awg show awg0 >/dev/null
+          test -s /var/lib/wesi-aero/profiles/_default.wesi-relay.wireguard.json
           test -s /var/lib/wesi-aero/profiles/_default.wesi-relay.amneziawg.json
+          jq -e '.protocol == "wireguard"' /var/lib/wesi-aero/profiles/_default.wesi-relay.wireguard.json >/dev/null
+          jq -e '.protocol == "amneziawg" and (.clientConfig | contains("Jc =") and contains("H4 ="))' /var/lib/wesi-aero/profiles/_default.wesi-relay.amneziawg.json >/dev/null
           "${SUDO[@]}" grep -q '^WESI_AERO_TECHNICAL_LOGS=false$' /etc/wesi-aero/control.env
+          "${SUDO[@]}" grep -q '^UMask=0077$' /etc/systemd/system/wesi-aero-control.service
+          "${SUDO[@]}" grep -q '^ProtectKernelTunables=true$' /etc/systemd/system/wesi-aero-control.service
+          "${SUDO[@]}" grep -q '^RestrictNamespaces=true$' /etc/systemd/system/wesi-aero-control.service
           "${SUDO[@]}" grep -q 'access_log off;' /etc/nginx/sites-enabled/wesi-aero-control
           ! "${SUDO[@]}" grep -q 'proxy_add_x_forwarded_for' /etc/nginx/sites-enabled/wesi-aero-control
           curl -fsS --max-time 10 http://127.0.0.1:8790/v1/catalog | jq -e '
@@ -137,7 +141,7 @@ jobs:
           TARGET_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           JOB_STATUS: ${{ job.status }}
         run: |
-          if [ "$JOB_STATUS" = success ]; then state=success; description='Eight-protocol relay + privacy hardening live'; else state=failure; description='Relay deployment/privacy hardening failed'; fi
+          if [ "$JOB_STATUS" = success ]; then state=success; description='Eight-protocol relay + control-plane hardening live'; else state=failure; description='Relay deployment/control-plane hardening failed'; fi
           payload=$(jq -nc --arg state "$state" --arg target_url "$TARGET_URL" --arg description "$description" '{state:$state,target_url:$target_url,description:$description,context:"wesi-aero/protocol-expansion"}')
           curl -fsS -X POST -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
             "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/statuses/$SHA" -d "$payload" >/dev/null
