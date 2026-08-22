@@ -1,0 +1,133 @@
+name: Diagnose Wesi Aero AmneziaWG
+
+on:
+  push:
+    branches:
+      - codex/wesi-aero-build-20260821
+    paths:
+      - .github/workflows/wesi-aero-awg-diagnostic.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: wesi-aero-awg-diagnostic
+  cancel-in-progress: true
+
+env:
+  RELAY_SSH_HOST: ${{ secrets.WESI_RELAY_SSH_HOST }}
+  RELAY_SSH_USER: ${{ secrets.WESI_RELAY_SSH_USER }}
+  RELAY_SSH_KEY: ${{ secrets.WESI_RELAY_SSH_KEY }}
+  RELAY_SSH_KNOWN_HOSTS: ${{ secrets.WESI_RELAY_SSH_KNOWN_HOSTS }}
+  AWG_GO_COMMIT: 1b86b2ae0e493e7ea93f8c1a0f0cb6735b1551f1
+  AWG_TOOLS_COMMIT: ee0f0a9aa34ff0a0da4b3433b9512781cfe02843
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.x'
+          cache: false
+
+      - name: Configure SSH and fetch AWG profile
+        run: |
+          set -euo pipefail
+          for name in RELAY_SSH_HOST RELAY_SSH_USER RELAY_SSH_KEY; do
+            test -n "${!name:-}" || { echo "Missing $name" >&2; exit 1; }
+          done
+          mkdir -p "$HOME/.ssh"
+          printf '%s\n' "$RELAY_SSH_KEY" > "$HOME/.ssh/wesi_aero_relay"
+          chmod 600 "$HOME/.ssh/wesi_aero_relay"
+          if [ -n "${RELAY_SSH_KNOWN_HOSTS:-}" ]; then
+            printf '%s\n' "$RELAY_SSH_KNOWN_HOSTS" > "$HOME/.ssh/wesi_aero_known_hosts"
+          else
+            ssh-keyscan -H "$RELAY_SSH_HOST" > "$HOME/.ssh/wesi_aero_known_hosts" 2>/dev/null
+          fi
+          chmod 600 "$HOME/.ssh/wesi_aero_known_hosts"
+          ssh_cmd=(ssh -i "$HOME/.ssh/wesi_aero_relay" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/wesi_aero_known_hosts")
+          "${ssh_cmd[@]}" "$RELAY_SSH_USER@$RELAY_SSH_HOST" \
+            'if [ "$(id -u)" -eq 0 ]; then cat /var/lib/wesi-aero/amneziawg/client.conf; else sudo -n cat /var/lib/wesi-aero/amneziawg/client.conf; fi' \
+            > "$RUNNER_TEMP/amneziawg.conf"
+          chmod 600 "$RUNNER_TEMP/amneziawg.conf"
+
+          # Only publish non-secret protocol parameters. Never print keys.
+          echo 'Client AWG protocol parameters:'
+          grep -Ei '^(Jc|Jmin|Jmax|S[1-4]|H[1-4])[[:space:]]*=' "$RUNNER_TEMP/amneziawg.conf"
+          echo 'Server AWG protocol parameters:'
+          "${ssh_cmd[@]}" "$RELAY_SSH_USER@$RELAY_SSH_HOST" \
+            'if [ "$(id -u)" -eq 0 ]; then SUDO=""; else SUDO="sudo -n"; fi; $SUDO grep -Ei "^(Jc|Jmin|Jmax|S[1-4]|H[1-4])[[:space:]]*=" /etc/amnezia/amneziawg/awg0.conf'
+
+      - name: Build official AWG client
+        run: |
+          set -euo pipefail
+          sudo apt-get update -y >/dev/null
+          sudo apt-get install -y git make gcc iproute2 iptables >/dev/null
+          work="$RUNNER_TEMP/awg-src"
+          git clone -q https://github.com/amnezia-vpn/amneziawg-go.git "$work-go"
+          git -C "$work-go" checkout -q "$AWG_GO_COMMIT"
+          make -C "$work-go" >/dev/null
+          sudo make -C "$work-go" install PREFIX=/usr/local >/dev/null
+          git clone -q https://github.com/amnezia-vpn/amneziawg-tools.git "$work-tools"
+          git -C "$work-tools" checkout -q "$AWG_TOOLS_COMMIT"
+          make -C "$work-tools/src" >/dev/null
+          sudo make -C "$work-tools/src" install PREFIX=/usr/local >/dev/null
+
+      - name: Test public UDP reachability and handshake
+        run: |
+          set -euo pipefail
+          ssh_cmd=(ssh -i "$HOME/.ssh/wesi_aero_relay" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/wesi_aero_known_hosts")
+          remote="$RELAY_SSH_USER@$RELAY_SSH_HOST"
+
+          remote_root() {
+            "${ssh_cmd[@]}" "$remote" "if [ \"\$(id -u)\" -eq 0 ]; then bash -c '$1'; else sudo -n bash -c '$1'; fi"
+          }
+
+          packets_before="$(remote_root "iptables -nvx -L INPUT | awk '/udp/ && /dpt:51821/ {print \\$1; exit}'")"
+          packets_before="${packets_before:-0}"
+          server_handshake_before="$(remote_root "awg show awg0 latest-handshakes | awk '{print \\$2; exit}'")"
+          server_handshake_before="${server_handshake_before:-0}"
+
+          CONF="$RUNNER_TEMP/wesi-awg.conf"
+          awk '
+            /^DNS[[:space:]]*=/ {next}
+            /^AllowedIPs[[:space:]]*=/ {print "AllowedIPs = 10.78.0.1/32"; next}
+            {print}
+          ' "$RUNNER_TEMP/amneziawg.conf" > "$CONF"
+          chmod 600 "$CONF"
+          cleanup() {
+            sudo env WG_QUICK_USERSPACE_IMPLEMENTATION=/usr/local/bin/amneziawg-go \
+              awg-quick down "$CONF" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+          cleanup
+          sudo env WG_QUICK_USERSPACE_IMPLEMENTATION=/usr/local/bin/amneziawg-go awg-quick up "$CONF" >/dev/null
+          iface=wesi-awg
+          for _ in $(seq 1 10); do
+            ping -c 1 -W 1 10.78.0.1 >/dev/null 2>&1 || true
+            handshake="$(sudo awg show "$iface" latest-handshakes | awk '{print $2; exit}')"
+            [ "${handshake:-0}" -gt 0 ] && break
+            sleep 1
+          done
+          handshake="${handshake:-0}"
+
+          packets_after="$(remote_root "iptables -nvx -L INPUT | awk '/udp/ && /dpt:51821/ {print \\$1; exit}'")"
+          packets_after="${packets_after:-0}"
+          server_handshake_after="$(remote_root "awg show awg0 latest-handshakes | awk '{print \\$2; exit}'")"
+          server_handshake_after="${server_handshake_after:-0}"
+
+          echo "AWG_DIAG client_handshake=$handshake server_handshake_before=$server_handshake_before server_handshake_after=$server_handshake_after input_packets_before=$packets_before input_packets_after=$packets_after"
+          if [ "$handshake" -gt 0 ]; then
+            echo 'AWG_DIAG_RESULT=HANDSHAKE_OK'
+          elif [ "$packets_after" -gt "$packets_before" ]; then
+            echo 'AWG_DIAG_RESULT=UDP_REACHES_SERVER_PROTOCOL_MISMATCH'
+            exit 2
+          else
+            echo 'AWG_DIAG_RESULT=UDP_BLOCKED_BEFORE_SERVER'
+            exit 3
+          fi
