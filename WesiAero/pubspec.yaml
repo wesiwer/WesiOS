@@ -1,7 +1,7 @@
 name: wesi_aero
 description: Wesi Aero private network client in the WesiOS design language.
 publish_to: none
-version: 0.3.0+10
+version: 0.3.1+11
 
 environment:
   sdk: '>=3.8.0 <4.0.0'
@@ -24,4 +24,4 @@ dev_dependencies:
 flutter:
   uses-material-design: true
   assets:
-    - assets/branding/
+    - assets/images/
