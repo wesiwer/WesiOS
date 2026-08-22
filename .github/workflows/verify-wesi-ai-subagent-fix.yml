@@ -4,6 +4,12 @@ on:
   push:
     branches:
       - fix/wesi-ai-subagent-runtime
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'server/wesi-ai-stream/**'
+      - '.github/workflows/verify-wesi-ai-subagent-fix.yml'
   workflow_dispatch:
 
 permissions:
