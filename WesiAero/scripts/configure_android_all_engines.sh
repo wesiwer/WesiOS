@@ -33,11 +33,16 @@ python3 scripts/configure_android_multi_engine.py
 python3 scripts/enable_android_amneziawg_backend.py
 python3 scripts/apply_multi_engine_profiles.py
 
+# Apply lifecycle regressions only after every dispatcher/backend patch. This is
+# a security boundary: Android has one VPN TUN owner, and the next backend must
+# not start until Xray/sing-box have actually released their VpnService TUN.
+python3 scripts/fix_android_vpn_regressions.py
+
 # UI/control-plane optimizations are intentionally independent of visual quality.
 python3 scripts/optimize_flutter_control_plane.py
 python3 scripts/fix_flutter_perf_compat.py
 
-# Fail the build if an engine silently disappeared.
+# Fail the build if an engine or lifecycle safety invariant silently disappeared.
 test -s android/app/libs/libv2ray.aar
 test -s android/app/libs/libbox.aar
 test -f android/app/src/main/kotlin/com/wesi/wesi_aero/AeroXrayVpnService.kt
@@ -54,6 +59,9 @@ grep -q '"wireguard", "amneziawg" -> setOf("native")' android/app/src/main/kotli
 grep -q 'com.zaneschepke:amneziawg-android:2.3.7' android/app/build.gradle.kts
 ! grep -q 'com.wireguard.android:tunnel:' android/app/build.gradle.kts
 grep -q 'controller.startLoop(runtimeConfig, 0)' android/app/src/main/kotlin/com/wesi/wesi_aero/AeroXrayVpnService.kt
+! grep -q 'controller.startLoop(runtimeConfig, established.fd)' android/app/src/main/kotlin/com/wesi/wesi_aero/AeroXrayVpnService.kt
+grep -q 'Previous VPN backend did not release Android TUN' android/app/src/main/kotlin/com/wesi/wesi_aero/MainActivity.kt
+! grep -q 'return@repeat' android/app/src/main/kotlin/com/wesi/wesi_aero/MainActivity.kt
 grep -q 'override fun len(): Int = values.size' android/app/src/main/kotlin/com/wesi/wesi_aero/AeroSingBoxVpnService.kt
 grep -q 'engineHint' lib/src/models/gateway_models.dart
 grep -q "profile\['singBoxConfig'\]" lib/src/services/gateway_engine.dart
@@ -62,4 +70,4 @@ for abi in $WESI_AERO_ANDROID_ABIS; do
   test -s "android/app/src/main/jniLibs/$abi/libhev-socks5-tunnel.so"
 done
 
-echo "Wesi Aero Android multi-engine runtime verified: sing-box + Xray/hev + WireGuard/AmneziaWG"
+echo "Wesi Aero Android multi-engine runtime verified: sing-box + Xray/HEV + WireGuard/AmneziaWG + fail-closed TUN handoff"
