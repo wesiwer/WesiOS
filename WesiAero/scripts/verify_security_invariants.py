@@ -65,12 +65,19 @@ def verify_release_workflows() -> None:
         f"actions/upload-artifact@{actions['actions/upload-artifact']}",
         f"subosito/flutter-action@{actions['subosito/flutter-action']}",
     }
+    # Anchor to actual YAML `uses:` keys. A previous unanchored expression also
+    # matched the trailing `uses:` substring inside `statuses: write` and
+    # produced a false supply-chain failure.
+    uses_pattern = re.compile(r"(?m)^\s*(?:-\s*)?uses:\s*([^\s#]+)")
+    floating_pattern = re.compile(
+        r"(?m)^\s*(?:-\s*)?uses:\s*[^\s#]+@(v\d*|main|master|stable)(?:\s|$)"
+    )
     for path in workflows:
         text = path.read_text(encoding="utf-8")
-        for use in re.findall(r"uses:\s*([^\s#]+)", text):
+        for use in uses_pattern.findall(text):
             if use not in approved:
                 raise SystemExit(f"Unapproved/unpinned action in {path.name}: {use}")
-        if re.search(r"uses:\s*[^\s]+@(v|main|master|stable)", text):
+        if floating_pattern.search(text):
             raise SystemExit(f"Floating GitHub Action ref in {path.name}")
 
     for path in workflows[:2]:
