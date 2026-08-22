@@ -1,0 +1,89 @@
+name: Verify Wesi Aero Security Invariants
+
+on:
+  push:
+    branches:
+      - codex/wesi-aero-build-20260821
+    paths:
+      - WesiAero/core/**
+      - WesiAero/SECURITY.md
+      - WesiAero/THREAT_MODEL.md
+      - WesiAero/VERIFICATION.md
+      - WesiAero/DEPENDENCIES.lock.json
+      - WesiAero/scripts/**
+      - WesiAero/server-node/src/**
+      - WesiAero/server-node/scripts/**
+      - .github/workflows/wesi-aero-arm64.yml
+      - .github/workflows/wesi-aero-android-live.yml
+      - .github/workflows/wesi-aero-xray-baseline.yml
+      - .github/workflows/wesi-aero-security-verify.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  statuses: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Verify dependency and infrastructure invariants
+        run: |
+          set -euo pipefail
+          python3 WesiAero/scripts/verify_security_invariants.py
+          python3 -m json.tool WesiAero/DEPENDENCIES.lock.json >/dev/null
+
+      - name: Verify Rust tunnel supervisor
+        working-directory: WesiAero/core/wesi-tunnel-core
+        run: |
+          set -euo pipefail
+          rustup show active-toolchain
+          rustc --version | grep -F '1.88.0'
+          cargo fmt --check
+          cargo clippy --locked --all-targets -- -D warnings
+          cargo test --locked
+
+      - name: Generate source verification manifest
+        run: |
+          set -euo pipefail
+          {
+            printf '# commit %s\n' "$GITHUB_SHA"
+            find WesiAero \
+              -type f \
+              \( -name '*.dart' -o -name '*.kt' -o -name '*.kts' -o -name '*.rs' -o -name '*.mjs' -o -name '*.py' -o -name '*.sh' -o -name '*.json' -o -name '*.yaml' -o -name '*.yml' -o -name '*.toml' -o -name '*.lock' -o -name '*.md' \) \
+              -print0 | sort -z | xargs -0 sha256sum
+          } > wesi-aero-source-manifest.sha256
+          sha256sum wesi-aero-source-manifest.sha256
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: Wesi-Aero-Security-Verification
+          path: wesi-aero-source-manifest.sha256
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Publish verification status
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          JOB_STATUS: ${{ job.status }}
+          SHA: ${{ github.sha }}
+          TARGET_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          if [ "$JOB_STATUS" = success ]; then
+            state=success
+            description='Security invariants and Rust supervisor tests passed'
+          else
+            state=failure
+            description='Wesi Aero security verification failed'
+          fi
+          payload="$(jq -nc --arg state "$state" --arg description "$description" --arg target_url "$TARGET_URL" '{state:$state,description:$description,target_url:$target_url,context:"wesi-aero/security-verify"}')"
+          curl -fsS -X POST \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/statuses/$SHA" \
+            -d "$payload" >/dev/null
