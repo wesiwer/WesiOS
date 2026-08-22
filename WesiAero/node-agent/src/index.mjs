@@ -9,6 +9,8 @@ const token = process.env.WESI_AERO_ROUTE_SERVER_TOKEN || '';
 const nodeId = process.env.WESI_AERO_NODE_ID || 'ireland-bs';
 const intervalMs = Number(process.env.WESI_AERO_NODE_AGENT_INTERVAL_MS || 10000);
 const services = (process.env.WESI_AERO_NODE_SERVICES || 'wesi-aero-ireland-bs').split(',').map((v) => v.trim()).filter(Boolean);
+const xrayBinary = process.env.WESI_AERO_XRAY_BINARY || '/opt/wesi-aero-xray/xray';
+const tunnelPort = Number(process.env.WESI_AERO_TUNNEL_PORT || 8443);
 
 let previousNetwork = readNetworkTotals();
 let previousAt = Date.now();
@@ -19,6 +21,26 @@ async function serviceState(name) {
     return stdout.trim() === 'active';
   } catch {
     return false;
+  }
+}
+
+async function xrayVersion() {
+  try {
+    const { stdout } = await execFileAsync(xrayBinary, ['version'], { timeout: 2000 });
+    const first = stdout.split('\n').map((value) => value.trim()).find(Boolean) || '';
+    return first.replace(/^Xray\s+/i, '').trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+async function activeTcpSessions(port) {
+  try {
+    const { stdout } = await execFileAsync('ss', ['-Htn', 'state', 'established'], { timeout: 2000 });
+    const marker = `:${port}`;
+    return stdout.split('\n').filter((line) => line.includes(marker)).length;
+  } catch {
+    return 0;
   }
 }
 
@@ -42,6 +64,26 @@ function readNetworkTotals() {
   }
 }
 
+function networkCapacityBitsPerSecond() {
+  let total = 0;
+  try {
+    for (const name of fs.readdirSync('/sys/class/net')) {
+      if (name === 'lo') continue;
+      try {
+        const operstate = fs.readFileSync(`/sys/class/net/${name}/operstate`, 'utf8').trim();
+        if (operstate !== 'up') continue;
+        const speedMbps = Number(fs.readFileSync(`/sys/class/net/${name}/speed`, 'utf8').trim());
+        if (Number.isFinite(speedMbps) && speedMbps > 0) total += speedMbps * 1_000_000;
+      } catch {
+        // Virtual/cloud interfaces may not expose link speed.
+      }
+    }
+  } catch {
+    return null;
+  }
+  return total > 0 ? total : null;
+}
+
 function memory() {
   const total = os.totalmem();
   const free = os.freemem();
@@ -61,14 +103,23 @@ async function collect() {
   const now = Date.now();
   const currentNetwork = readNetworkTotals();
   const seconds = Math.max(0.001, (now - previousAt) / 1000);
-  const network = {
-    rxBytesPerSecond: Math.max(0, Math.round((currentNetwork.rx - previousNetwork.rx) / seconds)),
-    txBytesPerSecond: Math.max(0, Math.round((currentNetwork.tx - previousNetwork.tx) / seconds)),
-  };
+  const rxBytesPerSecond = Math.max(0, Math.round((currentNetwork.rx - previousNetwork.rx) / seconds));
+  const txBytesPerSecond = Math.max(0, Math.round((currentNetwork.tx - previousNetwork.tx) / seconds));
   previousNetwork = currentNetwork;
   previousAt = now;
 
-  const servicePairs = await Promise.all(services.map(async (name) => [name, await serviceState(name)]));
+  const capacityBps = networkCapacityBitsPerSecond();
+  const currentBitsPerSecond = (rxBytesPerSecond + txBytesPerSecond) * 8;
+  const networkUtilizationRatio = capacityBps && capacityBps > 0
+      ? Math.max(0, Math.min(1, currentBitsPerSecond / capacityBps))
+      : null;
+
+  const [servicePairs, version, activeSessions] = await Promise.all([
+    Promise.all(services.map(async (name) => [name, await serviceState(name)])),
+    xrayVersion(),
+    activeTcpSessions(tunnelPort),
+  ]);
+
   return {
     nodeId,
     observedAt: new Date(now).toISOString(),
@@ -76,7 +127,16 @@ async function collect() {
     loadAverage: os.loadavg(),
     cpuLoadRatio: cpuLoadRatio(),
     memory: memory(),
-    network,
+    network: {
+      rxBytesPerSecond,
+      txBytesPerSecond,
+      capacityBitsPerSecond: capacityBps,
+      utilizationRatio: networkUtilizationRatio,
+    },
+    activeSessions,
+    versions: {
+      xray: version,
+    },
     services: Object.fromEntries(servicePairs),
   };
 }
