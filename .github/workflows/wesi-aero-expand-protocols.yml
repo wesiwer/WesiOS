@@ -7,6 +7,7 @@ on:
     paths:
       - WesiAero/server-node/src/**
       - WesiAero/server-node/scripts/setup-singbox-prototype.sh
+      - WesiAero/server-node/scripts/setup-amneziawg-prototype.sh
       - WesiAero/server-node/scripts/sync-live-protocols.sh
       - WesiAero/server-node/scripts/refresh-control-plane-code.sh
       - .github/workflows/wesi-aero-expand-protocols.yml
@@ -30,7 +31,7 @@ env:
 jobs:
   expand:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
         with:
@@ -42,7 +43,7 @@ jobs:
           SHA: ${{ github.sha }}
           TARGET_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          payload=$(jq -nc --arg target_url "$TARGET_URL" '{state:"pending",target_url:$target_url,description:"Deploying multi-protocol relay",context:"wesi-aero/protocol-expansion"}')
+          payload=$(jq -nc --arg target_url "$TARGET_URL" '{state:"pending",target_url:$target_url,description:"Deploying eight-protocol relay",context:"wesi-aero/protocol-expansion"}')
           curl -fsS -X POST -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
             "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/statuses/$SHA" -d "$payload" >/dev/null
 
@@ -62,7 +63,7 @@ jobs:
           fi
           chmod 600 "$HOME/.ssh/wesi_aero_known_hosts"
 
-      - name: Deploy current control plane and sing-box relay protocols
+      - name: Deploy all relay protocol backends
         run: |
           set -euo pipefail
           SSH=(ssh -i "$HOME/.ssh/wesi_aero_relay" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/wesi_aero_known_hosts")
@@ -75,17 +76,24 @@ jobs:
           if [ "$(id -u)" -eq 0 ]; then SUDO=(); else SUDO=(sudo -n); fi
           chmod +x "$REMOTE/server-node/scripts/"*.sh
           "${SUDO[@]}" env WESI_AERO_PUBLIC_HOST="$AERO_HOST" bash "$REMOTE/server-node/scripts/setup-singbox-prototype.sh"
+          "${SUDO[@]}" env WESI_AERO_PUBLIC_HOST="$AERO_HOST" AWG_ENDPOINT_HOST="$AERO_HOST" bash "$REMOTE/server-node/scripts/setup-amneziawg-prototype.sh"
           "${SUDO[@]}" bash "$REMOTE/server-node/scripts/refresh-control-plane-code.sh" "$REMOTE/server-node"
           "${SUDO[@]}" env WESI_AERO_PUBLIC_HOST="$AERO_HOST" bash "$REMOTE/server-node/scripts/sync-live-protocols.sh"
+
           systemctl is-active --quiet wesi-aero-singbox.service
+          systemctl is-active --quiet wesi-aero-amneziawg.service
           systemctl is-active --quiet wesi-aero-control.service
           ss -ltn | grep -q ':8445 '
           ss -ltn | grep -q ':8388 '
           ss -lun | grep -q ':8446 '
           ss -lun | grep -q ':8447 '
+          ss -lun | grep -q ':51820 '
+          ss -lun | grep -q ':51821 '
+          awg show awg0 >/dev/null
+          test -s /var/lib/wesi-aero/profiles/_default.wesi-relay.amneziawg.json
           curl -fsS --max-time 10 http://127.0.0.1:8790/v1/catalog | jq -e '
             .servers[] | select(.id=="wesi-relay") |
-            (["vless-reality","vmess","trojan","shadowsocks","hysteria2","tuic","wireguard"] - .protocols | length) == 0
+            (["vless-reality","vmess","trojan","shadowsocks","hysteria2","tuic","wireguard","amneziawg"] - .protocols | length) == 0
           ' >/dev/null
           REMOTE
 
@@ -95,7 +103,7 @@ jobs:
           curl -fsS --max-time 15 "https://$AERO_HOST/healthz" | grep -q '"status":"ok"'
           curl -fsS --max-time 15 "https://$AERO_HOST/v1/catalog" | jq -e '
             .servers[] | select(.id=="wesi-relay") |
-            (["vless-reality","vmess","trojan","shadowsocks","hysteria2","tuic","wireguard"] - .protocols | length) == 0
+            (["vless-reality","vmess","trojan","shadowsocks","hysteria2","tuic","wireguard","amneziawg"] - .protocols | length) == 0
           ' >/dev/null
 
       - name: Publish final status
@@ -106,7 +114,7 @@ jobs:
           TARGET_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           JOB_STATUS: ${{ job.status }}
         run: |
-          if [ "$JOB_STATUS" = success ]; then state=success; description='Seven relay protocols are live'; else state=failure; description='Relay protocol expansion failed'; fi
+          if [ "$JOB_STATUS" = success ]; then state=success; description='Eight relay protocols are live'; else state=failure; description='Relay protocol expansion failed'; fi
           payload=$(jq -nc --arg state "$state" --arg target_url "$TARGET_URL" --arg description "$description" '{state:$state,target_url:$target_url,description:$description,context:"wesi-aero/protocol-expansion"}')
           curl -fsS -X POST -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
             "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/statuses/$SHA" -d "$payload" >/dev/null
