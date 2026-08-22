@@ -138,6 +138,7 @@ def verify_restrictive_network_layer() -> None:
         'proxy_set_header X-Real-IP "";',
         'proxy_set_header X-Forwarded-For "";',
         "sing-box check -c \"$tmp_config\"",
+        "RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK",
     )
     if 'listen:"0.0.0.0"' in transport or 'listen:"::"' in transport:
         raise SystemExit("Restrictive transport backend is not loopback-only")
