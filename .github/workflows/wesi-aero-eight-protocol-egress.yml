@@ -159,9 +159,10 @@ jobs:
               }
               net = str(data.get('net') or 'tcp').lower()
               if net == 'ws':
-                  t = {'type': 'ws', 'path': data.get('path') or '/'}
-                  if data.get('host'): t['headers'] = {'Host': data['host']}
-                  proxy['transport'] = t
+                  transport = {'type': 'ws', 'path': data.get('path') or '/'}
+                  if data.get('host'):
+                      transport['headers'] = {'Host': data['host']}
+                  proxy['transport'] = transport
               elif net == 'grpc':
                   proxy['transport'] = {'type': 'grpc', 'service_name': data.get('path') or data.get('host') or ''}
               if str(data.get('tls') or '').lower() == 'tls':
@@ -189,26 +190,33 @@ jobs:
               if ':' not in auth:
                   auth = decode_b64(auth).decode()
               method, password = auth.split(':', 1)
-              return {'type': 'shadowsocks', 'server': host_ip(u.hostname), 'server_port': u.port,
-                      'method': method, 'password': password}
+              return {
+                  'type': 'shadowsocks', 'server': host_ip(u.hostname), 'server_port': u.port,
+                  'method': method, 'password': password,
+              }
 
           def parse_hy2(raw):
               raw = raw.replace('hy2://', 'hysteria2://', 1)
               u = urllib.parse.urlsplit(raw)
               q = dict(urllib.parse.parse_qsl(u.query))
-              return {'type': 'hysteria2', 'server': host_ip(u.hostname), 'server_port': u.port,
-                      'password': urllib.parse.unquote(u.username),
-                      'tls': {'enabled': True, 'server_name': q.get('sni') or u.hostname}}
+              return {
+                  'type': 'hysteria2', 'server': host_ip(u.hostname), 'server_port': u.port,
+                  'password': urllib.parse.unquote(u.username),
+                  'tls': {'enabled': True, 'server_name': q.get('sni') or u.hostname},
+              }
 
           def parse_tuic(raw):
               u = urllib.parse.urlsplit(raw)
               q = dict(urllib.parse.parse_qsl(u.query))
               tls = {'enabled': True, 'server_name': q.get('sni') or u.hostname}
               alpn = [x for x in (q.get('alpn') or '').split(',') if x]
-              if alpn: tls['alpn'] = alpn
-              return {'type': 'tuic', 'server': host_ip(u.hostname), 'server_port': u.port,
-                      'uuid': urllib.parse.unquote(u.username), 'password': urllib.parse.unquote(u.password or ''),
-                      'congestion_control': q.get('congestion_control') or 'bbr', 'tls': tls}
+              if alpn:
+                  tls['alpn'] = alpn
+              return {
+                  'type': 'tuic', 'server': host_ip(u.hostname), 'server_port': u.port,
+                  'uuid': urllib.parse.unquote(u.username), 'password': urllib.parse.unquote(u.password or ''),
+                  'congestion_control': q.get('congestion_control') or 'bbr', 'tls': tls,
+              }
 
           parsers = {
               'vless': parse_vless,
@@ -230,8 +238,10 @@ jobs:
         run: |
           set -euo pipefail
           probe() {
-            local name="$1" port="$2" config="$RUNNER_TEMP/aero-probes/$name.json"
-            local log="$RUNNER_TEMP/aero-probes/$name.log" trace="$RUNNER_TEMP/aero-probes/$name.trace"
+            local name="$1" port="$2"
+            local config="$RUNNER_TEMP/aero-probes/$name.json"
+            local log="$RUNNER_TEMP/aero-probes/$name.log"
+            local trace="$RUNNER_TEMP/aero-probes/$name.trace"
             sing-box run -c "$config" >"$log" 2>&1 &
             local pid=$!
             cleanup_one() { kill "$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true; }
