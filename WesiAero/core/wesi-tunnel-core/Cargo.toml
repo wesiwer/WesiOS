@@ -1,0 +1,16 @@
+[package]
+name = "wesi-tunnel-core"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.85"
+license = "Proprietary"
+description = "Fail-closed VPN lifecycle and protocol policy supervisor for Wesi Aero"
+
+[lib]
+crate-type = ["rlib", "staticlib", "cdylib"]
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+panic = "abort"
+strip = "symbols"
