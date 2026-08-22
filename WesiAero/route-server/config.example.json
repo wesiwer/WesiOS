@@ -1,40 +1,55 @@
 {
   "listenHost": "127.0.0.1",
-  "listenPort": 8792,
+  "listenPort": 8793,
+  "stateFile": "data/route-state.json",
   "health": {
     "intervalMs": 20000,
+    "jitterRatio": 0.3,
     "timeoutMs": 2000,
     "sampling": 2,
-    "connectivityUrl": "https://cp.cloudflare.com/generate_204",
-    "destinationUrl": "https://www.gstatic.com/generate_204",
+    "historySize": 12,
+    "connectivityUrls": [
+      "https://cp.cloudflare.com/generate_204",
+      "https://www.gstatic.com/generate_204"
+    ],
+    "destinationUrls": [
+      "https://cp.cloudflare.com/generate_204",
+      "https://www.gstatic.com/generate_204"
+    ],
+    "multiTargetQuorum": 1,
+    "expectedStatuses": [200, 204],
     "failureThreshold": 2,
     "recoveryThreshold": 2,
     "stickyTtlMs": 1800000,
-    "switchHysteresisMs": 35
+    "jitterWeight": 1.5,
+    "lossWeight": 1200,
+    "loadWeight": 900,
+    "costWeight": 100,
+    "failurePenaltyStep": 120,
+    "failurePenaltyRecovery": 25,
+    "maxFailurePenalty": 1000
   },
   "pools": [
     {
-      "id": "kg-auto",
-      "name": "Киргизия · авто",
+      "id": "ireland-bs",
+      "name": "Ирландия БС",
       "expected": 1,
       "maxRttMs": 5000,
       "nodes": [
         {
-          "id": "kg-01",
-          "countryCode": "KG",
+          "id": "ireland-bs-01",
+          "countryCode": "IE",
           "protocols": ["vless-reality"],
-          "endpoint": "vpn-kg-01.example.com:443",
-          "healthUrl": "https://vpn-kg-01.example.com/healthz",
+          "endpoint": "178.236.247.194:8443",
+          "healthUrls": [
+            "https://cp.cloudflare.com/generate_204",
+            "https://www.gstatic.com/generate_204"
+          ],
+          "healthQuorum": 1,
           "cost": 1,
-          "enabled": true
-        },
-        {
-          "id": "kg-02",
-          "countryCode": "KG",
-          "protocols": ["vless-reality"],
-          "endpoint": "vpn-kg-02.example.com:443",
-          "healthUrl": "https://vpn-kg-02.example.com/healthz",
-          "cost": 1,
+          "load": 0,
+          "maintenance": "online",
+          "profileRef": "ireland-bs-vless-reality",
           "enabled": true
         }
       ]
