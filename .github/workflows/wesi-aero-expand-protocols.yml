@@ -7,6 +7,7 @@ on:
     paths:
       - WesiAero/server-node/src/**
       - WesiAero/server-node/scripts/setup-singbox-prototype.sh
+      - WesiAero/server-node/scripts/setup-restrictive-transports.sh
       - WesiAero/server-node/scripts/setup-amneziawg-prototype.sh
       - WesiAero/server-node/scripts/setup-control-plane-prototype.sh
       - WesiAero/server-node/scripts/configure-control-plane-https.sh
@@ -45,7 +46,7 @@ jobs:
           SHA: ${{ github.sha }}
           TARGET_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          payload=$(jq -nc --arg target_url "$TARGET_URL" '{state:"pending",target_url:$target_url,description:"Deploying hardened eight-protocol relay",context:"wesi-aero/protocol-expansion"}')
+          payload=$(jq -nc --arg target_url "$TARGET_URL" '{state:"pending",target_url:$target_url,description:"Deploying hardened relay + TLS/443 transports",context:"wesi-aero/protocol-expansion"}')
           curl -fsS -X POST -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
             "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/statuses/$SHA" -d "$payload" >/dev/null
 
@@ -65,7 +66,7 @@ jobs:
           fi
           chmod 600 "$HOME/.ssh/wesi_aero_known_hosts"
 
-      - name: Deploy relay backends, control-plane sandbox and privacy hardening
+      - name: Deploy relay backends, restrictive transports and privacy hardening
         run: |
           set -euo pipefail
           SSH=(ssh -i "$HOME/.ssh/wesi_aero_relay" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/wesi_aero_known_hosts")
@@ -81,23 +82,23 @@ jobs:
           # Transport services first so control-plane profile publication cannot
           # advertise a backend before its real service/config exists.
           "${SUDO[@]}" env WESI_AERO_PUBLIC_HOST="$AERO_HOST" bash "$REMOTE/server-node/scripts/setup-singbox-prototype.sh"
+          "${SUDO[@]}" env WESI_AERO_PUBLIC_HOST="$AERO_HOST" bash "$REMOTE/server-node/scripts/setup-restrictive-transports.sh"
           "${SUDO[@]}" env WESI_AERO_PUBLIC_HOST="$AERO_HOST" AWG_ENDPOINT_HOST="$AERO_HOST" bash "$REMOTE/server-node/scripts/setup-amneziawg-prototype.sh"
 
           # Reinstall only Wesi Aero's loopback control-plane service from the
-          # branch source. This applies the systemd sandbox (UMask, namespace,
-          # kernel/control-group protections, restricted address families) while
-          # preserving existing server secrets in /etc/wesi-aero/control.env.
+          # branch source. Existing secrets in /etc/wesi-aero/control.env stay intact.
           "${SUDO[@]}" env WESI_AERO_PUBLIC_HOST="$AERO_HOST" \
             bash "$REMOTE/server-node/scripts/setup-control-plane-prototype.sh" "$REMOTE/server-node"
 
-          # Rebuild only the Wesi Aero virtual host. The script validates nginx
-          # before reload and disables source-IP/access request logging.
+          # Rebuild only the Wesi Aero vhost. The generated transport snippet is
+          # included inside this hostname's TLS/443 server, not globally in nginx.
           "${SUDO[@]}" env WESI_AERO_PUBLIC_HOST="$AERO_HOST" \
             bash "$REMOTE/server-node/scripts/configure-control-plane-https.sh" "$AERO_HOST"
 
           "${SUDO[@]}" env WESI_AERO_PUBLIC_HOST="$AERO_HOST" bash "$REMOTE/server-node/scripts/sync-live-protocols.sh"
 
           systemctl is-active --quiet wesi-aero-singbox.service
+          systemctl is-active --quiet wesi-aero-restrictive-transports.service
           systemctl is-active --quiet wesi-aero-amneziawg.service
           systemctl is-active --quiet wesi-aero-control.service
           systemctl is-active --quiet nginx.service
@@ -107,20 +108,70 @@ jobs:
           ss -lun | grep -q ':8447 '
           ss -lun | grep -q ':51820 '
           ss -lun | grep -q ':51821 '
+          for port in 18080 18081 18082; do
+            ss -ltnH | awk -v suffix=":$port" '$4 ~ suffix"$" && $4 ~ /^127\.0\.0\.1:/ {print $4}' | grep -q .
+            ! ss -ltnH | awk -v suffix=":$port" '$4 ~ suffix"$" && $4 !~ /^127\.0\.0\.1:/ {print $4}' | grep -q .
+          done
           awg show awg0 >/dev/null
           test -s /var/lib/wesi-aero/profiles/_default.wesi-relay.wireguard.json
           test -s /var/lib/wesi-aero/profiles/_default.wesi-relay.amneziawg.json
+          test -s /var/lib/wesi-aero/profiles/_default.wesi-relay.vmess.json
           jq -e '.protocol == "wireguard"' /var/lib/wesi-aero/profiles/_default.wesi-relay.wireguard.json >/dev/null
           jq -e '.protocol == "amneziawg" and (.clientConfig | contains("Jc =") and contains("H4 ="))' /var/lib/wesi-aero/profiles/_default.wesi-relay.amneziawg.json >/dev/null
+          jq -er '.clientConfig' /var/lib/wesi-aero/profiles/_default.wesi-relay.vmess.json | sed 's#^vmess://##' | base64 -d | jq -e --arg host "$AERO_HOST" '.add==$host and .port=="443" and .net=="ws" and .tls=="tls" and .sni==$host' >/dev/null
           "${SUDO[@]}" grep -q '^WESI_AERO_TECHNICAL_LOGS=false$' /etc/wesi-aero/control.env
           "${SUDO[@]}" grep -q '^UMask=0077$' /etc/systemd/system/wesi-aero-control.service
           "${SUDO[@]}" grep -q '^ProtectKernelTunables=true$' /etc/systemd/system/wesi-aero-control.service
           "${SUDO[@]}" grep -q '^RestrictNamespaces=true$' /etc/systemd/system/wesi-aero-control.service
           "${SUDO[@]}" grep -q 'access_log off;' /etc/nginx/sites-enabled/wesi-aero-control
+          "${SUDO[@]}" grep -q 'include /etc/nginx/snippets/wesi-aero-transports.conf;' /etc/nginx/sites-enabled/wesi-aero-control
+          "${SUDO[@]}" grep -q 'proxy_pass http://127.0.0.1:18080;' /etc/nginx/snippets/wesi-aero-transports.conf
           ! "${SUDO[@]}" grep -q 'proxy_add_x_forwarded_for' /etc/nginx/sites-enabled/wesi-aero-control
-          curl -fsS --max-time 10 http://127.0.0.1:8790/v1/catalog | jq -e '
+
+          # End-to-end public TLS/443 data-plane proof. This client connects to
+          # the public Wesi Aero hostname, traverses nginx -> WS transport ->
+          # sing-box, and must reach an external HTTPS origin through the tunnel.
+          RESTRICTIVE_UUID="$(cat /var/lib/wesi-aero/singbox/restrictive-vmess.uuid)"
+          TEST_CONFIG="$(mktemp)"
+          TEST_LOG="$(mktemp)"
+          TEST_PID=''
+          cleanup_test() {
+            if [ -n "$TEST_PID" ]; then kill "$TEST_PID" >/dev/null 2>&1 || true; wait "$TEST_PID" 2>/dev/null || true; fi
+            rm -f "$TEST_CONFIG" "$TEST_LOG"
+          }
+          trap cleanup_test EXIT
+          jq -n \
+            --arg host "$AERO_HOST" --arg uuid "$RESTRICTIVE_UUID" \
+            '{
+              log:{level:"error",timestamp:false},
+              inbounds:[{type:"socks",tag:"socks-in",listen:"127.0.0.1",listen_port:19080}],
+              outbounds:[
+                {type:"vmess",tag:"proxy",server:$host,server_port:443,uuid:$uuid,security:"auto",alter_id:0,
+                 tls:{enabled:true,server_name:$host},
+                 transport:{type:"ws",path:"/aero/transport/ws",headers:{Host:$host}}},
+                {type:"direct",tag:"direct"}
+              ],
+              route:{final:"proxy"}
+            }' > "$TEST_CONFIG"
+          sing-box check -c "$TEST_CONFIG"
+          sing-box run -c "$TEST_CONFIG" >"$TEST_LOG" 2>&1 & TEST_PID=$!
+          for _ in $(seq 1 40); do
+            if ss -ltnH | grep -q '127.0.0.1:19080'; then break; fi
+            kill -0 "$TEST_PID" 2>/dev/null || { cat "$TEST_LOG" >&2; exit 1; }
+            sleep 0.25
+          done
+          curl -fsS --max-time 20 --proxy socks5h://127.0.0.1:19080 https://example.com/ >/dev/null
+          cleanup_test
+          trap - EXIT
+
+          curl -fsS --max-time 10 http://127.0.0.1:8790/v1/catalog | jq -e --arg host "$AERO_HOST" '
             .servers[] | select(.id=="wesi-relay") |
-            (["vless-reality","vmess","trojan","shadowsocks","hysteria2","tuic","wireguard","amneziawg"] - .protocols | length) == 0
+            (["vless-reality","vmess","trojan","shadowsocks","hysteria2","tuic","wireguard","amneziawg"] - .protocols | length) == 0 and
+            .transportConfig.restrictiveNetwork.enabled == true and
+            .transportConfig.restrictiveNetwork.publicPort == 443 and
+            .transportConfig.restrictiveNetwork.hostname == $host and
+            .transportConfig.restrictiveNetwork.primary.transport == "websocket" and
+            .transportConfig.restrictiveNetwork.domainFronting == false
           ' >/dev/null
           REMOTE
 
@@ -128,9 +179,12 @@ jobs:
         run: |
           set -euo pipefail
           curl -fsS --max-time 15 "https://$AERO_HOST/healthz" | grep -q '"status":"ok"'
-          curl -fsS --max-time 15 "https://$AERO_HOST/v1/catalog" | jq -e '
+          curl -fsS --max-time 15 "https://$AERO_HOST/v1/catalog" | jq -e --arg host "$AERO_HOST" '
             .servers[] | select(.id=="wesi-relay") |
-            (["vless-reality","vmess","trojan","shadowsocks","hysteria2","tuic","wireguard","amneziawg"] - .protocols | length) == 0
+            (["vless-reality","vmess","trojan","shadowsocks","hysteria2","tuic","wireguard","amneziawg"] - .protocols | length) == 0 and
+            .transportConfig.restrictiveNetwork.publicPort == 443 and
+            .transportConfig.restrictiveNetwork.hostname == $host and
+            .transportConfig.restrictiveNetwork.domainFronting == false
           ' >/dev/null
 
       - name: Publish final status
@@ -141,7 +195,7 @@ jobs:
           TARGET_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           JOB_STATUS: ${{ job.status }}
         run: |
-          if [ "$JOB_STATUS" = success ]; then state=success; description='Eight-protocol relay + control-plane hardening live'; else state=failure; description='Relay deployment/control-plane hardening failed'; fi
+          if [ "$JOB_STATUS" = success ]; then state=success; description='Relay + Wesi TLS/443 restrictive transports live'; else state=failure; description='Relay/restrictive transport deployment failed'; fi
           payload=$(jq -nc --arg state "$state" --arg target_url "$TARGET_URL" --arg description "$description" '{state:$state,target_url:$target_url,description:$description,context:"wesi-aero/protocol-expansion"}')
           curl -fsS -X POST -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
             "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/statuses/$SHA" -d "$payload" >/dev/null
