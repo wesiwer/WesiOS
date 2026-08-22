@@ -34,6 +34,7 @@ export function createRecord(node, poolId, restored = null) {
     consecutiveSuccesses: Math.max(0, Number(previous.consecutiveSuccesses ?? 0)),
     lastCheckedAt: previous.lastCheckedAt ?? null,
     lastError: previous.lastError ?? null,
+    telemetry: previous.telemetry && typeof previous.telemetry === 'object' ? previous.telemetry : null,
     samples: Array.isArray(previous.samples)
       ? previous.samples.filter(Number.isFinite).slice(-20)
       : [],
@@ -90,12 +91,18 @@ export function scoreRecord(record, health = {}) {
   const lossWeight = Number(health.lossWeight ?? 1200);
   const loadWeight = Number(health.loadWeight ?? 900);
   const costWeight = Number(health.costWeight ?? 100);
+  const overloadWeight = Number(health.overloadWeight ?? 2500);
   const load = clamp01(record.node.load ?? 0);
+  const softCapacity = clamp01(record.node.softCapacity ?? 0.75);
+  const overload = load > softCapacity
+    ? (load - softCapacity) / Math.max(0.01, 1 - softCapacity)
+    : 0;
   const cost = Math.max(0, Number(record.node.cost ?? 1) - 1);
   return rtt +
     finiteOrZero(record.jitterMs) * jitterWeight +
     clamp01(record.failureRate) * lossWeight +
     load * loadWeight +
+    overload * overloadWeight +
     cost * costWeight +
     Math.max(0, Number(record.recentFailurePenalty ?? 0));
 }
@@ -108,9 +115,15 @@ export function eligibleRecords({ pool, state, protocol, forNewAssignment = true
     .filter((record) => record.node.enabled !== false)
     .filter((record) => record.maintenance !== 'offline')
     .filter((record) => !forNewAssignment || record.maintenance !== 'draining')
+    .filter((record) => !forNewAssignment || !isAtHardCapacity(record))
     .filter((record) => !protocol || record.node.protocols?.includes(protocol))
     .filter((record) => record.healthy)
     .filter((record) => record.rttMs == null || record.rttMs <= maxRtt);
+}
+
+export function isAtHardCapacity(record) {
+  const hard = clamp01(record.node.hardCapacity ?? 0.95);
+  return clamp01(record.node.load ?? 0) >= hard;
 }
 
 export function selectRoute({ config, state, sticky, clientId, poolId, protocol, now = Date.now() }) {
@@ -157,6 +170,7 @@ export function selectedPayload(pool, record, stickyHit) {
     jitterMs: record.jitterMs,
     failureRate: record.failureRate,
     score: Math.round(scoreRecord(record, {})),
+    load: clamp01(record.node.load ?? 0),
     healthy: record.healthy,
     maintenance: record.maintenance,
     sticky: stickyHit,
@@ -172,7 +186,7 @@ export function setMaintenance(record, mode) {
 
 export function serializeState(state, sticky) {
   return {
-    version: 1,
+    version: 2,
     savedAt: new Date().toISOString(),
     nodes: Object.fromEntries([...state.entries()].map(([id, record]) => [id, {
       maintenance: record.maintenance,
@@ -185,6 +199,7 @@ export function serializeState(state, sticky) {
       consecutiveSuccesses: record.consecutiveSuccesses,
       lastCheckedAt: record.lastCheckedAt,
       lastError: record.lastError,
+      telemetry: record.telemetry,
       samples: record.samples,
       outcomes: record.outcomes,
     }])),
@@ -218,7 +233,7 @@ export function restoreSticky(rawSticky, now = Date.now()) {
   const restored = new Map();
   for (const [key, value] of Object.entries(rawSticky ?? {})) {
     if (value && typeof value.nodeId === 'string' && Number(value.expiresAt) > now) {
-      restored.set(key, { nodeId: value.nodeId, expiresAt: Number(value.expiresAt) });
+      restored.set(key, { ...value, nodeId: value.nodeId, expiresAt: Number(value.expiresAt) });
     }
   }
   return restored;
