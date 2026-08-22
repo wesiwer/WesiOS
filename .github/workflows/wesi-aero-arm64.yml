@@ -5,7 +5,14 @@ on:
     branches:
       - codex/wesi-aero-build-20260821
     paths:
-      - WesiAero/**
+      - WesiAero/lib/**
+      - WesiAero/scripts/**
+      - WesiAero/assets/**
+      - WesiAero/test/**
+      - WesiAero/pubspec.yaml
+      - WesiAero/pubspec.lock
+      - WesiAero/analysis_options.yaml
+      - WesiAero/server-node/scripts/ensure-prototype-license.sh
       - .github/workflows/wesi-aero-arm64.yml
   workflow_dispatch:
 
