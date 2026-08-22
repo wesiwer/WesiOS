@@ -12,6 +12,7 @@ on:
 
 permissions:
   contents: read
+  statuses: write
 
 concurrency:
   group: wesi-aero-protocol-expansion
@@ -32,6 +33,16 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: codex/wesi-aero-build-20260821
+
+      - name: Publish pending status
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.sha }}
+          TARGET_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          payload=$(jq -nc --arg target_url "$TARGET_URL" '{state:"pending",target_url:$target_url,description:"Deploying sing-box relay protocols",context:"wesi-aero/protocol-expansion"}')
+          curl -fsS -X POST -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
+            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/statuses/$SHA" -d "$payload" >/dev/null
 
       - name: Configure SSH
         run: |
@@ -83,3 +94,16 @@ jobs:
             .servers[] | select(.id=="wesi-relay") |
             (["vless-reality","vmess","trojan","shadowsocks","hysteria2","tuic","wireguard"] - .protocols | length) == 0
           ' >/dev/null
+
+      - name: Publish final status
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.sha }}
+          TARGET_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          if [ "$JOB_STATUS" = success ]; then state=success; description='Relay protocols are live'; else state=failure; description='Relay protocol expansion failed'; fi
+          payload=$(jq -nc --arg state "$state" --arg target_url "$TARGET_URL" --arg description "$description" '{state:$state,target_url:$target_url,description:$description,context:"wesi-aero/protocol-expansion"}')
+          curl -fsS -X POST -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
+            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/statuses/$SHA" -d "$payload" >/dev/null
