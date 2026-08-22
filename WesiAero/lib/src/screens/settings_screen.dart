@@ -38,7 +38,16 @@ class SettingsScreen extends StatelessWidget {
               const SizedBox(height: GatewayTokens.space24),
               Text('Протокол', style: Theme.of(context).textTheme.titleLarge),
               const SizedBox(height: GatewayTokens.space12),
-              _ProtocolSelector(enabled: !locked),
+              if (controller.isIrelandBsSelected)
+                const GlassCard(
+                  child: ListTile(
+                    leading: Icon(Icons.auto_awesome_rounded),
+                    title: Text('Автоматический режим · Ирландия БС'),
+                    subtitle: Text('Протокол, движок и REALITY-профиль выбираются автоматически. Ничего перебирать вручную не нужно.'),
+                  ),
+                )
+              else
+                _ProtocolSelector(enabled: !locked),
               const SizedBox(height: GatewayTokens.space16),
               Text('Движок', style: Theme.of(context).textTheme.titleLarge),
               const SizedBox(height: GatewayTokens.space4),
@@ -47,7 +56,8 @@ class SettingsScreen extends StatelessWidget {
                 style: Theme.of(context).textTheme.bodyMedium,
               ),
               const SizedBox(height: GatewayTokens.space12),
-              _EngineSelector(enabled: !locked),
+              if (!controller.isIrelandBsSelected)
+                _EngineSelector(enabled: !locked),
               const SizedBox(height: GatewayTokens.space24),
               Text('Соединение', style: Theme.of(context).textTheme.titleLarge),
               const SizedBox(height: GatewayTokens.space12),

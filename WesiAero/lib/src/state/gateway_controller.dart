@@ -80,6 +80,8 @@ class GatewayController extends ChangeNotifier {
 
   bool get isConnected => snapshot.status == TunnelStatus.connected;
 
+  bool get isIrelandBsSelected => selectedNode?.id == 'ireland-bs';
+
   bool get isCommerceDemo => _commerce.isDemo;
 
   bool get needsSubscription => !commerceLoading && license?.isActive != true;
@@ -383,10 +385,11 @@ class GatewayController extends ChangeNotifier {
           },
         );
       }
+      final oneTapIreland = node.id == 'ireland-bs';
       await _engine.connect(
         node: node,
-        protocol: protocol,
-        engine: engine,
+        protocol: oneTapIreland ? GatewayProtocol.automatic : protocol,
+        engine: oneTapIreland ? TunnelEngine.automatic : engine,
         splitMode: splitMode,
         rules: rules,
         killSwitch: killSwitch,
@@ -411,7 +414,10 @@ class GatewayController extends ChangeNotifier {
   void selectNode(GatewayNode node) {
     if (isConnected || isBusy || selectedNode?.id == node.id) return;
     selectedNode = node;
-    if (protocol != GatewayProtocol.automatic &&
+    if (node.id == 'ireland-bs') {
+      protocol = GatewayProtocol.automatic;
+      engine = TunnelEngine.automatic;
+    } else if (protocol != GatewayProtocol.automatic &&
         !node.protocols.contains(protocol)) {
       protocol = GatewayProtocol.automatic;
       engine = TunnelEngine.automatic;
@@ -420,6 +426,7 @@ class GatewayController extends ChangeNotifier {
   }
 
   void setProtocol(GatewayProtocol value) {
+    if (isIrelandBsSelected) return;
     if (isConnected || isBusy || protocol == value) return;
     final node = selectedNode;
     if (node != null &&
@@ -435,6 +442,7 @@ class GatewayController extends ChangeNotifier {
   }
 
   void setEngine(TunnelEngine value) {
+    if (isIrelandBsSelected) return;
     if (isConnected || isBusy || engine == value) return;
     if (protocol != GatewayProtocol.automatic && !protocol.supportsEngine(value)) {
       return;
