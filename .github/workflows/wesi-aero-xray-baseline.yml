@@ -11,6 +11,7 @@ on:
 
 permissions:
   contents: read
+  statuses: write
 
 jobs:
   baseline:
@@ -18,7 +19,10 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - name: Download pinned Xray Android release asset
+      - name: Download and fingerprint pinned Xray Android release asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
           url='https://github.com/2dust/AndroidLibXrayLite/releases/download/v26.5.19/libv2ray.aar'
@@ -27,6 +31,12 @@ jobs:
           sha256sum "$RUNNER_TEMP/libv2ray.aar" | tee "$RUNNER_TEMP/libv2ray.sha256"
           hash="$(cut -d' ' -f1 "$RUNNER_TEMP/libv2ray.sha256")"
           echo "XRAY_AAR_SHA256=$hash"
+          payload="$(jq -nc --arg description "sha256=$hash" '{state:"success",description:$description,context:"wesi-aero/xray-baseline"}')"
+          curl -fsS -X POST \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/statuses/$SHA" \
+            -d "$payload" >/dev/null
           {
             echo '### AndroidLibXrayLite v26.5.19 baseline'
             echo
