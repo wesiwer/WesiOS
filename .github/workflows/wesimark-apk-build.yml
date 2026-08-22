@@ -16,6 +16,10 @@ on:
 permissions:
   contents: write
 
+env:
+  EXPECTED_WESIMARK_CERT_SHA256: dfd466f3185f21b02ade358f1dc3792e404365ba3cde54b4b20163e8d031846a
+  EXPECTED_LAUNCHER_XXXHDPI_SHA256: a3e6a99a6e58179d5bf9bd27b80667cae065553e5f38f676876a67ff0933699a
+
 jobs:
   build-apk:
     runs-on: ubuntu-latest
@@ -38,29 +42,60 @@ jobs:
           test -n "$ROOT"
           echo "WESIMARK_ROOT=$ROOT" >> "$GITHUB_ENV"
           grep -q '^version: 2.4.0+14$' "$ROOT/pubspec.yaml"
-          test -d "$ROOT/android/app/src/main/res"
           test -f "$ROOT/lib/main.dart"
 
-      - name: Verify original Android identity
+      - name: Verify original WesiMark Android identity
         shell: bash
         run: |
           set -euo pipefail
           cd "$WESIMARK_ROOT"
-          echo 'Original launcher resources:'
-          find android/app/src/main/res -type f \( -iname '*launcher*' -o -iname '*foreground*' -o -iname '*background*' -o -path '*/mipmap-*/*' \) -print | sort
-          COUNT="$(find android/app/src/main/res -type f \( -iname '*launcher*' -o -path '*/mipmap-*/*' \) | wc -l)"
-          test "$COUNT" -gt 0
-          echo "Launcher resource count: $COUNT"
-          echo 'Android identity/signing references:'
-          grep -RniE 'applicationId|namespace|signingConfig|signingConfigs|storeFile|keyAlias' android/app android/build.gradle* android/settings.gradle* 2>/dev/null || true
-          echo 'Keystore material present:'
-          find android . -maxdepth 4 -type f \( -iname '*.jks' -o -iname '*.keystore' -o -name 'key.properties' -o -iname '*.p12' \) -print | sort || true
+          grep -q 'applicationId = "ru.wesi.wesimark"' android/app/build.gradle.kts
+          grep -q 'android:icon="@mipmap/ic_launcher"' android/app/src/main/AndroidManifest.xml
+          ACTUAL_ICON=$(sha256sum android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png | awk '{print $1}')
+          echo "Launcher SHA-256: $ACTUAL_ICON"
+          test "$ACTUAL_ICON" = "$EXPECTED_LAUNCHER_XXXHDPI_SHA256" || {
+            echo "::error::WesiMark launcher icon does not match original"
+            exit 1
+          }
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
+
+      - name: Validate available signing key against WesiMark 2.3
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
+            [ -n "${!name:-}" ] || { echo "::error::$name is not available"; exit 1; }
+          done
+          KEYSTORE="$RUNNER_TEMP/wesimark-candidate.jks"
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | tr -d '[:space:]' | base64 --decode > "$KEYSTORE"
+          STORE_PASS=$(printf '%s' "$ANDROID_KEYSTORE_PASSWORD" | tr -d '\r\n')
+          KEY_PASS=$(printf '%s' "$ANDROID_KEY_PASSWORD" | tr -d '\r\n')
+          ALIAS=$(printf '%s' "$ANDROID_KEY_ALIAS" | tr -d '[:space:]')
+          test -s "$KEYSTORE"
+          keytool -list -keystore "$KEYSTORE" -storepass "$STORE_PASS" -alias "$ALIAS" >/dev/null
+          ACTUAL_CERT=$(keytool -exportcert -keystore "$KEYSTORE" -storepass "$STORE_PASS" -alias "$ALIAS" | sha256sum | awk '{print $1}')
+          echo "Candidate signer SHA-256: $ACTUAL_CERT"
+          echo "Required WesiMark SHA-256: $EXPECTED_WESIMARK_CERT_SHA256"
+          test "$ACTUAL_CERT" = "$EXPECTED_WESIMARK_CERT_SHA256" || {
+            echo "::error::Available GitHub signing key is NOT the original WesiMark key"
+            exit 1
+          }
+          cat > "$WESIMARK_ROOT/android/key.properties" <<EOF
+          storeFile=$KEYSTORE
+          storePassword=$STORE_PASS
+          keyAlias=$ALIAS
+          keyPassword=$KEY_PASS
+          EOF
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
@@ -76,42 +111,28 @@ jobs:
         working-directory: ${{ env.WESIMARK_ROOT }}
         run: flutter build apk --release --build-name=2.4.0 --build-number=14
 
-      - name: Verify APK identity and signature
+      - name: Verify package and original WesiMark signature
         shell: bash
         run: |
           set -euo pipefail
           APK="$WESIMARK_ROOT/build/app/outputs/flutter-apk/app-release.apk"
           test -s "$APK"
           BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n1)"
-          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK"
-          "$BUILD_TOOLS/aapt" dump badging "$APK" | head -n 8
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/apksigner.txt
+          grep -qi "certificate SHA-256 digest: $EXPECTED_WESIMARK_CERT_SHA256" /tmp/apksigner.txt || {
+            echo "::error::Built APK does not carry the original WesiMark certificate"
+            exit 1
+          }
+          "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/badging.txt
+          grep -q "package: name='ru.wesi.wesimark'" /tmp/badging.txt
           mkdir -p "$GITHUB_WORKSPACE/build-artifacts"
           cp "$APK" "$GITHUB_WORKSPACE/build-artifacts/WesiMark-2.4.0+14.apk"
           sha256sum "$GITHUB_WORKSPACE/build-artifacts/WesiMark-2.4.0+14.apk"
 
-      - name: Upload APK artifact
+      - name: Upload verified APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: WesiMark-2.4.0+14-original-android
+          name: WesiMark-2.4.0+14-verified
           path: build-artifacts/WesiMark-2.4.0+14.apk
           if-no-files-found: error
           retention-days: 14
-
-      - name: Publish corrected direct APK to build branch
-        shell: bash
-        run: |
-          set -euo pipefail
-          cp "$GITHUB_WORKSPACE/build-artifacts/WesiMark-2.4.0+14.apk" /tmp/WesiMark-2.4.0+14.apk
-          git fetch origin wesimark/apk-build-v2.4.0
-          git reset --hard origin/wesimark/apk-build-v2.4.0
-          mkdir -p build-artifacts
-          cp /tmp/WesiMark-2.4.0+14.apk build-artifacts/WesiMark-2.4.0+14.apk
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add -f build-artifacts/WesiMark-2.4.0+14.apk
-          if git diff --cached --quiet; then
-            echo 'Corrected APK already published'
-            exit 0
-          fi
-          git commit -m 'build(wesimark): publish corrected original-android APK [skip ci]'
-          git push origin HEAD:wesimark/apk-build-v2.4.0
