@@ -16,6 +16,7 @@ on:
       - .github/workflows/wesi-aero-arm64.yml
       - .github/workflows/wesi-aero-android-live.yml
       - .github/workflows/wesi-aero-xray-baseline.yml
+      - .github/workflows/wesi-aero-expand-protocols.yml
       - .github/workflows/wesi-aero-security-verify.yml
   workflow_dispatch:
 
