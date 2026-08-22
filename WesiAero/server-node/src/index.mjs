@@ -5,6 +5,7 @@ import { openDatabase } from './database.mjs';
 import { StaticProfileProvisioner } from './provisioner.mjs';
 import { GatewayRepository } from './repository.mjs';
 import { PaymentOrchestrator } from './payments.mjs';
+import { RouteServerClient } from './route-server-client.mjs';
 import { SecretVault } from './secret-vault.mjs';
 
 const config = loadConfig();
@@ -21,6 +22,11 @@ const commerce = new CommerceRepository(database, repository, { secretVault });
 commerce.seedDefaults();
 const payments = new PaymentOrchestrator(commerce, config);
 const provisioner = new StaticProfileProvisioner(config.profileDirectory);
+const routeServer = new RouteServerClient({
+  baseUrl: config.routeServerUrl,
+  token: config.routeServerToken,
+  timeoutMs: config.routeServerTimeoutMs,
+});
 
 if (process.env.WESI_AERO_SEED_DEMO === 'true') {
   const relayHost = process.env.WESI_AERO_RELAY_PUBLIC_HOST ||
@@ -32,9 +38,6 @@ if (process.env.WESI_AERO_SEED_DEMO === 'true') {
     country: 'Foreign VPS',
     countryCode: 'XX',
     endpoint: `${relayHost}:8443`,
-    // Advertise only transports that are physically live on this relay.
-    // Extra protocols are enabled only after their server backends and
-    // provisioned client profiles pass an external egress probe.
     protocols: ['vless-reality', 'vmess', 'wireguard'],
     load: 0.05,
     online: true,
@@ -58,6 +61,7 @@ const server = createApiServer({
   commerce,
   payments,
   provisioner,
+  routeServer,
   config,
 });
 server.listen(config.port, config.host, () => {
@@ -66,6 +70,9 @@ server.listen(config.port, config.host, () => {
   );
   if (!config.adminToken) {
     process.stdout.write('Administrative API is disabled\n');
+  }
+  if (routeServer.enabled) {
+    process.stdout.write(`Route Server enabled: ${config.routeServerUrl}\n`);
   }
 });
 
