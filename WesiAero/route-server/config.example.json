@@ -24,6 +24,7 @@
     "jitterWeight": 1.5,
     "lossWeight": 1200,
     "loadWeight": 900,
+    "overloadWeight": 2500,
     "costWeight": 100,
     "failurePenaltyStep": 120,
     "failurePenaltyRecovery": 25,
@@ -57,6 +58,7 @@
           "softCapacity": 0.75,
           "hardCapacity": 0.95,
           "maintenance": "online",
+          "requiredServices": ["wesi-aero-ireland-bs"],
           "profileRef": "ireland-bs-vless-reality",
           "enabled": true
         }
