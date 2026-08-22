@@ -30,7 +30,7 @@ write_profile() {
 
 protocols=(vless-reality vmess wireguard)
 
-# Correct the prototype naming: this is standard WireGuard, not real AmneziaWG.
+# Standard WireGuard remains its own profile on UDP 51820.
 if [[ -s /root/wesi-aero-client.conf ]]; then
   write_profile wireguard /root/wesi-aero-client.conf wireguard
 fi
@@ -39,6 +39,19 @@ if write_profile trojan "$STATE_DIR/singbox/clients/trojan.txt" trojan; then pro
 if write_profile shadowsocks "$STATE_DIR/singbox/clients/shadowsocks.txt" shadowsocks; then protocols+=(shadowsocks); fi
 if write_profile hysteria2 "$STATE_DIR/singbox/clients/hysteria2.txt" hysteria2; then protocols+=(hysteria2); fi
 if write_profile tuic "$STATE_DIR/singbox/clients/tuic.txt" tuic; then protocols+=(tuic); fi
+
+# Never advertise AmneziaWG merely because the UI understands the protocol.
+# It becomes live only after the real userspace AWG interface generated a
+# profile containing its obfuscation parameters.
+AWG_PROFILE="$PROFILE_DIR/_default.wesi-relay.amneziawg.json"
+if [[ -s "$AWG_PROFILE" ]] && jq -e '
+  .protocol == "amneziawg" and
+  (.clientConfig | contains("Jc =") and contains("Jmin =") and contains("Jmax =") and contains("H4 ="))
+' "$AWG_PROFILE" >/dev/null; then
+  chown root:"$SERVICE_USER" "$AWG_PROFILE"
+  chmod 640 "$AWG_PROFILE"
+  protocols+=(amneziawg)
+fi
 
 protocol_json="$(printf '%s\n' "${protocols[@]}" | jq -R . | jq -s .)"
 payload="$(jq -n \
@@ -55,8 +68,8 @@ payload="$(jq -n \
     online:true,
     recommended:true,
     capacity:500,
-    tags:["relay","xray","sing-box","wireguard","prototype"],
-    notes:"Multi-engine Wesi Relay: sing-box, Xray and WireGuard.",
+    tags:["relay","xray","sing-box","wireguard","amneziawg","prototype"],
+    notes:"Multi-engine Wesi Relay: sing-box, Xray, WireGuard and AmneziaWG.",
     transportConfig:{
       defaultProtocol:"vless-reality",
       fallbackProtocol:"wireguard",
@@ -67,6 +80,7 @@ payload="$(jq -n \
       hysteria2Port:8446,
       tuicPort:8447,
       wireGuardPort:51820,
+      amneziaWgPort:51821,
       engines:["sing-box","xray","native"]
     }
   }')"
@@ -81,6 +95,6 @@ curl -fsS \
 catalog="$(curl -fsS http://127.0.0.1:8790/v1/catalog)"
 for protocol in "${protocols[@]}"; do
   jq -e --arg p "$protocol" '.servers[] | select(.id=="wesi-relay") | (.protocols | index($p)) != null' <<<"$catalog" >/dev/null
- done
+done
 
 echo "Wesi Relay catalog synchronized: ${protocols[*]}"
