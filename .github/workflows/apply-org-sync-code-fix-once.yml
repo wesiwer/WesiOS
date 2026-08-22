@@ -1,5 +1,5 @@
-name: Apply organization sync code fix once
-# trigger: apply validated organization recovery patch
+name: Diagnose PR 241 full analyze
+# trigger: pr241-analyze-v4-start-marker
 
 on:
   push:
@@ -11,112 +11,65 @@ permissions:
   contents: write
 
 jobs:
-  apply:
+  analyze:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: main
-          fetch-depth: 0
+          ref: fix/recovery-org-canonical-compare
+          fetch-depth: 1
+
+      - name: Mark analyzer started
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf 'started=1\nworkflow_source=%s\nbranch_head=%s\n' "$GITHUB_SHA" "$(git rev-parse HEAD)" > /tmp/start.txt
+          CONTENT=$(base64 -w0 /tmp/start.txt)
+          URL="/repos/$GITHUB_REPOSITORY/contents/.github/ops/pr241-full-analyze-started.txt"
+          SHA=$(gh api "$URL" --jq .sha 2>/dev/null || true)
+          ARGS=(--method PUT "$URL" -f message='ops(sync): mark PR 241 analyzer started' -f content="$CONTENT" -f branch=main)
+          if [ -n "$SHA" ]; then ARGS+=( -f sha="$SHA" ); fi
+          gh api "${ARGS[@]}" >/dev/null
+
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
           cache: true
-      - name: Patch sync codec
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          from pathlib import Path
-          p=Path('lib/core/sync/sync_codec.dart')
-          s=p.read_text(encoding='utf-8')
-          a=s.index('bool _organizationSnapshotValid(')
-          b=s.index('\nbool _employeeExists',a)
-          helper=r'''bool _organizationConnectedToRoot(
-            Map<String, OrganizationModel> byId,
-            OrganizationModel node,
-          ) {
-            if (node.id == OrganizationModel.rootId) {
-              return node.isRoot && node.parentId == null && !node.archived;
-            }
-            if (node.isRoot || node.parentId == null || node.parentId!.isEmpty) {
-              return false;
-            }
-            final seen = <String>{node.id};
-            var current = node;
-            while (current.id != OrganizationModel.rootId) {
-              final parentId = current.parentId;
-              if (parentId == null || parentId.isEmpty || !seen.add(parentId)) {
-                return false;
-              }
-              final parent = byId[parentId];
-              if (parent == null) return false;
-              if (!current.archived && parent.archived) return false;
-              current = parent;
-            }
-            return current.isRoot && current.parentId == null && !current.archived;
-          }
-          '''
-          s=s[:a]+helper+s[b:]
-          cls=s.index('class OrganizationsSync extends SyncCollection<OrganizationModel>')
-          a=s.index('  @override\n  Future<bool> applyFields(',cls)
-          b=s.index('  @override\n  Future<void> removeById',a)
-          repl=r'''  @override
-            Map<String, OrganizationModel> local() {
-              final b = box();
-              if (b == null) return const {};
-              final byId = <String, OrganizationModel>{
-                for (final row in b.values) row.id: row,
-              };
-              return <String, OrganizationModel>{
-                for (final row in byId.values)
-                  if (_organizationConnectedToRoot(byId, row)) row.id: row,
-              };
-            }
 
-            @override
-            Future<bool> applyFields(Map<String, dynamic> fields) async {
-              final b = box();
-              final incoming = decode(fields);
-              if (b == null || incoming == null) return false;
-              final byId = <String, OrganizationModel>{
-                for (final row in b.values)
-                  if (row.id != incoming.id) row.id: row,
-                incoming.id: incoming,
-              };
-              if (!_organizationConnectedToRoot(byId, incoming)) return false;
-              if (incoming.archived &&
-                  byId.values.any(
-                    (row) => row.parentId == incoming.id && !row.archived,
-                  )) {
-                return false;
-              }
-              await b.put(incoming.id, incoming);
-              return true;
-            }
+      - name: Run full analyzer and persist exact output
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -uo pipefail
+          flutter pub get > /tmp/pubget.log 2>&1
+          PUB_RC=$?
+          if [ "$PUB_RC" -eq 0 ]; then
+            flutter analyze --no-fatal-infos > /tmp/analyze.log 2>&1
+            RC=$?
+          else
+            RC=$PUB_RC
+            cp /tmp/pubget.log /tmp/analyze.log
+          fi
 
-          '''
-          s=s[:a]+repl+s[b:]
-          p.write_text(s,encoding='utf-8')
-          PY
-          dart format lib/core/sync/sync_codec.dart test/core/sync/organization_sync_recovery_test.dart
-          git diff --check
-      - name: Validate
-        shell: bash
-        run: |
-          set -euo pipefail
-          flutter pub get
-          flutter test test/core/sync/organization_sync_recovery_test.dart
-          flutter analyze --no-fatal-infos --no-fatal-warnings lib/core/sync/sync_codec.dart test/core/sync/organization_sync_recovery_test.dart
-      - name: Commit to current main
-        shell: bash
-        run: |
-          set -euo pipefail
-          git config user.name 'WesiOS Sync Fix'
-          git config user.email 'actions@users.noreply.github.com'
-          git add lib/core/sync/sync_codec.dart test/core/sync/organization_sync_recovery_test.dart
-          git commit -m 'fix(sync): recover organization tree from stale local cache'
-          git fetch origin main
-          git rebase origin/main
-          git push origin HEAD:main
+          {
+            echo "exit=$RC"
+            echo "branch_head=$(git rev-parse HEAD)"
+            echo "--- errors/warnings ---"
+            grep -E 'error •|warning •|^error |^warning ' /tmp/analyze.log || true
+            echo "--- tail ---"
+            tail -n 260 /tmp/analyze.log
+          } > /tmp/report.txt
+          cat /tmp/report.txt
+
+          CONTENT=$(base64 -w0 /tmp/report.txt)
+          URL="/repos/$GITHUB_REPOSITORY/contents/.github/ops/pr241-full-analyze.txt"
+          SHA=$(gh api "$URL" --jq .sha 2>/dev/null || true)
+          ARGS=(--method PUT "$URL" -f message='ops(sync): record PR 241 analyzer output' -f content="$CONTENT" -f branch=main)
+          if [ -n "$SHA" ]; then ARGS+=( -f sha="$SHA" ); fi
+          gh api "${ARGS[@]}" >/dev/null
+
+          exit "$RC"
