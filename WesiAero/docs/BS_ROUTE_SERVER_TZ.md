@@ -27,10 +27,10 @@
 
 ## P0 — реальный VPN health
 
-- [~] **P0.9 Client E2E verification.** Создан `TunnelHealthService`, выполняющий HTTP egress probe. Native backend всё ещё должен гарантировать, что probe действительно прошёл через TUN перед окончательным production gate.
-- [~] **P0.10 Continuous client E2E.** Подготовлен patch для периодической проверки `ireland-bs` и отправки результата каждые ~25 секунд. Требуется подтверждение, что Flutter patch прошёл CI и находится в ветке.
+- [~] **P0.9 Client E2E verification.** `TunnelHealthService` выполняет HTTP egress probe после перехода клиента в Connected. Для production gate нативный backend ещё должен доказать, что этот probe действительно проходит через TUN, а не bypass-путь приложения.
+- [~] **P0.10 Continuous client E2E.** Flutter wiring применён: только для `ireland-bs` probe запускается при переходе в Connected и повторяется каждые 25 секунд. Следующий gate — реальный Android/Windows tunnel E2E.
 - [x] **P0.11 Failure classification backend.** Route Server принимает/нормализует `DEVICE_CONNECTIVITY_DOWN`, `NODE_DOWN`, `PROTOCOL_BLOCKED_OR_BROKEN`, `TUNNEL_EGRESS_FAILED`, `DNS_FAILED`, `CONTROL_PLANE_FAILED`.
-- [~] **P0.12 Client quality report.** Route Server имеет `/v1/client-health`, control-plane client имеет `reportClientHealth`, secure action patch подготовлен. Передаются только route quality/failure данные; browsing domains/history не передаются. Требуется подтверждение клиентского wiring.
+- [x] **P0.12 Client quality report contract.** Route Server имеет `/v1/client-health`, control plane secure action `route.health.report` применён, Flutter-клиент отправляет обезличенный результат только для `ireland-bs`. Browsing domains/history не передаются. Реальная корректность signal требует E2E.
 
 ## P1 — protocol-aware failover
 
@@ -102,9 +102,9 @@
 
 ## Следующий обязательный batch
 
-1. подтвердить применение client-health Flutter patch и secure `route.health.report`;
-2. расширить Node Agent: Xray version + active sessions + network capacity baseline;
-3. Admin UI: maintenance, load, RTT/jitter/loss, service health;
-4. client-side network-aware protocol/engine retry;
+1. расширить Node Agent: Xray version + active sessions + network capacity baseline;
+2. Admin UI: maintenance, load, RTT/jitter/loss, service health;
+3. client-side network-aware protocol/engine retry;
+4. нативно подтвердить, что E2E probe проходит именно через TUN;
 5. Android real tunnel E2E, затем Windows;
 6. только после E2E переводить P0.9/P0.10/P2.8 в `[x]`.
