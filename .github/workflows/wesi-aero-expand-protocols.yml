@@ -1,0 +1,85 @@
+name: Expand Wesi Aero Relay Protocols
+
+on:
+  push:
+    branches:
+      - codex/wesi-aero-build-20260821
+    paths:
+      - WesiAero/server-node/scripts/setup-singbox-prototype.sh
+      - WesiAero/server-node/scripts/sync-live-protocols.sh
+      - .github/workflows/wesi-aero-expand-protocols.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: wesi-aero-protocol-expansion
+  cancel-in-progress: true
+
+env:
+  AERO_HOST: wesi-aero-178-236-247-194.nip.io
+  RELAY_SSH_HOST: ${{ secrets.WESI_RELAY_SSH_HOST }}
+  RELAY_SSH_USER: ${{ secrets.WESI_RELAY_SSH_USER }}
+  RELAY_SSH_KEY: ${{ secrets.WESI_RELAY_SSH_KEY }}
+  RELAY_SSH_KNOWN_HOSTS: ${{ secrets.WESI_RELAY_SSH_KNOWN_HOSTS }}
+
+jobs:
+  expand:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: codex/wesi-aero-build-20260821
+
+      - name: Configure SSH
+        run: |
+          set -euo pipefail
+          for name in RELAY_SSH_HOST RELAY_SSH_USER RELAY_SSH_KEY; do
+            if [ -z "${!name:-}" ]; then echo "Missing $name" >&2; exit 1; fi
+          done
+          mkdir -p "$HOME/.ssh"
+          printf '%s\n' "$RELAY_SSH_KEY" > "$HOME/.ssh/wesi_aero_relay"
+          chmod 600 "$HOME/.ssh/wesi_aero_relay"
+          if [ -n "${RELAY_SSH_KNOWN_HOSTS:-}" ]; then
+            printf '%s\n' "$RELAY_SSH_KNOWN_HOSTS" > "$HOME/.ssh/wesi_aero_known_hosts"
+          else
+            ssh-keyscan -H "$RELAY_SSH_HOST" > "$HOME/.ssh/wesi_aero_known_hosts" 2>/dev/null
+          fi
+          chmod 600 "$HOME/.ssh/wesi_aero_known_hosts"
+
+      - name: Deploy sing-box relay protocols
+        run: |
+          set -euo pipefail
+          SSH=(ssh -i "$HOME/.ssh/wesi_aero_relay" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/wesi_aero_known_hosts")
+          SCP=(scp -i "$HOME/.ssh/wesi_aero_relay" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/wesi_aero_known_hosts")
+          remote="/tmp/wesi-aero-expand-${GITHUB_RUN_ID}"
+          "${SSH[@]}" "$RELAY_SSH_USER@$RELAY_SSH_HOST" "rm -rf '$remote' && mkdir -p '$remote'"
+          "${SCP[@]}" WesiAero/server-node/scripts/setup-singbox-prototype.sh "$RELAY_SSH_USER@$RELAY_SSH_HOST:$remote/"
+          "${SCP[@]}" WesiAero/server-node/scripts/sync-live-protocols.sh "$RELAY_SSH_USER@$RELAY_SSH_HOST:$remote/"
+          "${SSH[@]}" "$RELAY_SSH_USER@$RELAY_SSH_HOST" "REMOTE='$remote' AERO_HOST='$AERO_HOST' bash -s" <<'REMOTE'
+          set -euo pipefail
+          if [ "$(id -u)" -eq 0 ]; then SUDO=(); else SUDO=(sudo -n); fi
+          chmod +x "$REMOTE"/*.sh
+          "${SUDO[@]}" env WESI_AERO_PUBLIC_HOST="$AERO_HOST" bash "$REMOTE/setup-singbox-prototype.sh"
+          "${SUDO[@]}" env WESI_AERO_PUBLIC_HOST="$AERO_HOST" bash "$REMOTE/sync-live-protocols.sh"
+          systemctl is-active --quiet wesi-aero-singbox.service
+          ss -ltn | grep -q ':8445 '
+          ss -ltn | grep -q ':8388 '
+          ss -lun | grep -q ':8446 '
+          ss -lun | grep -q ':8447 '
+          curl -fsS --max-time 10 http://127.0.0.1:8790/v1/catalog | jq -e '
+            .servers[] | select(.id=="wesi-relay") |
+            (["vless-reality","vmess","trojan","shadowsocks","hysteria2","tuic","wireguard"] - .protocols | length) == 0
+          ' >/dev/null
+          REMOTE
+
+      - name: Verify public control plane
+        run: |
+          set -euo pipefail
+          curl -fsS --max-time 15 "https://$AERO_HOST/healthz" | grep -q '"status":"ok"'
+          curl -fsS --max-time 15 "https://$AERO_HOST/v1/catalog" | jq -e '
+            .servers[] | select(.id=="wesi-relay") |
+            (["vless-reality","vmess","trojan","shadowsocks","hysteria2","tuic","wireguard"] - .protocols | length) == 0
+          ' >/dev/null
