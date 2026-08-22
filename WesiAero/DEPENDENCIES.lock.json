@@ -1,0 +1,37 @@
+{
+  "schema": 1,
+  "purpose": "Security-critical Wesi Aero build inputs. Changes require explicit review and verification.",
+  "toolchains": {
+    "flutter": "3.47.1",
+    "go": "1.24.13",
+    "androidNdk": "28.0.13004108",
+    "rust": "1.88.0"
+  },
+  "androidVpn": {
+    "androidLibXrayLite": {
+      "version": "v26.5.19",
+      "sourceCommit": "4c3a3cd051ac6a10d27ba1347a05fff2697ea272",
+      "asset": "libv2ray.aar",
+      "sha256": "3d43b9344723e9c0625527de4f2bea0ee02c21180224e5ecab3384af143ca6d0"
+    },
+    "singBox": {
+      "version": "v1.13.18",
+      "sourceCommit": "45ca32dcb966f07f97fc888fe8586e359dbe8405",
+      "gomobile": "v0.1.12"
+    },
+    "hevSocks5Tunnel": {
+      "sourceCommit": "64cc609f945253b0e9ebc56317d544268f3c68c1"
+    },
+    "amneziaWgAndroid": {
+      "mavenVersion": "2.3.7"
+    }
+  },
+  "githubActions": {
+    "actions/checkout": "11d5960a326750d5838078e36cf38b85af677262",
+    "actions/setup-java": "cf277c60eb25467037889841efdb72551f06f6c3",
+    "actions/setup-go": "40f1582b2485089dde7abd97c1529aa768e1baff",
+    "actions/cache": "0057852bfaa89a56745cba8c7296529d2fc39830",
+    "actions/upload-artifact": "ea165f8d65b6e75b540449e92b4886f43607fa02",
+    "subosito/flutter-action": "1a449444c387b1966244ae4d4f8c696479add0b2"
+  }
+}
