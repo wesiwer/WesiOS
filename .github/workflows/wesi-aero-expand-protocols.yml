@@ -79,6 +79,23 @@ jobs:
           if [ "$(id -u)" -eq 0 ]; then SUDO=(); else SUDO=(sudo -n); fi
           chmod +x "$REMOTE/server-node/scripts/"*.sh
 
+          has_tcp_listener() {
+            local port="$1"
+            ss -ltnH | awk -v suffix=":$port" '$4 ~ suffix"$" {found=1} END {exit(found ? 0 : 1)}'
+          }
+          has_udp_listener() {
+            local port="$1"
+            ss -lunH | awk -v suffix=":$port" '$5 ~ suffix"$" || $4 ~ suffix"$" {found=1} END {exit(found ? 0 : 1)}'
+          }
+          has_loopback_tcp_listener() {
+            local port="$1"
+            ss -ltnH | awk -v suffix=":$port" '$4 ~ suffix"$" && $4 ~ /^127\.0\.0\.1:/ {found=1} END {exit(found ? 0 : 1)}'
+          }
+          has_non_loopback_tcp_listener() {
+            local port="$1"
+            ss -ltnH | awk -v suffix=":$port" '$4 ~ suffix"$" && $4 !~ /^127\.0\.0\.1:/ {found=1} END {exit(found ? 0 : 1)}'
+          }
+
           # Transport services first so control-plane profile publication cannot
           # advertise a backend before its real service/config exists.
           "${SUDO[@]}" env WESI_AERO_PUBLIC_HOST="$AERO_HOST" bash "$REMOTE/server-node/scripts/setup-singbox-prototype.sh"
@@ -102,15 +119,18 @@ jobs:
           systemctl is-active --quiet wesi-aero-amneziawg.service
           systemctl is-active --quiet wesi-aero-control.service
           systemctl is-active --quiet nginx.service
-          ss -ltn | grep -q ':8445 '
-          ss -ltn | grep -q ':8388 '
-          ss -lun | grep -q ':8446 '
-          ss -lun | grep -q ':8447 '
-          ss -lun | grep -q ':51820 '
-          ss -lun | grep -q ':51821 '
+          has_tcp_listener 8445
+          has_tcp_listener 8388
+          has_udp_listener 8446
+          has_udp_listener 8447
+          has_udp_listener 51820
+          has_udp_listener 51821
           for port in 18080 18081 18082; do
-            ss -ltnH | awk -v suffix=":$port" '$4 ~ suffix"$" && $4 ~ /^127\.0\.0\.1:/ {print $4}' | grep -q .
-            ! ss -ltnH | awk -v suffix=":$port" '$4 ~ suffix"$" && $4 !~ /^127\.0\.0\.1:/ {print $4}' | grep -q .
+            has_loopback_tcp_listener "$port"
+            if has_non_loopback_tcp_listener "$port"; then
+              echo "Restrictive transport port $port escaped loopback." >&2
+              exit 1
+            fi
           done
           awg show awg0 >/dev/null
           test -s /var/lib/wesi-aero/profiles/_default.wesi-relay.wireguard.json
@@ -156,10 +176,11 @@ jobs:
           sing-box check -c "$TEST_CONFIG"
           sing-box run -c "$TEST_CONFIG" >"$TEST_LOG" 2>&1 & TEST_PID=$!
           for _ in $(seq 1 40); do
-            if ss -ltnH | grep -q '127.0.0.1:19080'; then break; fi
+            if has_loopback_tcp_listener 19080; then break; fi
             kill -0 "$TEST_PID" 2>/dev/null || { cat "$TEST_LOG" >&2; exit 1; }
             sleep 0.25
           done
+          has_loopback_tcp_listener 19080 || { cat "$TEST_LOG" >&2; exit 1; }
           curl -fsS --max-time 20 --proxy socks5h://127.0.0.1:19080 https://example.com/ >/dev/null
           cleanup_test
           trap - EXIT
