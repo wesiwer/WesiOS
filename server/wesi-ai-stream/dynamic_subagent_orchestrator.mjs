@@ -153,7 +153,11 @@ function sanitizePlan(raw, prepared, policy, workspace) {
     try {
       result.push(createDynamicSubagentSpec({
         parentRequestId: prepared.requestId,
-        agentId: `${prepared.requestId}:subagent:${result.length + 1}`,
+        // The relay only accepts request identifiers containing [A-Za-z0-9_-].
+        // Keep the child agent id local to the parent request instead of
+        // embedding parentRequestId with colon separators. The parent request
+        // already travels separately in the spec and every emitted event.
+        agentId: `subagent-${result.length + 1}`,
         role,
         task: String(item.task || '').slice(0, 5000),
         context: Array.isArray(policy.context) ? policy.context : [],
