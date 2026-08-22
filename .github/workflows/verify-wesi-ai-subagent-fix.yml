@@ -1,0 +1,25 @@
+name: Verify Wesi AI subagent fix
+
+on:
+  push:
+    branches:
+      - fix/wesi-ai-subagent-runtime
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-stream-gateway:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Run Wesi AI stream tests
+        working-directory: server/wesi-ai-stream
+        run: npm test
