@@ -15,6 +15,17 @@ def replace_once(text: str, old: str, new: str, label: str) -> str:
     return text.replace(old, new, 1)
 
 
+def has_centralized_handoff(activity: str) -> bool:
+    """Return true when the current multi-engine dispatcher already serializes VPN ownership."""
+    required = (
+        "private fun stopEveryBackend()",
+        "stopEveryBackend()",
+        'AeroXrayState.current().status == "disconnected"',
+        'AeroSingBoxState.current().status == "disconnected"',
+    )
+    return all(marker in activity for marker in required)
+
+
 def main() -> None:
     if not SERVICE.exists() or not MAIN.exists():
         raise SystemExit("Generate Android VPN integrations before applying regression fixes")
@@ -36,6 +47,8 @@ def main() -> None:
     SERVICE.write_text(service, encoding="utf-8")
 
     activity = MAIN.read_text(encoding="utf-8")
+    centralized = has_centralized_handoff(activity)
+
     old_handoff = '''        executor.execute {
             try {
                 if (xrayActive) AeroXrayVpnService.stop(this)
@@ -61,10 +74,14 @@ def main() -> None:
                 }
                 wireGuardBackend.setState(wireGuardTunnel, Tunnel.State.UP, parsed)
 '''
-    # The always-executed hardening step now owns this handoff too. Keep this
-    # legacy guard compatible with both old generated code and already-hardened
-    # code instead of failing merely because the patch was applied earlier.
-    if 'Xray VPN did not release Android TUN' not in activity:
+
+    # Older generated dispatchers needed a dedicated Xray -> WireGuard barrier.
+    # The current multi-engine dispatcher owns one serialized transition path for
+    # every backend: bringUp() calls stopEveryBackend(), which drops WireGuard and
+    # waits for both Xray and sing-box VpnServices to report disconnected before
+    # starting the requested engine. Do not fail merely because the obsolete
+    # legacy anchor is absent in that newer architecture.
+    if not centralized and 'Xray VPN did not release Android TUN' not in activity:
         activity = replace_once(activity, old_handoff, new_handoff, "Xray to WireGuard handoff")
     MAIN.write_text(activity, encoding="utf-8")
 
@@ -80,10 +97,17 @@ def main() -> None:
         raise SystemExit(f"Xray datapath markers missing after regression fix: {missing}")
     if 'val coreDelayMs = controller.measureDelay(' in service_check:
         raise SystemExit("Cloudflare startup probe unexpectedly remained executable")
-    if 'Xray VPN did not release Android TUN' not in activity_check:
-        raise SystemExit("Serialized Xray -> WireGuard handoff is missing")
 
-    print("Verified Android VPN regressions: non-fatal Xray startup + serialized Xray/WireGuard TUN handoff")
+    legacy_handoff = 'Xray VPN did not release Android TUN' in activity_check
+    centralized_handoff = has_centralized_handoff(activity_check)
+    if not (legacy_handoff or centralized_handoff):
+        raise SystemExit("Serialized VPN backend handoff is missing")
+
+    mode = "centralized multi-engine stop/wait" if centralized_handoff else "legacy Xray/WireGuard barrier"
+    print(
+        "Verified Android VPN regressions: non-fatal Xray startup + "
+        f"serialized VPN TUN handoff ({mode})"
+    )
 
 
 if __name__ == "__main__":
