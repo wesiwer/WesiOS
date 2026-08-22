@@ -22,7 +22,7 @@ jobs:
       - name: Locate target build
         env:
           GH_TOKEN: ${{ github.token }}
-          TARGET_SHA: d3373858e306fca0eb8ee57562c54f179acb18f7
+          TARGET_SHA: 81889ca43acfe509a82b337763d40e650fb82fe7
         shell: bash
         run: |
           set -euo pipefail
