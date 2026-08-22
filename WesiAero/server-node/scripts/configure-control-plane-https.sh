@@ -31,6 +31,11 @@ server {
     listen [::]:80;
     server_name $HOSTNAME;
 
+    # A privacy VPN control plane should not retain source IP + request path
+    # metadata merely because the reverse proxy defaults to access logging.
+    access_log off;
+    server_tokens off;
+
     location ^~ /.well-known/acme-challenge/ {
         root $ACME_ROOT;
         default_type text/plain;
@@ -64,6 +69,8 @@ server {
     listen 80;
     listen [::]:80;
     server_name $HOSTNAME;
+    access_log off;
+    server_tokens off;
     location ^~ /.well-known/acme-challenge/ {
         root $ACME_ROOT;
         default_type text/plain;
@@ -76,6 +83,12 @@ server {
     listen 443 ssl http2;
     listen [::]:443 ssl http2;
     server_name $HOSTNAME;
+
+    # Do not persist per-client request metadata. Operational health should be
+    # measured with aggregate/service metrics rather than identifiable access
+    # logs. Critical nginx errors remain available through the normal error log.
+    access_log off;
+    server_tokens off;
 
     ssl_certificate $CERT_DIR/fullchain.pem;
     ssl_certificate_key $CERT_DIR/privkey.pem;
@@ -95,8 +108,10 @@ server {
         proxy_http_version 1.1;
         proxy_set_header Host \$host;
         proxy_set_header X-Forwarded-Proto https;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Real-IP \$remote_addr;
+        # The Node control plane does not require the user's source address.
+        # Deliberately do not forward X-Real-IP/X-Forwarded-For.
+        proxy_set_header X-Real-IP "";
+        proxy_set_header X-Forwarded-For "";
         proxy_connect_timeout 5s;
         proxy_read_timeout 30s;
     }
