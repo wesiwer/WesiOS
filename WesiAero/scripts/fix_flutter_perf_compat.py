@@ -12,6 +12,7 @@ BUILD_SINGBOX = ROOT / "scripts/build_android_singbox.py"
 CONFIGURE_SINGBOX = ROOT / "scripts/configure_android_singbox.py"
 PATCH_SINGBOX_PROFILES = ROOT / "scripts/patch_android_singbox_profiles.py"
 MULTI_ENGINE_ANDROID = ROOT / "scripts/configure_android_multi_engine.py"
+ENABLE_AMNEZIAWG = ROOT / "scripts/enable_android_amneziawg_backend.py"
 
 
 def main() -> None:
@@ -30,7 +31,10 @@ def main() -> None:
     # Finalize the generated Android runtime in deterministic order. Xray keeps
     # its independent HEV packet bridge; sing-box owns a separate libbox TUN;
     # MainActivity is written last so earlier generators cannot overwrite the
-    # multi-engine dispatcher.
+    # multi-engine dispatcher. The dispatcher generator intentionally starts
+    # from the standard WireGuard API, so the unified AmneziaWG-compatible
+    # backend MUST be re-applied after it. Otherwise this compatibility pass
+    # silently restores com.wireguard imports and breaks the release invariant.
     runpy.run_path(str(VPN_REGRESSION_FIX), run_name="__main__")
     runpy.run_path(str(HEV_TUN_SETUP), run_name="__main__")
     runpy.run_path(str(HEV_JNI_KEEP), run_name="__main__")
@@ -39,6 +43,7 @@ def main() -> None:
     runpy.run_path(str(CONFIGURE_SINGBOX), run_name="__main__")
     runpy.run_path(str(PATCH_SINGBOX_PROFILES), run_name="__main__")
     runpy.run_path(str(MULTI_ENGINE_ANDROID), run_name="__main__")
+    runpy.run_path(str(ENABLE_AMNEZIAWG), run_name="__main__")
 
 
 if __name__ == "__main__":
