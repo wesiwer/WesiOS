@@ -57,9 +57,6 @@ export function loadConfig(environment = process.env) {
       min: 1024,
       max: 1_048_576,
     }),
-    // Privacy/security-sensitive features are opt-in. A missing environment
-    // variable must never silently enable request metadata logging or mock money
-    // flows in a production-like deployment.
     technicalLogs: environment.WESI_AERO_TECHNICAL_LOGS === 'true',
     publicBaseUrl,
     paymentReturnUrl,
@@ -68,6 +65,12 @@ export function loadConfig(environment = process.env) {
     yookassaSecretKey: environment.WESI_AERO_YOOKASSA_SECRET_KEY || null,
     cryptoPayToken: environment.WESI_AERO_CRYPTO_PAY_TOKEN || null,
     cryptoPayTestnet: environment.WESI_AERO_CRYPTO_PAY_TESTNET !== 'false',
+    routeServerUrl: environment.WESI_AERO_ROUTE_SERVER_URL || null,
+    routeServerToken: environment.WESI_AERO_ROUTE_SERVER_TOKEN || null,
+    routeServerTimeoutMs: intFromEnv(environment, 'WESI_AERO_ROUTE_SERVER_TIMEOUT_MS', 2500, {
+      min: 250,
+      max: 15000,
+    }),
     masterKey,
   });
 }
