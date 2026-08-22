@@ -138,13 +138,42 @@ def patch_engine() -> None:
         "      'config': config.rawValue,",
         "native import engine",
     )
+
+    # Automatic mode is deliberately 443-first. The live VMess lease is not a
+    # raw 8444 profile anymore: the control plane converts it to the Wesi-owned
+    # TLS/443 restrictive profile and sing-box. Explicit user protocol choices
+    # remain untouched.
+    text = replace_once(
+        text,
+        "    const priority = [\n"
+        "      GatewayProtocol.vlessReality,\n"
+        "      GatewayProtocol.hysteria2,\n"
+        "      GatewayProtocol.tuic,\n"
+        "      GatewayProtocol.vmess,\n"
+        "      GatewayProtocol.trojan,\n"
+        "      GatewayProtocol.shadowsocks,\n"
+        "      GatewayProtocol.amneziaWg,\n"
+        "      GatewayProtocol.wireGuard,\n"
+        "    ];",
+        "    const priority = [\n"
+        "      GatewayProtocol.vmess,\n"
+        "      GatewayProtocol.vlessReality,\n"
+        "      GatewayProtocol.trojan,\n"
+        "      GatewayProtocol.shadowsocks,\n"
+        "      GatewayProtocol.hysteria2,\n"
+        "      GatewayProtocol.tuic,\n"
+        "      GatewayProtocol.amneziaWg,\n"
+        "      GatewayProtocol.wireGuard,\n"
+        "    ];",
+        "443-first automatic protocol priority",
+    )
     ENGINE.write_text(text, encoding="utf-8")
 
 
 def main() -> None:
     patch_models()
     patch_engine()
-    print('Applied engine-aware profile contract for Xray / sing-box / native backends')
+    print('Applied engine-aware profiles and HTTPS/443-first automatic routing')
 
 
 if __name__ == '__main__':
