@@ -4,9 +4,11 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 
+import { selectAutomaticRoute } from '../src/auto-route.mjs';
 import {
   applyProbeResult,
   createRecord,
+  isAtHardCapacity,
   loadPersistentState,
   randomizedDelay,
   restoreSticky,
@@ -25,6 +27,7 @@ function baseConfig(nodes) {
       lossWeight: 1200,
       jitterWeight: 1.5,
       loadWeight: 900,
+      overloadWeight: 2500,
       failureThreshold: 2,
       recoveryThreshold: 2,
       historySize: 8,
@@ -41,6 +44,8 @@ function node(id, overrides = {}) {
     enabled: true,
     cost: 1,
     load: 0,
+    softCapacity: 0.75,
+    hardCapacity: 0.95,
     ...overrides,
   };
 }
@@ -110,6 +115,62 @@ test('draining preserves an existing sticky assignment but gets no new clients',
 
   const newClient = selectRoute({ config, state, sticky, clientId: 'c2', poolId: 'pool', protocol: 'vless-reality', now: 2 });
   assert.equal(newClient.nodeId, 'b');
+});
+
+test('hard capacity blocks new assignments but does not invalidate existing sticky session', () => {
+  const a = node('a', { load: 0.96 });
+  const b = node('b', { load: 0.4 });
+  const config = baseConfig([a, b]);
+  const state = new Map([
+    ['a', createRecord(a, 'pool')],
+    ['b', createRecord(b, 'pool')],
+  ]);
+  for (const record of state.values()) {
+    record.healthy = true;
+    record.rttMs = record.node.id === 'a' ? 20 : 50;
+    record.failureRate = 0;
+  }
+  assert.equal(isAtHardCapacity(state.get('a')), true);
+  const sticky = new Map([
+    ['old:pool:vless-reality', { nodeId: 'a', expiresAt: 1000 }],
+  ]);
+  const oldClient = selectRoute({ config, state, sticky, clientId: 'old', poolId: 'pool', protocol: 'vless-reality', now: 10 });
+  assert.equal(oldClient.nodeId, 'a');
+  const newClient = selectRoute({ config, state, sticky, clientId: 'new', poolId: 'pool', protocol: 'vless-reality', now: 10 });
+  assert.equal(newClient.nodeId, 'b');
+});
+
+test('automatic routing never uses unlisted pool when includeUnlistedPools is false', () => {
+  const ireland = node('ireland');
+  const second = node('second');
+  const config = {
+    ...baseConfig([]),
+    auto: {
+      poolPriority: ['ireland-bs'],
+      includeUnlistedPools: false,
+      protocolPriority: ['vless-reality'],
+    },
+    pools: [
+      { id: 'ireland-bs', maxRttMs: 5000, nodes: [ireland] },
+      { id: 'second-server', maxRttMs: 5000, nodes: [second] },
+    ],
+  };
+  const state = new Map([
+    ['ireland', createRecord(ireland, 'ireland-bs')],
+    ['second', createRecord(second, 'second-server')],
+  ]);
+  state.get('ireland').healthy = false;
+  state.get('second').healthy = true;
+  state.get('second').rttMs = 1;
+  state.get('second').failureRate = 0;
+  const result = selectAutomaticRoute({
+    config,
+    state,
+    sticky: new Map(),
+    clientId: 'client',
+    now: 1,
+  });
+  assert.equal(result.error, 'NO_AUTOMATIC_ROUTE');
 });
 
 test('persistent state restores sticky and node health metadata', () => {
