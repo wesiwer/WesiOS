@@ -1,0 +1,58 @@
+name: Wesi Aero BS telemetry patch
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/wesi-aero-build-20260821]
+    paths:
+      - '.github/workflows/wesi-aero-bs-telemetry-patch.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: codex/wesi-aero-build-20260821
+      - name: Patch telemetry persistence
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('WesiAero/route-server/src/index.mjs')
+          s=p.read_text()
+          old="""  const cpu = Math.max(0, Math.min(1, Number(body.cpuLoadRatio) || 0));
+  const memory = Math.max(0, Math.min(1, Number(body.memory?.usedRatio) || 0));
+  const load = Math.max(cpu, memory);
+"""
+          new="""  const cpu = Math.max(0, Math.min(1, Number(body.cpuLoadRatio) || 0));
+  const memory = Math.max(0, Math.min(1, Number(body.memory?.usedRatio) || 0));
+  const network = Math.max(0, Math.min(1, Number(body.network?.utilizationRatio) || 0));
+  const load = Math.max(cpu, memory, network);
+"""
+          if old not in s: raise SystemExit('telemetry load pattern missing')
+          s=s.replace(old,new,1)
+          old2="""    network: body.network ?? null,
+    services: body.services ?? {},
+"""
+          new2="""    network: body.network ?? null,
+    activeSessions: Math.max(0, Number(body.activeSessions) || 0),
+    versions: body.versions && typeof body.versions === 'object' ? body.versions : {},
+    services: body.services ?? {},
+"""
+          if old2 not in s: raise SystemExit('telemetry object pattern missing')
+          s=s.replace(old2,new2,1)
+          p.write_text(s)
+          PY
+          node --check WesiAero/route-server/src/index.mjs
+          git diff --check
+      - name: Commit
+        run: |
+          if git diff --quiet; then exit 0; fi
+          git config user.name 'Wesi Aero Automation'
+          git config user.email 'actions@users.noreply.github.com'
+          git add WesiAero/route-server/src/index.mjs
+          git commit -m 'Wesi Aero: persist extended node telemetry'
+          git push origin HEAD:codex/wesi-aero-build-20260821
