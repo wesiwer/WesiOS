@@ -510,6 +510,22 @@ async function dispatchSecureAction({
       throw error;
     }
   }
+  if (payload.action === 'route.health.report') {
+    commerce.assertDeviceBound(access.license.id, payload.deviceId);
+    const server = commerce.getServer(payload.nodeId);
+    const poolId = server?.transportConfig?.routePoolId;
+    if (!poolId || !routeServer?.enabled) {
+      return { accepted: false, reason: 'ROUTE_SERVER_NOT_USED' };
+    }
+    const result = await routeServer.reportClientHealth({
+      clientId: payload.deviceId,
+      poolId,
+      nodeId: payload.nodeId,
+      protocol: payload.protocol,
+      result: payload.result ?? {},
+    });
+    return { accepted: result.accepted === true, classification: result.classification ?? null };
+  }
   if (payload.action === 'lease.heartbeat') {
     commerce.assertDeviceBound(access.license.id, payload.deviceId);
     return {

@@ -8,6 +8,7 @@ import '../models/commerce_models.dart';
 import '../services/aero_commerce_service.dart';
 import '../services/gateway_engine.dart';
 import '../services/secret_store.dart';
+import '../services/tunnel_health_service.dart';
 
 class GatewayController extends ChangeNotifier {
   GatewayController({
@@ -24,6 +25,8 @@ class GatewayController extends ChangeNotifier {
   StreamSubscription<GatewaySnapshot>? _subscription;
   Timer? _catalogTimer;
   Timer? _checkoutTimer;
+  Timer? _tunnelHealthTimer;
+  final TunnelHealthService _tunnelHealth = const TunnelHealthService();
 
   GatewaySnapshot snapshot = const GatewaySnapshot.disconnected(isDemo: true);
   List<GatewayNode> nodes = const [];
@@ -91,7 +94,14 @@ class GatewayController extends ChangeNotifier {
 
   Future<void> initialize() async {
     _subscription = _engine.snapshots.listen((value) {
+      final wasConnected = snapshot.status == TunnelStatus.connected;
       snapshot = value;
+      final isNowConnected = value.status == TunnelStatus.connected;
+      if (!wasConnected && isNowConnected) {
+        _startTunnelHealthMonitoring();
+      } else if (wasConnected && !isNowConnected) {
+        _stopTunnelHealthMonitoring();
+      }
       notifyListeners();
     });
     await _initializeCommerce();
@@ -402,6 +412,44 @@ class GatewayController extends ChangeNotifier {
             : _friendlyEngineError(error),
       );
       notifyListeners();
+    }
+  }
+
+  void _startTunnelHealthMonitoring() {
+    _stopTunnelHealthMonitoring();
+    if (snapshot.node?.id != 'ireland-bs') return;
+    unawaited(_runTunnelHealthCheck());
+    _tunnelHealthTimer = Timer.periodic(
+      const Duration(seconds: 25),
+      (_) => unawaited(_runTunnelHealthCheck()),
+    );
+  }
+
+  void _stopTunnelHealthMonitoring() {
+    _tunnelHealthTimer?.cancel();
+    _tunnelHealthTimer = null;
+  }
+
+  Future<void> _runTunnelHealthCheck() async {
+    if (!isConnected || snapshot.node?.id != 'ireland-bs') return;
+    final key = licenseKey;
+    final currentDeviceId = deviceId;
+    final node = snapshot.node;
+    if (key == null || currentDeviceId == null || node == null) return;
+    final result = await _tunnelHealth.probe();
+    try {
+      await _commerce.secureCall(
+        key: key,
+        payload: {
+          'action': 'route.health.report',
+          'deviceId': currentDeviceId,
+          'nodeId': node.id,
+          'protocol': snapshot.protocol.wireName,
+          'result': result.toJson(),
+        },
+      );
+    } catch (_) {
+      // Telemetry/control-plane failure must not tear down a healthy data plane.
     }
   }
 
