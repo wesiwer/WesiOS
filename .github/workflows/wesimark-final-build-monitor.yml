@@ -25,7 +25,7 @@ jobs:
         id: wait
         env:
           GH_TOKEN: ${{ github.token }}
-          TARGET_SHA: adb1004ed227630ebed66f9dd90dd873837b8f11
+          TARGET_SHA: d3373858e306fca0eb8ee57562c54f179acb18f7
         shell: bash
         run: |
           set -euo pipefail
