@@ -41,11 +41,11 @@ install -d -m 755 "$CONFIG_DIR"
 
 if [[ ! -s "$SECRETS_FILE" ]]; then
   umask 077
-  TROJAN_PASSWORD="$(openssl rand -base64 24 | tr -d '\n=/+' | head -c 32)"
+  TROJAN_PASSWORD="$(openssl rand -hex 16)"
   SS_PASSWORD="$(openssl rand -base64 16 | tr -d '\n')"
-  HY2_PASSWORD="$(openssl rand -base64 24 | tr -d '\n=/+' | head -c 32)"
+  HY2_PASSWORD="$(openssl rand -hex 16)"
   TUIC_UUID="$(cat /proc/sys/kernel/random/uuid)"
-  TUIC_PASSWORD="$(openssl rand -base64 24 | tr -d '\n=/+' | head -c 32)"
+  TUIC_PASSWORD="$(openssl rand -hex 16)"
   cat > "$SECRETS_FILE" <<EOF
 TROJAN_PASSWORD=$TROJAN_PASSWORD
 SS_PASSWORD=$SS_PASSWORD
@@ -143,7 +143,6 @@ systemctl daemon-reload
 systemctl enable --now wesi-aero-singbox.service >/dev/null
 systemctl restart wesi-aero-singbox.service
 
-# Host firewall rules are idempotent. QUIC transports use UDP.
 if command -v ufw >/dev/null 2>&1; then
   ufw allow "$TROJAN_PORT/tcp" >/dev/null 2>&1 || true
   ufw allow "$SS_PORT/tcp" >/dev/null 2>&1 || true
@@ -155,7 +154,6 @@ iptables -C INPUT -p tcp --dport "$SS_PORT" -j ACCEPT 2>/dev/null || iptables -I
 iptables -C INPUT -p udp --dport "$HY2_PORT" -j ACCEPT 2>/dev/null || iptables -I INPUT -p udp --dport "$HY2_PORT" -j ACCEPT
 iptables -C INPUT -p udp --dport "$TUIC_PORT" -j ACCEPT 2>/dev/null || iptables -I INPUT -p udp --dport "$TUIC_PORT" -j ACCEPT
 
-# Client profiles consumed by the control-plane static provisioner.
 printf 'trojan://%s@%s:%s?security=tls&sni=%s#Wesi%%20Relay%%20Trojan\n' \
   "$TROJAN_PASSWORD" "$PUBLIC_HOST" "$TROJAN_PORT" "$PUBLIC_HOST" > "$CLIENT_DIR/trojan.txt"
 ss_auth="$(printf '2022-blake3-aes-128-gcm:%s' "$SS_PASSWORD" | base64 -w0)"
