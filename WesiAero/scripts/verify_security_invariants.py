@@ -48,6 +48,21 @@ def verify_dependency_sources() -> None:
         ROOT / "scripts/enable_android_amneziawg_backend.py",
         f'AMNEZIAWG_VERSION = "{awg["mavenVersion"]}"',
     )
+    # The Flutter compatibility finalizer regenerates MainActivity. It must
+    # re-apply the AWG-compatible backend afterwards or it silently restores the
+    # standard WireGuard imports and breaks the single-libwg-go invariant.
+    require(
+        ROOT / "scripts/fix_flutter_perf_compat.py",
+        'ENABLE_AMNEZIAWG = ROOT / "scripts/enable_android_amneziawg_backend.py"',
+        'runpy.run_path(str(ENABLE_AMNEZIAWG), run_name="__main__")',
+    )
+    require(
+        ROOT / "scripts/apply_multi_engine_profiles.py",
+        "443-first automatic protocol priority",
+        "GatewayProtocol.vmess",
+        "GatewayProtocol.vlessReality",
+        "engine-specific profile selection",
+    )
 
 
 def verify_release_workflows() -> None:
@@ -139,6 +154,7 @@ def verify_restrictive_network_layer() -> None:
         'proxy_set_header X-Forwarded-For "";',
         "sing-box check -c \"$tmp_config\"",
         "RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK",
+        "did not expose all loopback listeners in time",
     )
     if 'listen:"0.0.0.0"' in transport or 'listen:"::"' in transport:
         raise SystemExit("Restrictive transport backend is not loopback-only")
@@ -148,11 +164,14 @@ def verify_restrictive_network_layer() -> None:
     sync = require(
         ROOT / "server-node/scripts/sync-live-protocols.sh",
         'publicPort:443',
+        'defaultProtocol:"vmess"',
         'primary:{protocol:"vmess",transport:"websocket"}',
         'candidates:["websocket","grpc","http2"]',
         'domainFronting:false',
         'thirdPartyCdn:false',
         'edgePolicy:"wesi-owned-or-explicitly-authorized"',
+        '(.transportConfig == null)',
+        '/v1/admin/snapshot',
     )
     if "domainFronting:true" in sync or "thirdPartyCdn:true" in sync:
         raise SystemExit("Restrictive-network catalog enables unauthorized fronting/CDN routing")
@@ -165,6 +184,8 @@ def verify_restrictive_network_layer() -> None:
         "https://example.com/",
         "127\\.0\\.0\\.1:/",
         'domainFronting == false',
+        '(.transportConfig == null)',
+        '/v1/admin/snapshot',
     )
     if "curl -k" in deploy or "insecure:true" in deploy:
         raise SystemExit("Restrictive-network E2E verification disables TLS verification")
